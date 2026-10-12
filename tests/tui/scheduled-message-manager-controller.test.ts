@@ -7,7 +7,7 @@ import type {
 } from "../../src/kana";
 import { AppLayout } from "../../src/tui/app/app-layout";
 import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
-import { ScheduledMessageManagerController } from "../../src/tui/app/scheduled-message-manager-controller";
+import { ScheduledMessageManagerController } from "../../src/tui/app/overlays/scheduled-message-manager-controller";
 import { Editor, Transcript } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import type { Component, Tui } from "../../src/tui/runtime";

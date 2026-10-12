@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { AppLayout } from "../../src/tui/app/app-layout";
 import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
-import { ContentViewerController } from "../../src/tui/app/content-viewer-controller";
-import { ToolHistoryController } from "../../src/tui/app/tool-history-controller";
+import { ContentViewerController } from "../../src/tui/app/overlays/content-viewer-controller";
+import { ToolHistoryController } from "../../src/tui/app/overlays/tool-history-controller";
 import {
   type ContentViewer,
   type Editor,

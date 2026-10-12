@@ -5,8 +5,8 @@ import {
   ToolHistoryPicker,
   type ToolHistoryPickerDecision,
   type Transcript,
-} from "../components";
-import type { BottomAreaController } from "./bottom-area-controller";
+} from "../../components";
+import type { BottomAreaController } from "../bottom-area-controller";
 import type { ContentViewerController } from "./content-viewer-controller";
 
 export type ToolHistoryControllerOptions = {

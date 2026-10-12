@@ -2,6 +2,7 @@ export type { KanaGoalSnapshot } from "./goal-controller";
 export {
   createKanaConversationHost,
   type KanaConversationHostSession,
+  type KanaLaunchMode,
 } from "./host";
 export {
   type ConversationAgentIdentity,

@@ -1,8 +1,12 @@
 import type { BackgroundJobClient, BackgroundJobSummary } from "@/jobs";
 import { shortId } from "@/utils";
-import { BackgroundJobManager, type BackgroundJobManagerAction, type Editor } from "../components";
-import type { Tui } from "../runtime";
-import type { BottomAreaController } from "./bottom-area-controller";
+import {
+  BackgroundJobManager,
+  type BackgroundJobManagerAction,
+  type Editor,
+} from "../../components";
+import type { Tui } from "../../runtime";
+import type { BottomAreaController } from "../bottom-area-controller";
 
 export type BackgroundJobManagerControllerOptions = {
   editor: Editor;

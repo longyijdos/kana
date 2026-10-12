@@ -1,7 +1,7 @@
 import { type TObject, type TSchema, Type } from "typebox";
 import { LOG_LEVELS } from "@/logging";
 import { isRecord, parseWithSchema } from "@/utils";
-import { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tool-names";
+import { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tools/names";
 import {
   KANA_MODEL_PROVIDERS,
   KANA_NOTIFICATION_BACKENDS,

@@ -1,6 +1,6 @@
 import type { KanaMcpServerActivation } from "@/kana";
 import type { OAuthTokenStatus } from "@/oauth";
-import type { Editor, StatusLineState, Transcript } from "../components";
+import type { Editor, StatusLineState, Transcript } from "../../components";
 import {
   type McpAuthAction,
   McpAuthActionMenu,
@@ -9,12 +9,12 @@ import {
   type McpServerManagerDecision,
   type McpServerManagerItem,
   TextBlock,
-} from "../components";
-import { singleLine } from "../render";
-import type { Tui } from "../runtime";
-import { tuiTheme } from "../theme";
-import type { BottomAreaController } from "./bottom-area-controller";
-import type { RunPhase } from "./status-phase";
+} from "../../components";
+import { singleLine } from "../../render";
+import type { Tui } from "../../runtime";
+import { tuiTheme } from "../../theme";
+import type { BottomAreaController } from "../bottom-area-controller";
+import type { RunPhase } from "../status-phase";
 
 export type McpServerManagerControllerOptions = {
   editor: Editor;

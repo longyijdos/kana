@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AppLayout } from "../../src/tui/app/app-layout";
 import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
-import { McpServerManagerController } from "../../src/tui/app/mcp-server-manager-controller";
+import { McpServerManagerController } from "../../src/tui/app/overlays/mcp-server-manager-controller";
 import { Editor, TextBlock, Transcript } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import type { Component, Tui } from "../../src/tui/runtime";

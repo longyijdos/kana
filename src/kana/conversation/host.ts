@@ -23,10 +23,14 @@ import {
   validateKanaConfig,
 } from "../config";
 import {
+  createKanaToolApprovalStore,
+  type KanaToolApprovalStore,
+  type KanaToolApprovals,
+} from "../config/tool-approval";
+import {
   type KanaCustomProviderSnapshot,
   loadKanaCustomProviderSnapshot,
 } from "../custom-provider";
-import type { KanaLaunchMode } from "../launch-mode";
 import {
   authorizeKanaMcpServer,
   createKanaMcpConfigurationStore,
@@ -68,11 +72,6 @@ import {
   loadKanaSubagentProfiles,
 } from "../subagents";
 import type { KanaTodoStateChange } from "../todo";
-import {
-  createKanaToolApprovalStore,
-  type KanaToolApprovalStore,
-  type KanaToolApprovals,
-} from "../tool-approval";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./goal-controller";
 import { type HostedSessionAgentBinding, HostedSessionRegistry } from "./hosted-session-registry";
 import {
@@ -82,6 +81,8 @@ import {
   type ConversationSessionSnapshot,
 } from "./runtime";
 import { createWakeScheduler, type WakeScheduler } from "./wake-scheduler";
+
+export type KanaLaunchMode = "normal" | "clean";
 
 export type KanaConversationHostSession =
   | { type: "new" }

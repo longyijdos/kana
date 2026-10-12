@@ -31,37 +31,37 @@ import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
 import type { KanaTuiAppOptions } from "./app-options";
 import { BackgroundActivityController } from "./background-activity-controller";
-import { BackgroundJobManagerController } from "./background-job-manager-controller";
 import { BottomAreaController } from "./bottom-area-controller";
 import { BtwController } from "./btw-controller";
-import { ContentViewerController } from "./content-viewer-controller";
 import { ContextCompactController } from "./context-compact-controller";
 import { ImageAttachmentController } from "./image-attachment-controller";
-import { InformationViewerController } from "./information-viewer-controller";
 import { InteractionErrorReporter } from "./interaction-error-reporter";
 import { LocalShellController } from "./local-shell-controller";
 import { McpLifecycleController } from "./mcp-lifecycle-controller";
 import { McpOAuthStatusController } from "./mcp-oauth-status-controller";
-import { McpServerManagerController } from "./mcp-server-manager-controller";
 import { MemoryActivityController } from "./memory-activity-controller";
 import { MemoryCompactController } from "./memory-compact-controller";
 import type { TuiModelSelection } from "./model-selection";
 import { formatStatusModel, ModelSelectionController } from "./model-selection-controller";
 import { NotificationController } from "./notification-controller";
+import { BackgroundJobManagerController } from "./overlays/background-job-manager-controller";
+import { ContentViewerController } from "./overlays/content-viewer-controller";
+import { InformationViewerController } from "./overlays/information-viewer-controller";
+import { McpServerManagerController } from "./overlays/mcp-server-manager-controller";
+import { ScheduledMessageManagerController } from "./overlays/scheduled-message-manager-controller";
+import { SkillManagerController } from "./overlays/skill-manager-controller";
+import { SubagentManagerController } from "./overlays/subagent-manager-controller";
+import { ToolHistoryController } from "./overlays/tool-history-controller";
 import { QueuedInputController } from "./queued-input-controller";
 import { createRunInputView } from "./run-input-view";
-import { ScheduledMessageManagerController } from "./scheduled-message-manager-controller";
 import { SessionLifecycleController } from "./session-lifecycle-controller";
-import { SkillManagerController } from "./skill-manager-controller";
 import { type SlashCommand, SlashCommandController } from "./slash-command-controller";
 import {
   formatToolApprovalMode,
   SlashCommandOptionsController,
 } from "./slash-command-options-controller";
 import { StatusProjectionController } from "./status-projection-controller";
-import { SubagentManagerController } from "./subagent-manager-controller";
 import { ToolApprovalController } from "./tool-approval-controller";
-import { ToolHistoryController } from "./tool-history-controller";
 
 export type { KanaTuiAppOptions } from "./app-options";
 

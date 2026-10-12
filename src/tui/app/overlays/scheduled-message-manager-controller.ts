@@ -10,10 +10,10 @@ import {
   type ScheduledMessageManagerAction,
   type ScheduledMessageManagerItem,
   TextPrompt,
-} from "../components";
-import { pad2, singleLine } from "../render";
-import type { Component, Tui } from "../runtime";
-import type { BottomAreaController } from "./bottom-area-controller";
+} from "../../components";
+import { pad2, singleLine } from "../../render";
+import type { Component, Tui } from "../../runtime";
+import type { BottomAreaController } from "../bottom-area-controller";
 
 type ScheduleDelayChoice = "5m" | "15m" | "30m" | "1h" | "custom";
 

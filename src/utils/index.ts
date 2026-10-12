@@ -11,3 +11,4 @@ export {
 } from "./schema";
 export { SerialTaskQueue } from "./serial-queue";
 export { sliceUtf8Prefix, sliceUtf8Suffix } from "./utf8";
+export { escapeXml } from "./xml";

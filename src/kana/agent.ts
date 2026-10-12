@@ -40,7 +40,6 @@ import type {
   KanaSubagentRunResult,
 } from "./subagents";
 import type { KanaTodoItem, KanaTodoStateChange } from "./todo";
-import { KANA_WORKSPACE_TOOL_NAMES } from "./tool-names";
 import {
   createCancelSubagentTool,
   createDelegateUserTaskTool,
@@ -52,9 +51,10 @@ import {
   createUpdateGoalTool,
   createWaitSubagentTool,
 } from "./tools";
+import { KANA_WORKSPACE_TOOL_NAMES } from "./tools/names";
 import type { KanaUserTaskManager } from "./user-tasks";
 
-export { KANA_BUILT_IN_TOOL_NAMES } from "./tool-names";
+export { KANA_BUILT_IN_TOOL_NAMES } from "./tools/names";
 
 export type KanaAgentOptions = Pick<
   AgentConfig,

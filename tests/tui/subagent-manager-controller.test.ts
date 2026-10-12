@@ -4,8 +4,8 @@ import type { KanaSubagentInspection } from "@/kana";
 import { KanaSubagentManager, type KanaSubagentRunResult } from "../../src/kana/subagents";
 import { AppLayout } from "../../src/tui/app/app-layout";
 import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
-import { ContentViewerController } from "../../src/tui/app/content-viewer-controller";
-import { SubagentManagerController } from "../../src/tui/app/subagent-manager-controller";
+import { ContentViewerController } from "../../src/tui/app/overlays/content-viewer-controller";
+import { SubagentManagerController } from "../../src/tui/app/overlays/subagent-manager-controller";
 import {
   createSubagentInspectionView,
   Editor,

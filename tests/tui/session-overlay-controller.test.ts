@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { KanaSessionMetadata } from "@/kana";
 import { AppLayout } from "../../src/tui/app/app-layout";
 import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
-import { SessionOverlayController } from "../../src/tui/app/session-overlay-controller";
+import { SessionOverlayController } from "../../src/tui/app/overlays/session-overlay-controller";
 import { Editor, Transcript } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import type { Component, Tui } from "../../src/tui/runtime";

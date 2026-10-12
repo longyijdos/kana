@@ -1,8 +1,8 @@
 import type { KanaSkillActivation, LoadKanaSkillActivationsResult } from "@/kana";
-import type { Editor, StatusLineState } from "../components";
-import { SkillManager, type SkillManagerDecision } from "../components";
-import type { BottomAreaController } from "./bottom-area-controller";
-import type { RunPhase } from "./status-phase";
+import type { Editor, StatusLineState } from "../../components";
+import { SkillManager, type SkillManagerDecision } from "../../components";
+import type { BottomAreaController } from "../bottom-area-controller";
+import type { RunPhase } from "../status-phase";
 
 export type SkillManagerControllerOptions = {
   editor: Editor;

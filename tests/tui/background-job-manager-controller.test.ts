@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { BackgroundJobManager } from "@/jobs";
 import { AppLayout } from "../../src/tui/app/app-layout";
-import { BackgroundJobManagerController } from "../../src/tui/app/background-job-manager-controller";
 import { BottomAreaController } from "../../src/tui/app/bottom-area-controller";
+import { BackgroundJobManagerController } from "../../src/tui/app/overlays/background-job-manager-controller";
 import { Editor, Transcript } from "../../src/tui/components";
 import { stripAnsi } from "../../src/tui/render";
 import type { Component, Tui } from "../../src/tui/runtime";

@@ -39,6 +39,15 @@ export {
   type ResetKanaConfigResult,
   resetKanaConfig,
 } from "./config";
+export {
+  addTrustedShellCommand,
+  createKanaToolApprovalStore,
+  DEFAULT_KANA_TOOL_APPROVALS,
+  getShellCommand,
+  type KanaToolApprovals,
+  loadKanaToolApprovals,
+  shouldRequestToolApproval,
+} from "./config/tool-approval";
 export { formatKanaEnvironmentContext } from "./context";
 export {
   type ConversationAgentIdentity,
@@ -53,11 +62,11 @@ export {
   createWakeScheduler,
   type KanaConversationHostSession,
   type KanaGoalSnapshot,
+  type KanaLaunchMode,
   type WakeEvent,
   type WakeEventOrigin,
 } from "./conversation";
 export { loadKanaEnvironment } from "./env";
-export type { KanaLaunchMode } from "./launch-mode";
 export {
   createKanaMcpManager,
   createKanaMcpRuntime,
@@ -135,15 +144,6 @@ export {
   type KanaTodoItem,
   type KanaTodoStateChange,
 } from "./todo";
-export {
-  addTrustedShellCommand,
-  createKanaToolApprovalStore,
-  DEFAULT_KANA_TOOL_APPROVALS,
-  getShellCommand,
-  type KanaToolApprovals,
-  loadKanaToolApprovals,
-  shouldRequestToolApproval,
-} from "./tool-approval";
 export {
   createRememberTool,
   createScheduleWakeTool,

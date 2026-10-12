@@ -1,5 +1,5 @@
-import { type ContentView, ContentViewer, ToolCallBlock, type Transcript } from "../components";
-import type { BottomAreaController } from "./bottom-area-controller";
+import { type ContentView, ContentViewer, ToolCallBlock, type Transcript } from "../../components";
+import type { BottomAreaController } from "../bottom-area-controller";
 
 export type ContentViewerControllerOptions = {
   bottomArea: BottomAreaController;

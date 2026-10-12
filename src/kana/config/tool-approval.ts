@@ -1,16 +1,25 @@
 import { Type } from "typebox";
 import type { ToolCallContent } from "@/core";
 import { nonEmptyString, parseWithSchema, writeFileAtomic } from "@/utils";
-import type { KanaToolApprovalConfig } from "./config";
-import { readOptionalConfigFile, withLockedConfigFile } from "./config/file-storage";
-import { getKanaConfigPaths } from "./path";
+import { getKanaConfigPaths } from "../path";
+import type { KanaToolApprovalConfig } from "./contracts";
+import { readOptionalConfigFile, withLockedConfigFile } from "./file-storage";
 
-export {
-  DEFAULT_KANA_TOOL_APPROVALS,
-  type KanaToolApprovals,
-} from "./tool-approval-defaults";
+export type KanaToolApprovals = {
+  readonly version: 3;
+  readonly shell: {
+    readonly exactCommands: readonly string[];
+    readonly readOnlyCommands: readonly string[];
+  };
+};
 
-import { DEFAULT_KANA_TOOL_APPROVALS, type KanaToolApprovals } from "./tool-approval-defaults";
+export const DEFAULT_KANA_TOOL_APPROVALS: KanaToolApprovals = {
+  version: 3,
+  shell: {
+    exactCommands: [],
+    readOnlyCommands: ["ls", "grep", "rg", "cat", "head", "tail", "wc", "pwd", "stat", "file"],
+  },
+};
 
 const ALWAYS_APPROVAL_TOOLS = new Set<string>(["delegate_user_task"]);
 

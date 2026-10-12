@@ -1,5 +1,6 @@
 import { createUserMessage, type Message, type UserMessage } from "@/core";
 import type { Tool } from "@/tools";
+import { escapeXml } from "@/utils";
 
 type MaybePromise<T> = Promise<T> | T;
 type RuntimeContextMessage = UserMessage & {
@@ -153,14 +154,14 @@ function formatSystemSections(
 function formatRuntimeContextMessageContent(snapshot: PromptContextSnapshot): string {
   const status = snapshot.status === "inactive" ? ' status="inactive"' : "";
   return [
-    `<runtime_context source="${escapeXmlAttribute(snapshot.source)}"${status}>`,
+    `<runtime_context source="${escapeXml(snapshot.source)}"${status}>`,
     snapshot.content,
     "</runtime_context>",
   ].join("\n");
 }
 
 function isInactiveRuntimeContextMessage(message: RuntimeContextMessage): boolean {
-  const prefix = `<runtime_context source="${escapeXmlAttribute(message.provenance.source)}" status="inactive"`;
+  const prefix = `<runtime_context source="${escapeXml(message.provenance.source)}" status="inactive"`;
   return message.content.startsWith(`${prefix}>\n`);
 }
 
@@ -192,12 +193,4 @@ function assertUniqueToolNames(tools: readonly Tool[]): void {
     }
     names.add(tool.name);
   }
-}
-
-function escapeXmlAttribute(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
 }

@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { writeFileAtomic } from "@/utils";
 import { serializeKanaCustomProviderExample } from "../custom-provider";
 import { getKanaConfigPaths } from "../path";
-import { DEFAULT_KANA_TOOL_APPROVALS } from "../tool-approval-defaults";
 import type { KanaConfig } from "./contracts";
 import { DEFAULT_KANA_CONFIG } from "./defaults";
 import { parseKanaConfig } from "./parser";
@@ -11,6 +10,7 @@ import {
   serializeKanaPromptTemplateExample,
   serializeKanaSubagentProfileExample,
 } from "./reference";
+import { DEFAULT_KANA_TOOL_APPROVALS } from "./tool-approval";
 
 export type KanaInstalledFile = {
   readonly name: string;

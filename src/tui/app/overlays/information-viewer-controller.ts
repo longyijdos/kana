@@ -1,5 +1,5 @@
 import type { KanaUsageScope, KanaUsageSummary } from "@/kana";
-import { type Editor, MarkdownBlock, TextBlock, UsageSummaryBlock } from "../components";
+import { type Editor, MarkdownBlock, TextBlock, UsageSummaryBlock } from "../../components";
 import {
   formatPromptCommandHelpLine,
   formatPromptShortcutHelpLine,
@@ -12,11 +12,11 @@ import {
   PROMPT_SKILLS_TITLE,
   PROMPT_TEMPLATE_SHORTCUT,
   PROMPT_TEMPLATES_TITLE,
-} from "../components/editor/commands";
-import { tuiTheme } from "../theme";
+} from "../../components/editor/commands";
+import { tuiTheme } from "../../theme";
+import type { MemoryScope } from "../memory-compact-controller";
+import type { StatusProjectionController } from "../status-projection-controller";
 import type { ContentViewerController } from "./content-viewer-controller";
-import type { MemoryScope } from "./memory-compact-controller";
-import type { StatusProjectionController } from "./status-projection-controller";
 
 export type InformationViewerControllerOptions = {
   editor: Editor;

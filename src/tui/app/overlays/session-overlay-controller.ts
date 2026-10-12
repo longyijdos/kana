@@ -7,10 +7,10 @@ import {
   type StatusLineState,
   TextBlock,
   type Transcript,
-} from "../components";
-import { tuiTheme } from "../theme";
-import type { BottomAreaController } from "./bottom-area-controller";
-import type { RunPhase } from "./status-phase";
+} from "../../components";
+import { tuiTheme } from "../../theme";
+import type { BottomAreaController } from "../bottom-area-controller";
+import type { RunPhase } from "../status-phase";
 
 export type SessionOverlayControllerOptions = {
   editor: Editor;

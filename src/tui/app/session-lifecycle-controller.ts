@@ -9,7 +9,7 @@ import { tuiTheme } from "../theme";
 import type { BottomAreaController } from "./bottom-area-controller";
 import { addHistoryTimelineToTranscript } from "./history";
 import type { TuiModelSelection } from "./model-selection";
-import { SessionOverlayController } from "./session-overlay-controller";
+import { SessionOverlayController } from "./overlays/session-overlay-controller";
 import type { RunPhase } from "./status-phase";
 import { renderWelcomeLogoLines } from "./welcome-logo";
 

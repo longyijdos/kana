@@ -11,9 +11,9 @@ import {
   type SubagentInspectionOptions,
   SubagentManager,
   type SubagentManagerAction,
-} from "../components";
-import type { Tui } from "../runtime";
-import type { BottomAreaController } from "./bottom-area-controller";
+} from "../../components";
+import type { Tui } from "../../runtime";
+import type { BottomAreaController } from "../bottom-area-controller";
 
 export type SubagentManagerControllerOptions = {
   editor: Editor;

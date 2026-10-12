@@ -1,7 +1,7 @@
 import type { AgentConfig } from "@/agent";
 import type { LogLevel } from "@/logging";
 import type { OpenAICodexReasoningSummary } from "@/providers";
-import type { KanaConfigurableBuiltInToolName } from "../tool-names";
+import type { KanaConfigurableBuiltInToolName } from "../tools/names";
 
 export const KANA_MODEL_PROVIDERS = ["deepseek", "openai-codex", "custom"] as const;
 
