@@ -57,7 +57,7 @@ All V4 models use the shared semantic Responses processor described in [Provider
 DeepSeek maps input, output, total, cached, and reasoning tokens into the common `ModelUsage` fields. Context occupancy and accumulated process usage follow the shared runtime rules.
 ## Extension notes
 
-- Keep provider output in `AssistantMessageEvent` and emit deep-cloned snapshots for every event.
+- Keep provider output in `AssistantMessageEvent` and build snapshots with `AssistantMessageBuilder`, which shares unchanged content blocks instead of copying them.
 - Do not flatten provider ordering of thinking, text, and calls; Agent history and the TUI rely on ordered content.
 - Shared Responses code owns semantic SSE item assembly only. Provider adapters still own request fields, endpoint selection, authentication, retry policy, and replay rules.
 - New retry conditions must distinguish cancellation, which must never retry.

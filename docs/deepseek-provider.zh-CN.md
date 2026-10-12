@@ -57,7 +57,7 @@ Kana 内置的 DeepSeek 适配器位于 `src/providers/deepseek`。所有 V4 模
 DeepSeek 把 input、output、total、cached 和 reasoning token 映射到通用 `ModelUsage` 字段。上下文占用与进程累计用量遵循共享 runtime 规则。
 ## 扩展注意点
 
-- 保持 provider 输出为 `AssistantMessageEvent`，并为每次事件发送深拷贝快照。
+- 保持 provider 输出为 `AssistantMessageEvent`，并通过 `AssistantMessageBuilder` 构建快照；未变化的 content 块在快照间共享，不做拷贝。
 - 不要把 provider 的 thinking/text/tool 调用顺序扁平化；Agent 历史和 TUI 依赖有序 content。
 - 共享 Responses 代码只负责语义 SSE item 的组装。请求字段、endpoint 选择、认证、重试策略和 replay 规则仍由各 provider adapter 负责。
 - 新增可重试条件时必须区分取消，取消不应被重试。
