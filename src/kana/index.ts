@@ -22,12 +22,12 @@ export {
 export {
   createKanaConfigStore,
   DEFAULT_KANA_CONFIG,
-  type InstallKanaConfigResult,
   installKanaConfig,
   isKanaTuiThemeName,
   KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES,
   type KanaConfig,
   type KanaConfigDraft,
+  type KanaInstalledFile,
   type KanaModelProvider,
   type KanaNotificationBackend,
   type KanaNotificationConfig,

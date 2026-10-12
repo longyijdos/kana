@@ -21,8 +21,8 @@ export {
 export { DEFAULT_KANA_CONFIG } from "./defaults";
 export { validateKanaConfig } from "./parser";
 export {
-  type InstallKanaConfigResult,
   installKanaConfig,
+  type KanaInstalledFile,
   loadKanaConfig,
   type ResetKanaConfigResult,
   resetKanaConfig,

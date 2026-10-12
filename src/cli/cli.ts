@@ -2,8 +2,8 @@ import { createInterface } from "node:readline/promises";
 import { Command, InvalidArgumentError } from "commander";
 import { parseHeadlessTimeout, type StartHeadlessOptions } from "@/headless";
 import type {
-  InstallKanaConfigResult,
   InstallKanaSkillsResult,
+  KanaInstalledFile,
   KanaOpenAICodexAuthStatus,
   KanaUpdateProgressEvent,
   KanaUpdateResult,
@@ -25,7 +25,7 @@ import { formatError } from "@/utils";
 import { KANA_VERSION } from "@/version";
 
 export type CreateCliOptions = {
-  installKanaConfig: (env: NodeJS.ProcessEnv) => InstallKanaConfigResult;
+  installKanaConfig: (env: NodeJS.ProcessEnv) => readonly KanaInstalledFile[];
   resetKanaConfig: (env: NodeJS.ProcessEnv) => ResetKanaConfigResult;
   installKanaSkills: (env: NodeJS.ProcessEnv) => Promise<InstallKanaSkillsResult>;
   reinstallKanaSkills: (env: NodeJS.ProcessEnv) => Promise<ReinstallKanaSkillsResult>;
@@ -196,50 +196,9 @@ export function createCli(options: CreateCliOptions): Command {
     .command("install")
     .description("Create Kana support files under ~/.kana")
     .action(() => {
-      const result = installConfig(process.env);
-      if (result.configStatus !== "defaults") {
-        log(formatInstallMessage("config", result.configPath, result.configStatus));
+      for (const file of installConfig(process.env)) {
+        log(formatInstallMessage(file));
       }
-      log(
-        formatInstallMessage(
-          "config example",
-          result.configExamplePath,
-          result.configExampleStatus,
-        ),
-      );
-      log(formatInstallMessage("MCP config", result.mcpConfigPath, result.mcpConfigStatus));
-      log(
-        formatInstallMessage(
-          "MCP activation state",
-          result.mcpEnabledPath,
-          result.mcpEnabledStatus,
-        ),
-      );
-      log(formatInstallMessage("approvals", result.approvalsPath, result.approvalsStatus));
-      log(
-        formatInstallMessage("skills config", result.skillsConfigPath, result.skillsConfigStatus),
-      );
-      log(
-        formatInstallMessage(
-          "subagent profile example",
-          result.subagentProfileExamplePath,
-          result.subagentProfileExampleStatus,
-        ),
-      );
-      log(
-        formatInstallMessage(
-          "prompt template example",
-          result.promptTemplateExamplePath,
-          result.promptTemplateExampleStatus,
-        ),
-      );
-      log(
-        formatInstallMessage(
-          "Custom provider example",
-          result.customProviderExamplePath,
-          result.customProviderExampleStatus,
-        ),
-      );
     });
 
   program
@@ -260,12 +219,14 @@ export function createCli(options: CreateCliOptions): Command {
       }
 
       const result = resetConfig(process.env);
-      log(formatResetConfigMessage(result));
-      log(`Reset config example: ${result.configExamplePath}`);
-      log(`Reset MCP config: ${result.mcpConfigPath}`);
-      log(`Reset MCP activation state: ${result.mcpEnabledPath}`);
-      log(`Reset approvals: ${result.approvalsPath}`);
-      log(`Reset skills config: ${result.skillsConfigPath}`);
+      log(
+        result.configRemoved
+          ? `Removed config override: ${result.configPath}`
+          : `Config override already absent: ${result.configPath}`,
+      );
+      for (const file of result.resetFiles) {
+        log(`Reset ${file.name}: ${file.path}`);
+      }
     });
 
   program
@@ -514,25 +475,15 @@ function formatSyncKanaSkillsMessage(
   return `${action} skills to ${targetLabel}: ${result.targetPath} (${parts.join(", ")})`;
 }
 
-function formatInstallMessage(
-  name: string,
-  filePath: string,
-  status: "created" | "exists" | "updated",
-): string {
-  switch (status) {
+function formatInstallMessage(file: KanaInstalledFile): string {
+  switch (file.status) {
     case "created":
-      return `Created ${name}: ${filePath}`;
+      return `Created ${file.name}: ${file.path}`;
     case "updated":
-      return `Updated ${name}: ${filePath}`;
+      return `Updated ${file.name}: ${file.path}`;
     case "exists":
-      return `${capitalize(name)} already exists: ${filePath}`;
+      return `${capitalize(file.name)} already exists: ${file.path}`;
   }
-}
-
-function formatResetConfigMessage(result: ResetKanaConfigResult): string {
-  return result.configRemoved
-    ? `Removed config override: ${result.configPath}`
-    : `Config override already absent: ${result.configPath}`;
 }
 
 function formatUpdateProgress(event: KanaUpdateProgressEvent): string {
