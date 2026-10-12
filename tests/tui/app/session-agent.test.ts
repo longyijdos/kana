@@ -3,6 +3,7 @@ import { AgentEventStream } from "../../../src/agent";
 import type { UserImage, UserMessage } from "../../../src/core";
 import { createWakeScheduler, type KanaSessionMetadata } from "../../../src/kana";
 import { KanaTuiApp } from "../../../src/tui/app/app";
+import { SessionPicker } from "../../../src/tui/components";
 import { stripAnsi } from "../../../src/tui/render";
 import type { Component } from "../../../src/tui/runtime";
 import { withAgentInboxForTest } from "../../helpers/agent-inbox";
@@ -99,6 +100,41 @@ describe("session-scoped agents", () => {
     await waitFor(() => loadCount === 1);
 
     expect(loadCount).toBe(1);
+  });
+
+  test("returns to the resume picker when the startup selection cannot be resumed", async () => {
+    const session: KanaSessionMetadata = {
+      id: "session-a",
+      createdAt: "2026-07-20T00:00:00.000Z",
+      updatedAt: "2026-07-20T00:00:00.000Z",
+      title: "Owned elsewhere",
+      cwd: "/repo",
+      path: "/sessions/session-a.jsonl",
+    };
+    let attempts = 0;
+    const appOptions = createOptions();
+    const app = new KanaTuiApp(() => createAgentStub(), createTerminal(), {
+      ...appOptions,
+      launch: { startInResumePicker: true },
+      conversation: {
+        ...appOptions.conversation,
+        listSessions: () => [session],
+        loadSession: () => {
+          attempts += 1;
+          throw new Error("Kana session session-a is in use by another Kana conversation.");
+        },
+      },
+    });
+    const internal = app as unknown as {
+      tui: { getFocus(): { handleInput?(data: string): void } | undefined };
+      transcript: { render(width: number): string[] };
+    };
+
+    app.start();
+    internal.tui.getFocus()?.handleInput?.("\r");
+    await waitFor(() => attempts === 1 && internal.tui.getFocus() instanceof SessionPicker);
+
+    expect(renderTranscript(internal.transcript)).toContain("is in use by another Kana");
   });
 
   test("keeps customization controls and MCP disabled in clean mode", async () => {

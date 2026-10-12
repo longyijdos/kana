@@ -145,6 +145,12 @@ export class SessionLifecycleController {
       session = await this.options.conversation.resumeSession(sessionId);
     } catch (error) {
       this.options.showError(error);
+      // Without a current session the editor would chat in an unsaved runtime;
+      // keep the user choosing until a resume succeeds or the picker exits.
+      if (this.options.conversation.sessionId === undefined) {
+        this.overlay.openResume();
+        return;
+      }
       this.overlay.close();
       this.options.bottomArea.showFallback();
       return;
