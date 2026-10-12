@@ -20,7 +20,11 @@ export interface Logger {
   info(event: string, metadata?: LogMetadata): void;
   warn(event: string, metadata?: LogMetadata): void;
   error(event: string, metadata?: LogMetadata): void;
+  // Returns a logger that adds `metadata` to every record it writes.
+  child(metadata: LogMetadata): Logger;
 }
+
+export type LogWriter = (level: ActiveLogLevel, event: string, metadata?: LogMetadata) => void;
 
 export type CreateSessionLoggerOptions = {
   path: string;
@@ -28,14 +32,6 @@ export type CreateSessionLoggerOptions = {
   level: LogLevel;
   now?: () => Date;
 };
-
-type SessionLogTarget = Pick<CreateSessionLoggerOptions, "path" | "sessionId">;
-
-export type SessionLogManager = {
-  forSession(target: SessionLogTarget): Logger;
-};
-
-export type CreateSessionLogManagerOptions = Pick<CreateSessionLoggerOptions, "level" | "now">;
 
 const LOG_LEVEL_PRIORITY: Record<ActiveLogLevel, number> = {
   debug: 10,
@@ -47,82 +43,58 @@ const SENSITIVE_KEY = /(?:api[_-]?key|authorization|cookie|password|secret|token
 const MAX_STRING_LENGTH = 2_000;
 const MAX_DEPTH = 5;
 
+// Every logger is built here, so a failing writer can never reach a caller.
+export function createLogger(write: LogWriter): Logger {
+  const safeWrite: LogWriter = (level, event, metadata) => {
+    try {
+      write(level, event, metadata);
+    } catch {
+      // Diagnostics never change control flow.
+    }
+  };
+  return {
+    debug: (event, metadata) => safeWrite("debug", event, metadata),
+    info: (event, metadata) => safeWrite("info", event, metadata),
+    warn: (event, metadata) => safeWrite("warn", event, metadata),
+    error: (event, metadata) => safeWrite("error", event, metadata),
+    child: (bound) =>
+      createLogger((level, event, metadata) => write(level, event, { ...bound, ...metadata })),
+  };
+}
+
+const NOOP_LOGGER: Logger = createLogger(() => {});
+
 export function createNoopLogger(): Logger {
   return NOOP_LOGGER;
 }
 
-export function createSessionLogManager(
-  options: CreateSessionLogManagerOptions,
-): SessionLogManager {
-  return {
-    forSession(target) {
-      return createSessionLogger({
-        ...target,
-        level: options.level,
-        now: options.now,
-      });
-    },
-  };
-}
-
 export function createSessionLogger(options: CreateSessionLoggerOptions): Logger {
-  if (options.level === "off") {
+  const { level: minimumLevel } = options;
+  if (minimumLevel === "off") {
     return NOOP_LOGGER;
   }
+  const now = options.now ?? (() => new Date());
 
-  return new SessionLogger(options as CreateActiveSessionLoggerOptions);
-}
-
-class SessionLogger implements Logger {
-  private readonly now: () => Date;
-
-  constructor(private readonly options: CreateActiveSessionLoggerOptions) {
-    this.now = options.now ?? (() => new Date());
-  }
-
-  debug(event: string, metadata?: LogMetadata): void {
-    this.write("debug", event, metadata);
-  }
-
-  info(event: string, metadata?: LogMetadata): void {
-    this.write("info", event, metadata);
-  }
-
-  warn(event: string, metadata?: LogMetadata): void {
-    this.write("warn", event, metadata);
-  }
-
-  error(event: string, metadata?: LogMetadata): void {
-    this.write("error", event, metadata);
-  }
-
-  private write(level: ActiveLogLevel, event: string, metadata?: LogMetadata): void {
-    if (LOG_LEVEL_PRIORITY[level] < LOG_LEVEL_PRIORITY[this.options.level]) {
+  return createLogger((level, event, metadata) => {
+    if (LOG_LEVEL_PRIORITY[level] < LOG_LEVEL_PRIORITY[minimumLevel]) {
       return;
     }
-
-    try {
-      const record: LogRecord = {
-        timestamp: this.now().toISOString(),
-        level,
-        event,
-        sessionId: this.options.sessionId,
-        ...(metadata === undefined ? {} : { metadata: sanitizeLogMetadata(metadata) }),
-      };
-      mkdirSync(path.dirname(this.options.path), { recursive: true });
-      appendFileSync(this.options.path, `${JSON.stringify(record)}\n`, {
-        encoding: "utf8",
-        mode: 0o600,
-      });
-    } catch {
-      // Logging is strictly diagnostic. I/O failures must never alter the runtime path.
-    }
-  }
+    const record: LogRecord = {
+      timestamp: now().toISOString(),
+      level,
+      event,
+      sessionId: options.sessionId,
+      ...(metadata === undefined || Object.keys(metadata).length === 0
+        ? {}
+        : { metadata: sanitizeLogMetadata(metadata) }),
+    };
+    mkdirSync(path.dirname(options.path), { recursive: true });
+    appendFileSync(options.path, `${JSON.stringify(record)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+  });
 }
-
-type CreateActiveSessionLoggerOptions = Omit<CreateSessionLoggerOptions, "level"> & {
-  level: ActiveLogLevel;
-};
 
 function sanitizeLogMetadata(metadata: LogMetadata): LogMetadata {
   return Object.fromEntries(
@@ -178,10 +150,3 @@ function sanitizeLogValue(value: unknown, depth = 0): unknown {
 function truncate(value: string): string {
   return value.length <= MAX_STRING_LENGTH ? value : `${value.slice(0, MAX_STRING_LENGTH)}…`;
 }
-
-const NOOP_LOGGER: Logger = {
-  debug() {},
-  info() {},
-  warn() {},
-  error() {},
-};

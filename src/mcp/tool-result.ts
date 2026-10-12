@@ -1,6 +1,7 @@
 import type { ToolResult } from "@/tools";
+import { isRecord } from "@/utils";
 import type { McpResponseError } from "./errors";
-import { isJsonObject, type McpCallToolResult, type McpToolContent } from "./protocol";
+import type { McpCallToolResult, McpToolContent } from "./protocol";
 
 export type McpToolSource = {
   serverId: string;
@@ -64,7 +65,7 @@ function formatContentItem(item: McpToolContent): FormattedContentItem {
       };
     }
     case "resource": {
-      if (!isJsonObject(item.resource)) {
+      if (!isRecord(item.resource)) {
         return invalidContent("resource", "Missing resource object.");
       }
       const resource = item.resource;

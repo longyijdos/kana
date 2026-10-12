@@ -3,6 +3,7 @@ import path from "node:path";
 import type { ToolResultPolicy, ToolResultPolicyResult } from "@/agent";
 import type { ToolCallContent, ToolResultArtifact } from "@/core";
 import type { Logger } from "@/logging";
+import { errorFields, sliceUtf8Prefix, sliceUtf8Suffix } from "@/utils";
 import type { KanaSessionArtifactStore } from "./store";
 
 const TOOL_RESULT_ARTIFACT_POLICY_SOURCE = "session_artifact";
@@ -52,7 +53,7 @@ export function createKanaToolResultArtifactPolicy(
           byteLimit,
           (omittedByteLength) => formatArtifactNotice(savedArtifact, omittedByteLength),
         );
-        log(options.logger, "info", "tool.result_artifact_saved", {
+        options.logger?.info("tool.result_artifact_saved", {
           toolName: input.toolCall.name,
           contentByteLength,
           inlineByteLimit: byteLimit,
@@ -65,18 +66,16 @@ export function createKanaToolResultArtifactPolicy(
       } catch (error) {
         if (artifact) {
           await options.store.discard(artifact).catch((cleanupError) => {
-            log(options.logger, "warn", "tool.result_artifact_cleanup_failed", {
+            options.logger?.warn("tool.result_artifact_cleanup_failed", {
               phase: "save_rollback",
-              errorType: getErrorType(cleanupError),
-              errorCode: getErrorCode(cleanupError),
+              ...errorFields(cleanupError),
             });
           });
         }
-        log(options.logger, "warn", "tool.result_artifact_save_failed", {
+        options.logger?.warn("tool.result_artifact_save_failed", {
           toolName: input.toolCall.name,
           phase: artifact ? "preview" : "write",
-          errorType: getErrorType(error),
-          errorCode: getErrorCode(error),
+          ...errorFields(error),
         });
         return undefined;
       }
@@ -132,69 +131,4 @@ function createBoundedPreview(
     throw new Error("The bounded artifact preview exceeded its inline byte limit.");
   }
   return { content: preview, omittedBytes };
-}
-
-function sliceUtf8Prefix(content: string, maxBytes: number): string {
-  let bytes = 0;
-  let index = 0;
-  while (index < content.length) {
-    const codePoint = content.codePointAt(index);
-    if (codePoint === undefined) {
-      break;
-    }
-    const character = String.fromCodePoint(codePoint);
-    const nextBytes = Buffer.byteLength(character, "utf8");
-    if (bytes + nextBytes > maxBytes) {
-      break;
-    }
-    bytes += nextBytes;
-    index += character.length;
-  }
-  return content.slice(0, index);
-}
-
-function sliceUtf8Suffix(content: string, maxBytes: number): string {
-  let bytes = 0;
-  let index = content.length;
-  while (index > 0) {
-    const previousIndex =
-      index >= 2 && isLowSurrogate(content.charCodeAt(index - 1)) ? index - 2 : index - 1;
-    const character = content.slice(previousIndex, index);
-    const nextBytes = Buffer.byteLength(character, "utf8");
-    if (bytes + nextBytes > maxBytes) {
-      break;
-    }
-    bytes += nextBytes;
-    index = previousIndex;
-  }
-  return content.slice(index);
-}
-
-function isLowSurrogate(codeUnit: number): boolean {
-  return codeUnit >= 0xdc00 && codeUnit <= 0xdfff;
-}
-
-function getErrorType(error: unknown): string {
-  return error instanceof Error ? error.name : typeof error;
-}
-
-function getErrorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return undefined;
-  }
-  const code = (error as { code?: unknown }).code;
-  return typeof code === "string" ? code : undefined;
-}
-
-function log(
-  logger: Logger | undefined,
-  level: "info" | "warn",
-  event: string,
-  metadata: Record<string, unknown>,
-): void {
-  try {
-    logger?.[level](event, metadata);
-  } catch {
-    // Diagnostics must not change result finalization or cleanup behavior.
-  }
 }

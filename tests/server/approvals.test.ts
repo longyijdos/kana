@@ -5,7 +5,7 @@ import { ServerApprovals } from "../../src/server/approvals";
 
 function fixture() {
   const events: string[] = [];
-  const trusted: KanaToolApprovals = {
+  let trusted: KanaToolApprovals = {
     version: 3,
     shell: { exactCommands: [], readOnlyCommands: [] },
   };
@@ -14,7 +14,10 @@ function fixture() {
     getConfig: () => ({ mode: "unless_trusted" }),
     getApprovals: () => trusted,
     addTrustedShellCommand: (command) => {
-      trusted.shell.exactCommands.push(command);
+      trusted = {
+        ...trusted,
+        shell: { ...trusted.shell, exactCommands: [...trusted.shell.exactCommands, command] },
+      };
     },
     emit: (type) => {
       events.push(type);
@@ -39,7 +42,14 @@ function fixture() {
       signal,
     });
   }
-  return { approvals, events, trusted, request };
+  return {
+    approvals,
+    events,
+    get trusted() {
+      return trusted;
+    },
+    request,
+  };
 }
 
 describe("server approvals", () => {

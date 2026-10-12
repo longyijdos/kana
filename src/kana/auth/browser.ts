@@ -31,14 +31,10 @@ export async function openKanaOAuthAuthorizationUrl(
     throw new Error(`OAuth authorization browser command exited with code ${exitCode}.`);
   }
 
-  try {
-    options.getLogger?.().info("oauth.browser_opened", {
-      component: "oauth_browser",
-      platform,
-    });
-  } catch {
-    // Browser launch succeeds independently of diagnostic logging.
-  }
+  options.getLogger?.().info("oauth.browser_opened", {
+    component: "oauth_browser",
+    platform,
+  });
 }
 
 function parseAuthorizationUrl(value: string): URL {
@@ -74,15 +70,11 @@ function logBrowserFailure(
   error?: unknown,
   exitCode?: number,
 ): void {
-  try {
-    getLogger?.().warn("oauth.browser_open_failed", {
-      component: "oauth_browser",
-      platform,
-      phase,
-      ...(error === undefined ? {} : { error }),
-      ...(exitCode === undefined ? {} : { exitCode }),
-    });
-  } catch {
-    // Browser launch failures are reported even if diagnostic logging is unavailable.
-  }
+  getLogger?.().warn("oauth.browser_open_failed", {
+    component: "oauth_browser",
+    platform,
+    phase,
+    ...(error === undefined ? {} : { error }),
+    ...(exitCode === undefined ? {} : { exitCode }),
+  });
 }

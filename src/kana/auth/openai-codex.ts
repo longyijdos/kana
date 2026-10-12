@@ -4,13 +4,14 @@ import { createNoopLogger, type Logger } from "@/logging";
 import {
   createOAuthAuthorizationRequest,
   exchangeOAuthAuthorizationCode,
+  needsOAuthTokenRefresh,
   type OAuthAuthorizationServerMetadata,
   type OAuthCallbackServer,
   type OAuthDiagnosticEvent,
   type OAuthFetch,
-  type OAuthSessionStatus,
   type OAuthStoredToken,
   OAuthTokenEndpointError,
+  type OAuthTokenStatus,
   refreshOAuthAccessToken,
   startOAuthCallbackServer,
 } from "@/oauth";
@@ -54,7 +55,7 @@ export type CreateKanaOpenAICodexAuthOptions = {
   startCallbackServer?(options: { redirectUri: string }): Promise<OAuthCallbackServer>;
 };
 
-export type KanaOpenAICodexAuthStatus = OAuthSessionStatus & {
+export type KanaOpenAICodexAuthStatus = OAuthTokenStatus & {
   planUsage?: boolean;
   email?: string;
 };
@@ -123,7 +124,7 @@ export class KanaOpenAICodexAuth implements OpenAICodexCredentialProvider {
       refreshable: token?.refreshToken !== undefined,
       ...(token === undefined ? {} : { planUsage: token.scopes?.includes(DIRECT_SCOPE) === true }),
       ...(token?.expiresAt === undefined ? {} : { expiresAt: token.expiresAt }),
-      ...(token?.scopes === undefined ? {} : { scopes: token.scopes.slice() }),
+      ...(token?.scopes === undefined ? {} : { scopes: token.scopes }),
       ...(state?.registration?.email === undefined ? {} : { email: state.registration.email }),
     };
   }
@@ -408,11 +409,7 @@ export class KanaOpenAICodexAuth implements OpenAICodexCredentialProvider {
     level: "debug" | "info" | "warn",
     metadata: Record<string, unknown>,
   ): void {
-    try {
-      this.getLogger()[level](event, { component: "openai_codex_auth", ...metadata });
-    } catch {
-      // Diagnostics cannot change authentication or credential persistence.
-    }
+    this.getLogger()[level](event, { component: "openai_codex_auth", ...metadata });
   }
 }
 
@@ -444,7 +441,7 @@ export async function signOutKanaOpenAICodex(options: CreateKanaOpenAICodexAuthO
 }
 
 function isUsable(token: OAuthStoredToken): boolean {
-  return token.expiresAt === undefined || token.expiresAt > Date.now() + 60_000;
+  return !needsOAuthTokenRefresh(token);
 }
 
 function credentialsFromToken(token: OAuthStoredToken): OpenAICodexCredentials {

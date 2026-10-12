@@ -1,666 +1,189 @@
+import { type TObject, type TSchema, Type } from "typebox";
 import { LOG_LEVELS } from "@/logging";
-import type { OpenAICodexReasoningSummary } from "@/providers";
+import { isRecord, parseWithSchema } from "@/utils";
+import { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tools/names";
 import {
-  KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES,
-  type KanaConfigurableBuiltInToolName,
-} from "../tool-names";
-import {
-  isKanaTuiThemeName,
   KANA_MODEL_PROVIDERS,
   KANA_NOTIFICATION_BACKENDS,
   KANA_TOOL_APPROVAL_MODES,
+  KANA_TUI_THEME_NAME_PATTERN,
   type KanaConfig,
-  type KanaLogLevel,
-  type KanaModelConfig,
-  type KanaModelConfigOverride,
-  type KanaModelProvider,
-  type KanaNotificationBackend,
-  type KanaToolApprovalMode,
+  type KanaConfigDraft,
 } from "./contracts";
 import { DEFAULT_KANA_CONFIG } from "./defaults";
 
-const KANA_LOG_LEVELS = LOG_LEVELS;
-const KANA_CONFIG_SCHEMA = toRawKanaConfig(DEFAULT_KANA_CONFIG);
+// config.toml uses snake_case keys for the camelCase fields of KanaConfig.
+// Every field is optional; missing ones keep DEFAULT_KANA_CONFIG values.
+const table = <T extends Record<string, TSchema>>(properties: T) =>
+  Type.Partial(Type.Object(properties), {
+    additionalProperties: false,
+    errorMessage: "must be a TOML table",
+  });
+const text = () => Type.String({ minLength: 1 });
+const finiteNumber = () => Type.Number({ errorMessage: "must be a finite number" });
+const positiveInteger = () =>
+  Type.Integer({ minimum: 1, errorMessage: "must be a positive integer" });
+const maxTurns = () =>
+  Type.Union([Type.Literal(-1), Type.Integer({ minimum: 1 })], {
+    errorMessage: "must be -1 or a positive integer",
+  });
 
-export function parseKanaConfig(rawConfig: unknown): KanaConfig {
-  assertKnownConfigFields(rawConfig, KANA_CONFIG_SCHEMA);
-  return mergeKanaConfig(DEFAULT_KANA_CONFIG, rawConfig);
+const modelTable = () =>
+  table({
+    provider: Type.Enum([...KANA_MODEL_PROVIDERS]),
+    name: text(),
+    reasoning_effort: text(),
+    max_output_tokens: positiveInteger(),
+    context_limit: positiveInteger(),
+  });
+
+const agentRuntimeFields = () => ({
+  web_search: Type.Boolean(),
+  image_input: Type.Boolean(),
+  max_turns: maxTurns(),
+  tool_deadline_ms: positiveInteger(),
+  parallel_tool_calls: Type.Boolean(),
+  max_parallel_tool_calls: positiveInteger(),
+});
+
+const REMINDER_THRESHOLDS_MESSAGE =
+  "must contain strictly increasing integers greater than or equal to 2";
+
+const KANA_CONFIG_FILE_SCHEMA = table({
+  provider: table({
+    deepseek: table({
+      api_key_env: text(),
+      timeout_ms: finiteNumber(),
+      max_retries: finiteNumber(),
+    }),
+    "openai-codex": table({
+      reasoning_summary: Type.Enum(["auto", "concise", "detailed"]),
+      timeout_ms: finiteNumber(),
+      max_retries: finiteNumber(),
+    }),
+  }),
+  agent: table({
+    tools: Type.Array(Type.Enum([...KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES]), {
+      uniqueItems: true,
+    }),
+    codemode: Type.Enum(["off", "mixed", "only"]),
+    ...agentRuntimeFields(),
+    goal_max_rounds: positiveInteger(),
+    tool_result_artifacts: Type.Boolean(),
+    model: modelTable(),
+    background_jobs: table({ max_concurrent: positiveInteger() }),
+    subagents: table({ max_live: positiveInteger() }),
+    repeated_tool_calls: table({
+      reminder_thresholds: Type.Array(
+        Type.Integer({ minimum: 2, errorMessage: REMINDER_THRESHOLDS_MESSAGE }),
+        { errorMessage: REMINDER_THRESHOLDS_MESSAGE },
+      ),
+      excluded_tools: Type.Array(
+        Type.String({ pattern: "^\\S(?:.*\\S)?$", errorMessage: "must be a trimmed tool name" }),
+        { uniqueItems: true },
+      ),
+    }),
+  }),
+  approval: table({ mode: Type.Enum([...KANA_TOOL_APPROVAL_MODES]) }),
+  notification: table({
+    backend: Type.Enum([...KANA_NOTIFICATION_BACKENDS]),
+    on_agent_completed: Type.Boolean(),
+    on_approval_required: Type.Boolean(),
+  }),
+  tui: table({
+    theme: Type.String({
+      pattern: KANA_TUI_THEME_NAME_PATTERN,
+      errorMessage:
+        "must be a lowercase theme identifier using letters, numbers, underscores, or hyphens (maximum 64 characters)",
+    }),
+    hyperlinks: Type.Boolean(),
+    render_latex: Type.Boolean(),
+    render_mermaid: Type.Boolean(),
+    smooth_text_streaming: Type.Boolean(),
+    collapse_long_pastes: Type.Boolean(),
+  }),
+  memory: table({
+    enabled: Type.Boolean(),
+    max_chars: positiveInteger(),
+    daily_retention_days: positiveInteger(),
+    agent: table({ ...agentRuntimeFields(), model: modelTable() }),
+  }),
+  logging: table({ level: Type.Enum([...LOG_LEVELS]) }),
+});
+
+export function parseKanaConfig(raw: unknown): KanaConfig {
+  const file = parseWithSchema(KANA_CONFIG_FILE_SCHEMA, raw, "config");
+  const thresholds = file.agent?.repeated_tool_calls?.reminder_thresholds ?? [];
+  if (thresholds.some((value, index) => index > 0 && value <= (thresholds[index - 1] ?? 0))) {
+    throw new Error(
+      `agent.repeated_tool_calls.reminder_thresholds ${REMINDER_THRESHOLDS_MESSAGE}.`,
+    );
+  }
+  return mergeTable(DEFAULT_KANA_CONFIG, file) as KanaConfig;
 }
 
-function assertKnownConfigFields(raw: unknown, schema: Record<string, unknown>, prefix = ""): void {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return;
+function validateKanaConfig(config: KanaConfig): KanaConfig {
+  return parseKanaConfig(toKanaConfigFile(config));
+}
+
+// Applies `mutate` to a private copy of `config` and validates the result.
+export function reviseKanaConfig(
+  config: KanaConfig,
+  mutate: (draft: KanaConfigDraft) => void,
+): KanaConfig {
+  const draft = structuredClone(config) as KanaConfigDraft;
+  mutate(draft);
+  return validateKanaConfig(draft);
+}
+
+export function toKanaConfigFile(config: KanaConfig): Record<string, unknown> {
+  return mapTable(config, camelToSnake);
+}
+
+// Lists every leaf of config.toml as its table path, key and KanaConfig field
+// path, in schema order.
+export function listKanaConfigLeaves(
+  schema: TObject = KANA_CONFIG_FILE_SCHEMA,
+  tablePath: readonly string[] = [],
+): { section: string; key: string; fieldPath: string[] }[] {
+  return Object.entries(schema.properties).flatMap(([key, child]) => {
+    const keys = [...tablePath, key];
+    return "properties" in child
+      ? listKanaConfigLeaves(child as TObject, keys)
+      : [{ section: tablePath.join("."), key, fieldPath: keys.map(snakeToCamel) }];
+  });
+}
+
+function mergeTable(
+  defaults: Readonly<Record<string, unknown>>,
+  raw: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...defaults };
   for (const [key, value] of Object.entries(raw)) {
-    const path = prefix ? `${prefix}.${key}` : key;
-    if (!Object.hasOwn(schema, key)) {
-      throw new Error(`Unknown config field: ${path}.`);
+    const field = snakeToCamel(key);
+    const fallback = defaults[field];
+    merged[field] = isRecord(value) ? mergeTable(isRecord(fallback) ? fallback : {}, value) : value;
+  }
+  return merged;
+}
+
+function mapTable(
+  value: Readonly<Record<string, unknown>>,
+  mapKey: (key: string) => string,
+): Record<string, unknown> {
+  const mapped: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (child !== undefined) {
+      mapped[mapKey(key)] = isRecord(child) ? mapTable(child, mapKey) : child;
     }
-    const expected = schema[key];
-    if (typeof expected === "object" && expected !== null && !Array.isArray(expected)) {
-      assertKnownConfigFields(value, expected as Record<string, unknown>, path);
-    }
   }
+  return mapped;
 }
 
-export function validateKanaConfig(config: KanaConfig): KanaConfig {
-  return parseKanaConfig(toRawKanaConfig(config));
+function snakeToCamel(key: string): string {
+  return key.replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase());
 }
 
-export function toRawKanaConfig(config: KanaConfig): Record<string, unknown> {
-  return {
-    provider: {
-      deepseek: {
-        api_key_env: config.provider.deepseek.apiKeyEnv,
-        timeout_ms: config.provider.deepseek.timeoutMs,
-        max_retries: config.provider.deepseek.maxRetries,
-      },
-      "openai-codex": {
-        reasoning_summary: config.provider["openai-codex"].reasoningSummary,
-        timeout_ms: config.provider["openai-codex"].timeoutMs,
-        max_retries: config.provider["openai-codex"].maxRetries,
-      },
-    },
-    agent: {
-      codemode: config.agent.codemode,
-      tools: config.agent.tools,
-      web_search: config.agent.webSearch,
-      image_input: config.agent.imageInput,
-      max_turns: config.agent.maxTurns,
-      goal_max_rounds: config.agent.goalMaxRounds,
-      tool_deadline_ms: config.agent.toolDeadlineMs,
-      parallel_tool_calls: config.agent.parallelToolCalls,
-      max_parallel_tool_calls: config.agent.maxParallelToolCalls,
-      tool_result_artifacts: config.agent.toolResultArtifacts,
-      model: toRawModelConfig(config.agent.model),
-      background_jobs: {
-        max_concurrent: config.agent.backgroundJobs.maxConcurrent,
-      },
-      subagents: {
-        max_live: config.agent.subagents.maxLive,
-      },
-      repeated_tool_calls: {
-        reminder_thresholds: config.agent.repeatedToolCalls.reminderThresholds,
-        excluded_tools: config.agent.repeatedToolCalls.excludedTools,
-      },
-    },
-    approval: {
-      mode: config.approval.mode,
-    },
-    notification: {
-      backend: config.notification.backend,
-      on_agent_completed: config.notification.onAgentCompleted,
-      on_approval_required: config.notification.onApprovalRequired,
-    },
-    tui: {
-      theme: config.tui.theme,
-      hyperlinks: config.tui.hyperlinks,
-      render_latex: config.tui.renderLatex,
-      render_mermaid: config.tui.renderMermaid,
-      smooth_text_streaming: config.tui.smoothTextStreaming,
-      collapse_long_pastes: config.tui.collapseLongPastes,
-    },
-    memory: {
-      enabled: config.memory.enabled,
-      max_chars: config.memory.maxChars,
-      daily_retention_days: config.memory.dailyRetentionDays,
-      agent: {
-        web_search: config.memory.agent.webSearch,
-        image_input: config.memory.agent.imageInput,
-        max_turns: config.memory.agent.maxTurns,
-        tool_deadline_ms: config.memory.agent.toolDeadlineMs,
-        parallel_tool_calls: config.memory.agent.parallelToolCalls,
-        max_parallel_tool_calls: config.memory.agent.maxParallelToolCalls,
-        model: toRawModelConfig(config.memory.agent.model),
-      },
-    },
-    logging: {
-      level: config.logging.level,
-    },
-  };
-}
-
-function mergeKanaConfig(defaults: KanaConfig, rawConfig: unknown): KanaConfig {
-  const raw = asRecord(rawConfig, "config");
-  const provider = raw.provider === undefined ? {} : asRecord(raw.provider, "provider");
-  const deepSeekProvider = readTable(provider.deepseek, "provider.deepseek");
-  const openAICodexProvider = readTable(provider["openai-codex"], "provider.openai-codex");
-  const agent = raw.agent === undefined ? {} : asRecord(raw.agent, "agent");
-  const agentModel = readTable(agent.model, "agent.model");
-  const backgroundJobs =
-    agent.background_jobs === undefined
-      ? {}
-      : asRecord(agent.background_jobs, "agent.background_jobs");
-  const subagents =
-    agent.subagents === undefined ? {} : asRecord(agent.subagents, "agent.subagents");
-  const repeatedToolCalls =
-    agent.repeated_tool_calls === undefined
-      ? {}
-      : asRecord(agent.repeated_tool_calls, "agent.repeated_tool_calls");
-  const approval = raw.approval === undefined ? {} : asRecord(raw.approval, "approval");
-  const notification =
-    raw.notification === undefined ? {} : asRecord(raw.notification, "notification");
-  const tui = raw.tui === undefined ? {} : asRecord(raw.tui, "tui");
-  const memory = raw.memory === undefined ? {} : asRecord(raw.memory, "memory");
-  const memoryAgent = readTable(memory.agent, "memory.agent");
-  const memoryAgentModel = readTable(memoryAgent.model, "memory.agent.model");
-  const logging = raw.logging === undefined ? {} : asRecord(raw.logging, "logging");
-
-  return {
-    provider: {
-      deepseek: {
-        apiKeyEnv: readString(
-          deepSeekProvider.api_key_env,
-          defaults.provider.deepseek.apiKeyEnv,
-          "provider.deepseek.api_key_env",
-        ),
-        timeoutMs: readNumber(
-          deepSeekProvider.timeout_ms,
-          defaults.provider.deepseek.timeoutMs,
-          "provider.deepseek.timeout_ms",
-        ),
-        maxRetries: readNumber(
-          deepSeekProvider.max_retries,
-          defaults.provider.deepseek.maxRetries,
-          "provider.deepseek.max_retries",
-        ),
-      },
-      "openai-codex": {
-        reasoningSummary: readOpenAICodexReasoningSummary(
-          openAICodexProvider.reasoning_summary,
-          defaults.provider["openai-codex"].reasoningSummary,
-        ),
-        timeoutMs: readNumber(
-          openAICodexProvider.timeout_ms,
-          defaults.provider["openai-codex"].timeoutMs,
-          "provider.openai-codex.timeout_ms",
-        ),
-        maxRetries: readNumber(
-          openAICodexProvider.max_retries,
-          defaults.provider["openai-codex"].maxRetries,
-          "provider.openai-codex.max_retries",
-        ),
-      },
-    },
-    agent: {
-      codemode: readCodemode(agent.codemode, defaults.agent.codemode),
-      tools: readAgentTools(agent.tools, defaults.agent.tools),
-      webSearch: readBoolean(agent.web_search, defaults.agent.webSearch, "agent.web_search"),
-      imageInput: readBoolean(agent.image_input, defaults.agent.imageInput, "agent.image_input"),
-      maxTurns: readAgentMaxTurns(agent.max_turns, defaults.agent.maxTurns, "agent.max_turns"),
-      goalMaxRounds: readPositiveInteger(
-        agent.goal_max_rounds,
-        defaults.agent.goalMaxRounds,
-        "agent.goal_max_rounds",
-      ),
-      toolDeadlineMs: readPositiveInteger(
-        agent.tool_deadline_ms,
-        defaults.agent.toolDeadlineMs,
-        "agent.tool_deadline_ms",
-      ),
-      parallelToolCalls: readBoolean(
-        agent.parallel_tool_calls,
-        defaults.agent.parallelToolCalls,
-        "agent.parallel_tool_calls",
-      ),
-      maxParallelToolCalls: readPositiveInteger(
-        agent.max_parallel_tool_calls,
-        defaults.agent.maxParallelToolCalls,
-        "agent.max_parallel_tool_calls",
-      ),
-      model: parseModelConfig(agentModel, defaults.agent.model, "agent.model"),
-      toolResultArtifacts: readBoolean(
-        agent.tool_result_artifacts,
-        defaults.agent.toolResultArtifacts,
-        "agent.tool_result_artifacts",
-      ),
-      backgroundJobs: {
-        maxConcurrent: readPositiveInteger(
-          backgroundJobs.max_concurrent,
-          defaults.agent.backgroundJobs.maxConcurrent,
-          "agent.background_jobs.max_concurrent",
-        ),
-      },
-      subagents: {
-        maxLive: readPositiveInteger(
-          subagents.max_live,
-          defaults.agent.subagents.maxLive,
-          "agent.subagents.max_live",
-        ),
-      },
-      repeatedToolCalls: {
-        reminderThresholds: readReminderThresholds(
-          repeatedToolCalls.reminder_thresholds,
-          defaults.agent.repeatedToolCalls.reminderThresholds,
-          "agent.repeated_tool_calls.reminder_thresholds",
-        ),
-        excludedTools: readExcludedToolNames(
-          repeatedToolCalls.excluded_tools,
-          defaults.agent.repeatedToolCalls.excludedTools,
-          "agent.repeated_tool_calls.excluded_tools",
-        ),
-      },
-    },
-    approval: {
-      mode: readToolApprovalMode(approval.mode, defaults.approval.mode),
-    },
-    notification: {
-      backend: readNotificationBackend(notification.backend, defaults.notification.backend),
-      onAgentCompleted: readBoolean(
-        notification.on_agent_completed,
-        defaults.notification.onAgentCompleted,
-        "notification.on_agent_completed",
-      ),
-      onApprovalRequired: readBoolean(
-        notification.on_approval_required,
-        defaults.notification.onApprovalRequired,
-        "notification.on_approval_required",
-      ),
-    },
-    tui: {
-      theme: readThemeName(tui.theme, defaults.tui.theme),
-      hyperlinks: readBoolean(tui.hyperlinks, defaults.tui.hyperlinks, "tui.hyperlinks"),
-      renderLatex: readBoolean(tui.render_latex, defaults.tui.renderLatex, "tui.render_latex"),
-      renderMermaid: readBoolean(
-        tui.render_mermaid,
-        defaults.tui.renderMermaid ?? true,
-        "tui.render_mermaid",
-      ),
-      smoothTextStreaming: readBoolean(
-        tui.smooth_text_streaming,
-        defaults.tui.smoothTextStreaming,
-        "tui.smooth_text_streaming",
-      ),
-      collapseLongPastes: readBoolean(
-        tui.collapse_long_pastes,
-        defaults.tui.collapseLongPastes,
-        "tui.collapse_long_pastes",
-      ),
-    },
-    memory: {
-      enabled: readBoolean(memory.enabled, defaults.memory.enabled, "memory.enabled"),
-      maxChars: readPositiveInteger(memory.max_chars, defaults.memory.maxChars, "memory.max_chars"),
-      dailyRetentionDays: readOptionalPositiveInteger(
-        memory.daily_retention_days,
-        defaults.memory.dailyRetentionDays,
-        "memory.daily_retention_days",
-      ),
-      agent: {
-        webSearch: readBoolean(
-          memoryAgent.web_search,
-          defaults.memory.agent.webSearch,
-          "memory.agent.web_search",
-        ),
-        imageInput: readBoolean(
-          memoryAgent.image_input,
-          defaults.memory.agent.imageInput,
-          "memory.agent.image_input",
-        ),
-        maxTurns: readAgentMaxTurns(
-          memoryAgent.max_turns,
-          defaults.memory.agent.maxTurns,
-          "memory.agent.max_turns",
-        ),
-        toolDeadlineMs: readPositiveInteger(
-          memoryAgent.tool_deadline_ms,
-          defaults.memory.agent.toolDeadlineMs,
-          "memory.agent.tool_deadline_ms",
-        ),
-        parallelToolCalls: readBoolean(
-          memoryAgent.parallel_tool_calls,
-          defaults.memory.agent.parallelToolCalls,
-          "memory.agent.parallel_tool_calls",
-        ),
-        maxParallelToolCalls: readPositiveInteger(
-          memoryAgent.max_parallel_tool_calls,
-          defaults.memory.agent.maxParallelToolCalls,
-          "memory.agent.max_parallel_tool_calls",
-        ),
-        model: parseModelConfigOverride(
-          memoryAgentModel,
-          defaults.memory.agent.model,
-          "memory.agent.model",
-        ),
-      },
-    },
-    logging: {
-      level: readLogLevel(logging.level, defaults.logging.level),
-    },
-  };
-}
-
-function toRawModelConfig(config: Readonly<Partial<KanaModelConfig>>): Record<string, unknown> {
-  return {
-    provider: config.provider,
-    name: config.name,
-    reasoning_effort: config.reasoningEffort,
-    max_output_tokens: config.maxOutputTokens,
-    context_limit: config.contextLimit,
-  };
-}
-
-function parseModelConfig(
-  model: Record<string, unknown>,
-  defaults: KanaModelConfig,
-  path: string,
-): KanaModelConfig {
-  return {
-    provider: readModelProvider(model.provider, defaults.provider, `${path}.provider`),
-    name: readString(model.name, defaults.name, `${path}.name`),
-    ...parseModelPreferences(model, defaults, path),
-  };
-}
-
-function parseModelConfigOverride(
-  model: Record<string, unknown>,
-  defaults: KanaModelConfigOverride,
-  path: string,
-): KanaModelConfigOverride {
-  return {
-    provider: readOptionalModelProvider(model.provider, defaults.provider, `${path}.provider`),
-    name: readOptionalString(model.name, defaults.name, `${path}.name`),
-    ...parseModelPreferences(model, defaults, path),
-  };
-}
-
-function parseModelPreferences(
-  model: Record<string, unknown>,
-  defaults: Readonly<Partial<KanaModelConfig>>,
-  path: string,
-): Pick<KanaModelConfig, "reasoningEffort" | "maxOutputTokens" | "contextLimit"> {
-  return {
-    reasoningEffort: readOptionalString(
-      model.reasoning_effort,
-      defaults.reasoningEffort,
-      `${path}.reasoning_effort`,
-    ),
-    maxOutputTokens: readOptionalPositiveInteger(
-      model.max_output_tokens,
-      defaults.maxOutputTokens,
-      `${path}.max_output_tokens`,
-    ),
-    contextLimit: readOptionalPositiveInteger(
-      model.context_limit,
-      defaults.contextLimit,
-      `${path}.context_limit`,
-    ),
-  };
-}
-
-function readTable(value: unknown, name: string): Record<string, unknown> {
-  return value === undefined ? {} : asRecord(value, name);
-}
-
-function asRecord(value: unknown, name: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${name} must be a TOML table.`);
-  }
-
-  return value as Record<string, unknown>;
-}
-
-function readString(value: unknown, fallback: string, name: string): string {
-  if (value === undefined) {
-    return fallback;
-  }
-
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${name} must be a non-empty string.`);
-  }
-
-  return value;
-}
-
-function readThemeName(value: unknown, fallback: string): string {
-  const name = readString(value, fallback, "tui.theme");
-  if (!isKanaTuiThemeName(name)) {
-    throw new Error(
-      "tui.theme must be a lowercase theme identifier using letters, numbers, underscores, or hyphens (maximum 64 characters).",
-    );
-  }
-  return name;
-}
-
-function readOptionalString(
-  value: unknown,
-  fallback: string | undefined,
-  name: string,
-): string | undefined {
-  if (value === undefined) {
-    return fallback;
-  }
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${name} must be a non-empty string.`);
-  }
-  return value;
-}
-
-function readBoolean(value: unknown, fallback: boolean, name: string): boolean {
-  if (value === undefined) {
-    return fallback;
-  }
-
-  if (typeof value !== "boolean") {
-    throw new Error(`${name} must be a boolean.`);
-  }
-
-  return value;
-}
-
-function readNumber(value: unknown, fallback: number, name: string): number {
-  if (value === undefined) {
-    return fallback;
-  }
-
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`${name} must be a finite number.`);
-  }
-
-  return value;
-}
-
-function readPositiveInteger(value: unknown, fallback: number, name: string): number {
-  const number = readNumber(value, fallback, name);
-
-  if (!Number.isInteger(number) || number <= 0) {
-    throw new Error(`${name} must be a positive integer.`);
-  }
-
-  return number;
-}
-
-function readAgentMaxTurns(value: unknown, fallback: number, name: string): number {
-  const number = readNumber(value, fallback, name);
-
-  if (number !== -1 && (!Number.isInteger(number) || number <= 0)) {
-    throw new Error(`${name} must be -1 or a positive integer.`);
-  }
-
-  return number;
-}
-
-function readOptionalPositiveInteger(
-  value: unknown,
-  fallback: number | undefined,
-  name: string,
-): number | undefined {
-  if (value === undefined) {
-    return fallback;
-  }
-
-  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-    throw new Error(`${name} must be a positive integer.`);
-  }
-
-  return value;
-}
-
-function readReminderThresholds(
-  value: unknown,
-  fallback: readonly number[],
-  name: string,
-): number[] {
-  if (value === undefined) {
-    return [...fallback];
-  }
-  if (!Array.isArray(value)) {
-    throw new Error(`${name} must be an array.`);
-  }
-
-  let previous = 1;
-  const thresholds: number[] = [];
-  for (const threshold of value) {
-    if (
-      typeof threshold !== "number" ||
-      !Number.isInteger(threshold) ||
-      threshold < 2 ||
-      threshold <= previous
-    ) {
-      throw new Error(
-        `${name} must contain strictly increasing integers greater than or equal to 2.`,
-      );
-    }
-    thresholds.push(threshold);
-    previous = threshold;
-  }
-  return thresholds;
-}
-
-function readExcludedToolNames(
-  value: unknown,
-  fallback: readonly string[],
-  name: string,
-): string[] {
-  if (value === undefined) {
-    return [...fallback];
-  }
-  if (!Array.isArray(value)) {
-    throw new Error(`${name} must be an array.`);
-  }
-
-  const names = new Set<string>();
-  for (const toolName of value) {
-    if (typeof toolName !== "string" || toolName.length === 0 || toolName !== toolName.trim()) {
-      throw new Error(`${name} must contain non-empty trimmed tool names.`);
-    }
-    if (names.has(toolName)) {
-      throw new Error(`${name} must not contain duplicate tool names.`);
-    }
-    names.add(toolName);
-  }
-  return [...names];
-}
-
-function readAgentTools(
-  value: unknown,
-  fallback: readonly KanaConfigurableBuiltInToolName[],
-): KanaConfigurableBuiltInToolName[] {
-  if (value === undefined) {
-    return [...fallback];
-  }
-  if (!Array.isArray(value)) {
-    throw new Error("agent.tools must be an array.");
-  }
-
-  const supported = new Set<string>(KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES);
-  const names = new Set<KanaConfigurableBuiltInToolName>();
-  for (const toolName of value) {
-    if (typeof toolName !== "string" || !supported.has(toolName)) {
-      throw new Error(
-        `agent.tools must contain only supported built-in tools: ${KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES.join(", ")}.`,
-      );
-    }
-    const name = toolName as KanaConfigurableBuiltInToolName;
-    if (names.has(name)) {
-      throw new Error("agent.tools must not contain duplicate tool names.");
-    }
-    names.add(name);
-  }
-  return [...names];
-}
-
-function readModelProvider(
-  value: unknown,
-  fallback: KanaModelProvider,
-  name: string,
-): KanaModelProvider {
-  return readOptionalModelProvider(value, fallback, name) as KanaModelProvider;
-}
-
-function readOptionalModelProvider(
-  value: unknown,
-  fallback: KanaModelProvider | undefined,
-  name: string,
-): KanaModelProvider | undefined {
-  if (value === undefined) {
-    return fallback;
-  }
-
-  if (typeof value !== "string" || !(KANA_MODEL_PROVIDERS as readonly string[]).includes(value)) {
-    throw new Error(`${name} must be one of: ${KANA_MODEL_PROVIDERS.join(", ")}.`);
-  }
-
-  return value as KanaModelProvider;
-}
-
-function readOpenAICodexReasoningSummary(
-  value: unknown,
-  fallback: OpenAICodexReasoningSummary,
-): OpenAICodexReasoningSummary {
-  const path = "provider.openai-codex.reasoning_summary";
-  const summary = readString(value, fallback, path);
-  const summaries = ["auto", "concise", "detailed"] as const;
-
-  if (!(summaries as readonly string[]).includes(summary)) {
-    throw new Error(`${path} must be one of: ${summaries.join(", ")}.`);
-  }
-
-  return summary as OpenAICodexReasoningSummary;
-}
-
-function readCodemode(
-  value: unknown,
-  fallback: KanaConfig["agent"]["codemode"],
-): KanaConfig["agent"]["codemode"] {
-  const mode = readString(value, fallback, "agent.codemode");
-  if (mode !== "off" && mode !== "mixed" && mode !== "only") {
-    throw new Error("agent.codemode must be one of: off, mixed, only.");
-  }
-  return mode;
-}
-
-function readToolApprovalMode(
-  value: unknown,
-  fallback: KanaToolApprovalMode,
-): KanaToolApprovalMode {
-  const mode = readString(value, fallback, "approval.mode");
-
-  if (!(KANA_TOOL_APPROVAL_MODES as readonly string[]).includes(mode)) {
-    throw new Error(`approval.mode must be one of: ${KANA_TOOL_APPROVAL_MODES.join(", ")}.`);
-  }
-
-  return mode as KanaToolApprovalMode;
-}
-
-function readNotificationBackend(
-  value: unknown,
-  fallback: KanaNotificationBackend,
-): KanaNotificationBackend {
-  const backend = readString(value, fallback, "notification.backend");
-
-  if (!(KANA_NOTIFICATION_BACKENDS as readonly string[]).includes(backend)) {
-    throw new Error(
-      `notification.backend must be one of: ${KANA_NOTIFICATION_BACKENDS.join(", ")}.`,
-    );
-  }
-
-  return backend as KanaNotificationBackend;
-}
-
-function readLogLevel(value: unknown, fallback: KanaLogLevel): KanaLogLevel {
-  const level = readString(value, fallback, "logging.level");
-
-  if (!(KANA_LOG_LEVELS as readonly string[]).includes(level)) {
-    throw new Error(`logging.level must be one of: ${KANA_LOG_LEVELS.join(", ")}.`);
-  }
-
-  return level as KanaLogLevel;
+function camelToSnake(key: string): string {
+  return key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 }

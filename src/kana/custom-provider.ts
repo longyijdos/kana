@@ -1,25 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
-
+import { type Static, Type } from "typebox";
 import type { ModelMetadata, ModelReasoningMetadata } from "@/core";
-
-const CUSTOM_PROVIDER_KEYS = [
-  "base_url",
-  "api_key_env",
-  "timeout_ms",
-  "max_retries",
-  "models",
-] as const;
-
-const CUSTOM_MODEL_KEYS = [
-  "name",
-  "context_window",
-  "max_output_tokens",
-  "supports_parallel_tool_calls",
-  "supports_image_input",
-  "assistant_replay_fields",
-  "reasoning_efforts",
-  "default_reasoning_effort",
-] as const;
+import { parseWithSchema, positiveInteger, strictObject } from "@/utils";
 
 export type KanaCustomProviderModel = {
   name: string;
@@ -37,6 +19,47 @@ export type KanaCustomProvider = {
 export type KanaCustomProviderSnapshot =
   | { provider: KanaCustomProvider; error?: never }
   | { provider?: never; error: Error };
+
+const trimmedString = () =>
+  Type.String({
+    pattern: "^\\S(?:.*\\S)?$",
+    errorMessage: "must be a non-empty string without surrounding whitespace",
+  });
+const nonEmptyNames = () =>
+  Type.Array(trimmedString(), {
+    minItems: 1,
+    uniqueItems: true,
+    errorMessage: "must be a non-empty array of distinct strings",
+  });
+
+const CUSTOM_MODEL_SCHEMA = strictObject({
+  name: trimmedString(),
+  context_window: positiveInteger(),
+  max_output_tokens: positiveInteger(),
+  supports_parallel_tool_calls: Type.Optional(Type.Boolean()),
+  supports_image_input: Type.Optional(Type.Boolean()),
+  assistant_replay_fields: Type.Optional(nonEmptyNames()),
+  reasoning_efforts: Type.Optional(nonEmptyNames()),
+  default_reasoning_effort: Type.Optional(trimmedString()),
+});
+
+const CUSTOM_PROVIDER_SCHEMA = strictObject({
+  base_url: trimmedString(),
+  api_key_env: Type.Optional(
+    Type.String({
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$",
+      errorMessage: "must be a valid environment variable name",
+    }),
+  ),
+  timeout_ms: Type.Optional(positiveInteger()),
+  max_retries: Type.Optional(
+    Type.Integer({ minimum: 0, errorMessage: "must be a non-negative integer" }),
+  ),
+  models: Type.Array(CUSTOM_MODEL_SCHEMA, {
+    minItems: 1,
+    errorMessage: "must contain at least one [[models]] table",
+  }),
+});
 
 export function loadKanaCustomProviderSnapshot(filePath: string): KanaCustomProviderSnapshot {
   try {
@@ -71,19 +94,8 @@ export function loadKanaCustomProvider(filePath: string): KanaCustomProvider {
 }
 
 export function parseKanaCustomProvider(rawConfig: unknown): KanaCustomProvider {
-  const config = asRecord(rawConfig, "custom provider");
-  assertKnownKeys(config, CUSTOM_PROVIDER_KEYS, "custom provider");
-
-  const baseUrl = readBaseUrl(config.base_url);
-  const apiKeyEnv = readOptionalEnvironmentVariable(config.api_key_env);
-  const timeoutMs = readPositiveInteger(config.timeout_ms, 60_000, "timeout_ms");
-  const maxRetries = readNonNegativeInteger(config.max_retries, 1, "max_retries");
-  const rawModels = config.models;
-  if (!Array.isArray(rawModels) || rawModels.length === 0) {
-    throw new Error("custom provider models must contain at least one [[models]] table.");
-  }
-
-  const models = rawModels.map((rawModel, index) => parseCustomModel(rawModel, index));
+  const config = parseWithSchema(CUSTOM_PROVIDER_SCHEMA, rawConfig, "custom provider");
+  const models = config.models.map((model, index) => parseCustomModel(model, `models[${index}]`));
   const names = new Set<string>();
   for (const model of models) {
     if (names.has(model.name)) {
@@ -93,10 +105,10 @@ export function parseKanaCustomProvider(rawConfig: unknown): KanaCustomProvider 
   }
 
   return {
-    baseUrl,
-    apiKeyEnv,
-    timeoutMs,
-    maxRetries,
+    baseUrl: parseBaseUrl(config.base_url),
+    apiKeyEnv: config.api_key_env,
+    timeoutMs: config.timeout_ms ?? 60_000,
+    maxRetries: config.max_retries ?? 1,
     models,
   };
 }
@@ -138,115 +150,68 @@ export function serializeKanaCustomProviderExample(): string {
   ].join("\n");
 }
 
-function parseCustomModel(rawModel: unknown, index: number): KanaCustomProviderModel {
-  const path = `models[${index}]`;
-  const model = asRecord(rawModel, path);
-  assertKnownKeys(model, CUSTOM_MODEL_KEYS, path);
-
-  const name = readRequiredString(model.name, `${path}.name`);
-  const contextWindow = readRequiredPositiveInteger(model.context_window, `${path}.context_window`);
-  const maxOutputTokens = readRequiredPositiveInteger(
-    model.max_output_tokens,
-    `${path}.max_output_tokens`,
-  );
-  if (maxOutputTokens > contextWindow) {
+function parseCustomModel(
+  model: Static<typeof CUSTOM_MODEL_SCHEMA>,
+  path: string,
+): KanaCustomProviderModel {
+  if (model.max_output_tokens > model.context_window) {
     throw new Error(`${path}.max_output_tokens cannot exceed context_window.`);
   }
-
-  const reasoning = readReasoning(model, path);
-  const assistantReplayFields = readAssistantReplayFields(model, path);
-  return {
-    name,
-    metadata: {
-      contextWindow,
-      maxOutputTokens,
-      supportsParallelToolCalls: readBoolean(
-        model.supports_parallel_tool_calls,
-        false,
-        `${path}.supports_parallel_tool_calls`,
-      ),
-      supportsHostedWebSearch: false,
-      supportsImageInput: readBoolean(
-        model.supports_image_input,
-        false,
-        `${path}.supports_image_input`,
-      ),
-      ...(assistantReplayFields ? { assistantReplayFields } : {}),
-      ...(reasoning ? { reasoning } : {}),
-    },
-  };
-}
-
-function readAssistantReplayFields(
-  model: Record<string, unknown>,
-  path: string,
-): string[] | undefined {
-  if (model.assistant_replay_fields === undefined) {
-    return undefined;
-  }
-  if (!Array.isArray(model.assistant_replay_fields) || model.assistant_replay_fields.length === 0) {
-    throw new Error(`${path}.assistant_replay_fields must be a non-empty array of strings.`);
-  }
-
-  const fields = model.assistant_replay_fields.map((field, index) =>
-    readRequiredString(field, `${path}.assistant_replay_fields[${index}]`),
+  const managedField = model.assistant_replay_fields?.find((field) =>
+    ["role", "content", "tool_calls"].includes(field),
   );
-  if (new Set(fields).size !== fields.length) {
-    throw new Error(`${path}.assistant_replay_fields must not contain duplicates.`);
-  }
-  const managedField = fields.find((field) => ["role", "content", "tool_calls"].includes(field));
   if (managedField !== undefined) {
     throw new Error(
       `${path}.assistant_replay_fields cannot include Kana-managed field "${managedField}".`,
     );
   }
-  return fields;
+
+  const reasoning = parseReasoning(model, path);
+  return {
+    name: model.name,
+    metadata: {
+      contextWindow: model.context_window,
+      maxOutputTokens: model.max_output_tokens,
+      supportsParallelToolCalls: model.supports_parallel_tool_calls ?? false,
+      supportsHostedWebSearch: false,
+      supportsImageInput: model.supports_image_input ?? false,
+      ...(model.assistant_replay_fields
+        ? { assistantReplayFields: model.assistant_replay_fields }
+        : {}),
+      ...(reasoning ? { reasoning } : {}),
+    },
+  };
 }
 
-function readReasoning(
-  model: Record<string, unknown>,
+function parseReasoning(
+  model: Static<typeof CUSTOM_MODEL_SCHEMA>,
   path: string,
 ): ModelReasoningMetadata | undefined {
-  if (model.reasoning_efforts === undefined) {
-    if (model.default_reasoning_effort !== undefined) {
+  const efforts = model.reasoning_efforts;
+  const defaultEffort = model.default_reasoning_effort;
+  if (efforts === undefined) {
+    if (defaultEffort !== undefined) {
       throw new Error(
         `${path}.reasoning_efforts is required when a reasoning default is configured.`,
       );
     }
     return undefined;
   }
-
-  if (!Array.isArray(model.reasoning_efforts) || model.reasoning_efforts.length === 0) {
-    throw new Error(`${path}.reasoning_efforts must be a non-empty array of strings.`);
-  }
-  const efforts = model.reasoning_efforts.map((effort, index) =>
-    readRequiredString(effort, `${path}.reasoning_efforts[${index}]`),
-  ) as [string, ...string[]];
-  if (new Set(efforts).size !== efforts.length) {
-    throw new Error(`${path}.reasoning_efforts must not contain duplicates.`);
-  }
   if (efforts.includes("off")) {
     throw new Error(
       `${path}.reasoning_efforts uses "none" rather than "off" to disable reasoning.`,
     );
   }
-
-  const defaultEffort = readRequiredString(
-    model.default_reasoning_effort,
-    `${path}.default_reasoning_effort`,
-  );
+  if (defaultEffort === undefined) {
+    throw new Error(`${path}.default_reasoning_effort is required with reasoning_efforts.`);
+  }
   if (!efforts.includes(defaultEffort)) {
     throw new Error(`${path}.default_reasoning_effort must be listed in reasoning_efforts.`);
   }
-
-  return {
-    efforts,
-    defaultEffort,
-  };
+  return { efforts: efforts as [string, ...string[]], defaultEffort };
 }
 
-function readBaseUrl(value: unknown): string {
-  const baseUrl = readRequiredString(value, "base_url");
+function parseBaseUrl(baseUrl: string): string {
   let parsed: URL;
   try {
     parsed = new URL(baseUrl);
@@ -262,71 +227,4 @@ function readBaseUrl(value: unknown): string {
   }
 
   return baseUrl.replace(/\/+$/, "");
-}
-
-function readOptionalEnvironmentVariable(value: unknown): string | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-  const name = readRequiredString(value, "api_key_env");
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-    throw new Error("api_key_env must be a valid environment variable name.");
-  }
-  return name;
-}
-
-function asRecord(value: unknown, name: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${name} must be a TOML table.`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function assertKnownKeys(
-  record: Record<string, unknown>,
-  allowed: readonly string[],
-  path: string,
-): void {
-  const unknown = Object.keys(record).find((key) => !allowed.includes(key));
-  if (unknown !== undefined) {
-    throw new Error(`${path}.${unknown} is not a supported Custom provider setting.`);
-  }
-}
-
-function readRequiredString(value: unknown, name: string): string {
-  if (typeof value !== "string" || value.length === 0 || value.trim() !== value) {
-    throw new Error(`${name} must be a non-empty string without surrounding whitespace.`);
-  }
-  return value;
-}
-
-function readBoolean(value: unknown, fallback: boolean, name: string): boolean {
-  if (value === undefined) {
-    return fallback;
-  }
-  if (typeof value !== "boolean") {
-    throw new Error(`${name} must be a boolean.`);
-  }
-  return value;
-}
-
-function readRequiredPositiveInteger(value: unknown, name: string): number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-    throw new Error(`${name} must be a positive integer.`);
-  }
-  return value;
-}
-
-function readPositiveInteger(value: unknown, fallback: number, name: string): number {
-  return value === undefined ? fallback : readRequiredPositiveInteger(value, name);
-}
-
-function readNonNegativeInteger(value: unknown, fallback: number, name: string): number {
-  if (value === undefined) {
-    return fallback;
-  }
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
-    throw new Error(`${name} must be a non-negative integer.`);
-  }
-  return value;
 }

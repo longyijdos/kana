@@ -1,5 +1,5 @@
 import { formatKanaSkillInvocation, type KanaSkillActivation } from "@/kana";
-
+import { collapseWhitespace } from "../../render";
 import type { PromptSubmit } from "./commands";
 
 export type SkillReferenceState = {
@@ -43,7 +43,7 @@ export function formatSkillReferenceHelpLine(
 ): string {
   const syntax = `@${skill.name}`;
   const width = Math.max(...skills.map((candidate) => candidate.name.length + 1), syntax.length);
-  return `${syntax.padEnd(width)} ${formatDescription(skill.description)}`;
+  return `${syntax.padEnd(width)} ${collapseWhitespace(skill.description)}`;
 }
 
 export function createSkillReferenceSubmit(
@@ -70,8 +70,4 @@ export function createSkillReferenceSubmit(
 function findSkillTokenEnd(value: string): number {
   const match = /^@\S*/.exec(value);
   return match ? match[0].length : value.length;
-}
-
-function formatDescription(description: string): string {
-  return description.trim().replace(/\s+/g, " ");
 }

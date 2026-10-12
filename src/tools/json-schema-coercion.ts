@@ -1,8 +1,6 @@
 import type { TSchema } from "typebox";
 import { Compile } from "typebox/compile";
 
-const LEGACY_TYPEBOX_KIND = Symbol.for("TypeBox.Kind");
-
 type JsonSchemaObject = TSchema & {
   type?: string | string[];
   properties?: Record<string, JsonSchemaObject>;
@@ -13,6 +11,21 @@ type JsonSchemaObject = TSchema & {
   oneOf?: JsonSchemaObject[];
 };
 
+const branchValidators = new WeakMap<JsonSchemaObject, ReturnType<typeof Compile> | null>();
+
+// A branch that cannot compile is never selected for coercion; the outer
+// validator reports the malformed schema.
+function compileBranch(schema: JsonSchemaObject): ReturnType<typeof Compile> | null {
+  if (!branchValidators.has(schema)) {
+    let validator: ReturnType<typeof Compile> | null = null;
+    try {
+      validator = Compile(schema);
+    } catch {}
+    branchValidators.set(schema, validator);
+  }
+  return branchValidators.get(schema) ?? null;
+}
+
 function isRecord(value: unknown): value is Record<PropertyKey, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -22,11 +35,7 @@ function isJsonSchemaObject(value: unknown): value is JsonSchemaObject {
 }
 
 export function hasTypeBoxMetadata(schema: unknown): boolean {
-  return (
-    isRecord(schema) &&
-    (typeof schema["~kind"] === "string" ||
-      Object.getOwnPropertySymbols(schema).includes(LEGACY_TYPEBOX_KIND))
-  );
+  return isRecord(schema) && typeof schema["~kind"] === "string";
 }
 
 function getSchemaTypes(schema: JsonSchemaObject): string[] {
@@ -154,14 +163,8 @@ function applyArrayCoercion(value: unknown[], schema: JsonSchemaObject): void {
 function coerceUnion(value: unknown, schemas: JsonSchemaObject[]): unknown {
   for (const schema of schemas) {
     const candidate = coerceJsonSchemaValue(structuredClone(value), schema);
-
-    try {
-      if (Compile(schema).Check(candidate)) {
-        return candidate;
-      }
-    } catch {
-      // The outer validator will report unsupported or malformed schemas. A
-      // union branch that cannot compile is not safe to select for coercion.
+    if (compileBranch(schema)?.Check(candidate)) {
+      return candidate;
     }
   }
 

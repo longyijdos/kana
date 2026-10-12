@@ -3,9 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, createReadStream, renameSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-
+import { formatError, isRecord } from "@/utils";
 import { KANA_DISTRIBUTION, KANA_VERSION, type KanaDistribution } from "@/version";
-import { formatError } from "../format";
 
 const execFileAsync = promisify(execFile);
 
@@ -512,8 +511,4 @@ function report(onProgress: UpdateKanaOptions["onProgress"], event: KanaUpdatePr
   } catch {
     // Update correctness does not depend on diagnostic progress reporting.
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

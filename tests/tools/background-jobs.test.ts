@@ -65,10 +65,10 @@ describe("Background Job tools", () => {
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
     const job = jobs.start({
       kind: "test",
-      label: "until canceled",
+      label: "until cancelled",
       run: ({ signal }) =>
         new Promise((resolve) => {
-          signal.addEventListener("abort", () => resolve({ status: "canceled", exitCode: null }), {
+          signal.addEventListener("abort", () => resolve({ status: "cancelled", exitCode: null }), {
             once: true,
           });
         }),
@@ -81,7 +81,7 @@ describe("Background Job tools", () => {
       createToolContext(),
     );
     expectToolResult(killed);
-    expect(killed.result).toEqual({ status: "canceled", exitCode: null });
+    expect(killed.result).toEqual({ status: "cancelled", exitCode: null });
     expect(JSON.parse(killed.content)).toEqual(killed.result);
     expect(killed.isError).toBe(false);
     expect(jobs.context()).toEqual([]);

@@ -1,74 +1,74 @@
 import type { AgentConfig } from "@/agent";
 import type { LogLevel } from "@/logging";
 import type { OpenAICodexReasoningSummary } from "@/providers";
-import type { KanaConfigurableBuiltInToolName } from "../tool-names";
+import type { KanaConfigurableBuiltInToolName } from "../tools/names";
 
 export const KANA_MODEL_PROVIDERS = ["deepseek", "openai-codex", "custom"] as const;
 
 export type KanaModelProvider = (typeof KANA_MODEL_PROVIDERS)[number];
 
 export type KanaDeepSeekProviderConfig = {
-  apiKeyEnv: string;
-  timeoutMs: number;
-  maxRetries: number;
+  readonly apiKeyEnv: string;
+  readonly timeoutMs: number;
+  readonly maxRetries: number;
 };
 
 export type KanaOpenAICodexProviderConfig = {
-  reasoningSummary: OpenAICodexReasoningSummary;
-  timeoutMs: number;
-  maxRetries: number;
+  readonly reasoningSummary: OpenAICodexReasoningSummary;
+  readonly timeoutMs: number;
+  readonly maxRetries: number;
 };
 
 export type KanaProviderConfig = {
-  deepseek: KanaDeepSeekProviderConfig;
-  "openai-codex": KanaOpenAICodexProviderConfig;
+  readonly deepseek: KanaDeepSeekProviderConfig;
+  readonly "openai-codex": KanaOpenAICodexProviderConfig;
 };
 
 export type KanaModelConfig = {
-  provider: KanaModelProvider;
-  name: string;
-  reasoningEffort?: string;
-  maxOutputTokens?: number;
-  contextLimit?: number;
+  readonly provider: KanaModelProvider;
+  readonly name: string;
+  readonly reasoningEffort?: string;
+  readonly maxOutputTokens?: number;
+  readonly contextLimit?: number;
 };
 
 export type KanaRepeatedToolCallsConfig = {
-  reminderThresholds: number[];
-  excludedTools: string[];
+  readonly reminderThresholds: readonly number[];
+  readonly excludedTools: readonly string[];
 };
 
 type KanaBackgroundJobsConfig = {
-  maxConcurrent: number;
+  readonly maxConcurrent: number;
 };
 
 type KanaSubagentsConfig = {
-  maxLive: number;
+  readonly maxLive: number;
 };
 
 export type KanaAgentRuntimeConfig = {
-  webSearch: boolean;
-  imageInput: boolean;
-  maxTurns: number;
-  toolDeadlineMs: number;
-  parallelToolCalls: boolean;
-  maxParallelToolCalls: number;
+  readonly webSearch: boolean;
+  readonly imageInput: boolean;
+  readonly maxTurns: number;
+  readonly toolDeadlineMs: number;
+  readonly parallelToolCalls: boolean;
+  readonly maxParallelToolCalls: number;
 };
 
 export type KanaAgentConfig = KanaAgentRuntimeConfig & {
-  codemode: NonNullable<AgentConfig["codemode"]>;
-  model: KanaModelConfig;
-  tools: KanaConfigurableBuiltInToolName[];
-  goalMaxRounds: number;
-  toolResultArtifacts: boolean;
-  backgroundJobs: KanaBackgroundJobsConfig;
-  subagents: KanaSubagentsConfig;
-  repeatedToolCalls: KanaRepeatedToolCallsConfig;
+  readonly codemode: NonNullable<AgentConfig["codemode"]>;
+  readonly model: KanaModelConfig;
+  readonly tools: readonly KanaConfigurableBuiltInToolName[];
+  readonly goalMaxRounds: number;
+  readonly toolResultArtifacts: boolean;
+  readonly backgroundJobs: KanaBackgroundJobsConfig;
+  readonly subagents: KanaSubagentsConfig;
+  readonly repeatedToolCalls: KanaRepeatedToolCallsConfig;
 };
 
-export type KanaModelConfigOverride = Partial<KanaModelConfig>;
+type KanaModelConfigOverride = Partial<KanaModelConfig>;
 
 type KanaMemoryAgentConfig = KanaAgentRuntimeConfig & {
-  model: KanaModelConfigOverride;
+  readonly model: KanaModelConfigOverride;
 };
 
 export const KANA_TOOL_APPROVAL_MODES = ["always", "unless_trusted", "never"] as const;
@@ -76,7 +76,7 @@ export const KANA_TOOL_APPROVAL_MODES = ["always", "unless_trusted", "never"] as
 export type KanaToolApprovalMode = (typeof KANA_TOOL_APPROVAL_MODES)[number];
 
 export type KanaToolApprovalConfig = {
-  mode: KanaToolApprovalMode;
+  readonly mode: KanaToolApprovalMode;
 };
 
 export const KANA_NOTIFICATION_BACKENDS = [
@@ -91,43 +91,52 @@ export const KANA_NOTIFICATION_BACKENDS = [
 export type KanaNotificationBackend = (typeof KANA_NOTIFICATION_BACKENDS)[number];
 
 export type KanaNotificationConfig = {
-  backend: KanaNotificationBackend;
-  onAgentCompleted: boolean;
-  onApprovalRequired: boolean;
+  readonly backend: KanaNotificationBackend;
+  readonly onAgentCompleted: boolean;
+  readonly onApprovalRequired: boolean;
 };
 
 export type KanaTuiConfig = {
-  theme: string;
-  hyperlinks: boolean;
-  renderLatex: boolean;
-  renderMermaid?: boolean;
-  smoothTextStreaming: boolean;
-  collapseLongPastes: boolean;
+  readonly theme: string;
+  readonly hyperlinks: boolean;
+  readonly renderLatex: boolean;
+  readonly renderMermaid: boolean;
+  readonly smoothTextStreaming: boolean;
+  readonly collapseLongPastes: boolean;
 };
 
+export const KANA_TUI_THEME_NAME_PATTERN = "^[a-z0-9][a-z0-9_-]{0,63}$";
+
 export function isKanaTuiThemeName(value: string): boolean {
-  return /^[a-z0-9][a-z0-9_-]{0,63}$/.test(value);
+  return new RegExp(KANA_TUI_THEME_NAME_PATTERN).test(value);
 }
 
 type KanaMemoryConfig = {
-  enabled: boolean;
-  maxChars: number;
-  dailyRetentionDays?: number;
-  agent: KanaMemoryAgentConfig;
+  readonly enabled: boolean;
+  readonly maxChars: number;
+  readonly dailyRetentionDays?: number;
+  readonly agent: KanaMemoryAgentConfig;
 };
 
-export type KanaLogLevel = LogLevel;
-
 type KanaLoggingConfig = {
-  level: KanaLogLevel;
+  readonly level: LogLevel;
 };
 
 export type KanaConfig = {
-  provider: KanaProviderConfig;
-  agent: KanaAgentConfig;
-  approval: KanaToolApprovalConfig;
-  notification: KanaNotificationConfig;
-  tui: KanaTuiConfig;
-  memory: KanaMemoryConfig;
-  logging: KanaLoggingConfig;
+  readonly provider: KanaProviderConfig;
+  readonly agent: KanaAgentConfig;
+  readonly approval: KanaToolApprovalConfig;
+  readonly notification: KanaNotificationConfig;
+  readonly tui: KanaTuiConfig;
+  readonly memory: KanaMemoryConfig;
+  readonly logging: KanaLoggingConfig;
 };
+
+// A mutable copy handed to KanaConfigStore.update callbacks.
+export type KanaConfigDraft = DeepMutable<KanaConfig>;
+
+type DeepMutable<T> = T extends readonly (infer U)[]
+  ? U[]
+  : T extends object
+    ? { -readonly [K in keyof T]: DeepMutable<T[K]> }
+    : T;

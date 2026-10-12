@@ -4,6 +4,7 @@ import {
   type McpServerDiagnostic,
   type McpToolRegistry,
 } from "@/mcp";
+import { SerialTaskQueue } from "@/utils";
 
 import {
   createKanaMcpConfigurationStore,
@@ -19,7 +20,7 @@ export type KanaMcpRuntimeProgressEvent = McpManagerProgressEvent & {
 
 export type KanaMcpRuntimeSnapshot = {
   diagnostics: McpServerDiagnostic[];
-  selectedServerIds: string[];
+  readonly selectedServerIds: readonly string[];
 };
 
 export type KanaMcpRuntimeStartOptions = {
@@ -39,38 +40,22 @@ export class KanaMcpRuntime {
   private readonly managerOptions: Omit<CreateKanaMcpManagerOptions, "enabledServerIds">;
   private configurationSource?: KanaMcpConfigurationSource;
   private manager?: ReturnType<typeof createKanaMcpManager>;
-  private selectedServerIdsData: string[] = [];
-  private operationTail: Promise<void> = Promise.resolve();
+  private selectedServerIdsData: readonly string[] = [];
+  private readonly operations = new SerialTaskQueue();
   private activeOperation?: KanaMcpRuntimeOperation;
   private startRequested = false;
-  private closeRequested = false;
   private closePromise?: Promise<void>;
 
   constructor(options: CreateKanaMcpRuntimeOptions = {}) {
-    this.env = { ...(options.env ?? process.env) };
-    this.configurationSource = options.configurationSource;
-    // Runtime reloads reuse these values. Snapshot iterable and object options
-    // so a one-shot generator or later caller mutation cannot change behavior.
+    const { configurationSource, onProgress, ...managerOptions } = options;
+    this.env = options.env ?? process.env;
+    this.configurationSource = configurationSource;
     this.managerOptions = {
+      ...managerOptions,
       env: this.env,
-      ...(options.getLogger === undefined ? {} : { getLogger: options.getLogger }),
-      ...(options.clientInfo === undefined ? {} : { clientInfo: { ...options.clientInfo } }),
-      ...(options.oauthFetch === undefined ? {} : { oauthFetch: options.oauthFetch }),
-      ...(options.oauthTokenStore === undefined
-        ? {}
-        : { oauthTokenStore: options.oauthTokenStore }),
-      ...(options.oauthClientStore === undefined
-        ? {}
-        : { oauthClientStore: options.oauthClientStore }),
-      ...(options.openOAuthAuthorizationUrl === undefined
-        ? {}
-        : { openOAuthAuthorizationUrl: options.openOAuthAuthorizationUrl }),
-      ...(options.onOAuthDiagnostic === undefined
-        ? {}
-        : { onOAuthDiagnostic: options.onOAuthDiagnostic }),
       onProgress: (event) => {
         if (this.activeOperation !== undefined) {
-          options.onProgress?.({ ...event, runtimeOperation: this.activeOperation });
+          onProgress?.({ ...event, runtimeOperation: this.activeOperation });
         }
       },
     };
@@ -84,15 +69,15 @@ export class KanaMcpRuntime {
     return this.manager?.diagnostics ?? [];
   }
 
-  get selectedServerIds(): string[] {
-    return this.selectedServerIdsData.slice();
+  get selectedServerIds(): readonly string[] {
+    return this.selectedServerIdsData;
   }
 
   start(options: KanaMcpRuntimeStartOptions = {}): Promise<KanaMcpRuntimeSnapshot> {
     if (this.startRequested) {
       return Promise.reject(new Error("MCP runtime can only be started once."));
     }
-    if (this.closeRequested) {
+    if (this.closePromise) {
       return Promise.reject(new Error("MCP runtime is closing or closed."));
     }
 
@@ -104,7 +89,7 @@ export class KanaMcpRuntime {
     if (!this.startRequested) {
       return Promise.reject(new Error("MCP runtime must be started before it can reload."));
     }
-    if (this.closeRequested) {
+    if (this.closePromise) {
       return Promise.reject(new Error("MCP runtime is closing or closed."));
     }
 
@@ -112,17 +97,14 @@ export class KanaMcpRuntime {
   }
 
   close(): Promise<void> {
-    if (!this.closePromise) {
-      this.closeRequested = true;
-      this.closePromise = this.enqueue("close", () => this.closeCurrentManager());
-    }
+    this.closePromise ??= this.enqueue("close", () => this.closeCurrentManager());
     return this.closePromise;
   }
 
   private enqueue<T>(operation: KanaMcpRuntimeOperation, task: () => Promise<T>): Promise<T> {
     // Keep lifecycle mutations serialized even when a UI action, process
     // signal, and startup completion arrive in adjacent microtasks.
-    const result = this.operationTail.then(async () => {
+    return this.operations.run(async () => {
       this.activeOperation = operation;
       try {
         return await task();
@@ -130,21 +112,16 @@ export class KanaMcpRuntime {
         this.activeOperation = undefined;
       }
     });
-    this.operationTail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
   }
 
   private async replaceManager(signal?: AbortSignal): Promise<KanaMcpRuntimeSnapshot> {
-    if (this.closeRequested) {
+    if (this.closePromise) {
       throw new Error("MCP runtime is closing or closed.");
     }
 
     await this.closeCurrentManager();
     throwIfOperationAborted(signal);
-    if (this.closeRequested) {
+    if (this.closePromise) {
       throw new Error("MCP runtime is closing or closed.");
     }
 

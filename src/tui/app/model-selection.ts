@@ -1,4 +1,4 @@
-import type { KanaConfig, KanaModelManagement, KanaModelProvider } from "@/kana";
+import type { KanaConfigDraft, KanaModelManagement, KanaModelProvider } from "@/kana";
 
 export type TuiModelSettings = KanaModelManagement;
 
@@ -8,7 +8,10 @@ export type TuiModelSelection = {
   reasoningEffort?: string;
 };
 
-export function applyTuiModelSelection(config: KanaConfig, selection: TuiModelSelection): void {
+export function applyTuiModelSelection(
+  config: KanaConfigDraft,
+  selection: TuiModelSelection,
+): void {
   config.agent.model.provider = selection.provider;
   config.agent.model.name = selection.model;
   config.agent.model.reasoningEffort = selection.reasoningEffort;

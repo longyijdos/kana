@@ -28,15 +28,15 @@ Metadata 表示能力，不是策略。Agent 会先与配置取交集再构造 `
 ```text
 Agent ModelContext
   → provider adapter
-      ├→ provider 自有 request、auth、retry loop 与 replay
-      ├→ 共享 HTTP 和 lifecycle primitive
+      ├→ provider 自有 request 字段、auth、重试判定与 replay
+      ├→ 共享请求生命周期、HTTP 重试循环与 SSE 读取
       └→ 适用时使用共享 wire processor
           ├→ OpenAI-compatible Chat Completions
           └→ semantic Responses SSE
   → AssistantMessageEvent stream
 ```
 
-Adapter 始终负责 endpoint 选择、request 字段、认证，以及判断哪些失败可以安全重试。共享代码不会静默切换 provider、endpoint 或 protocol。
+Adapter 始终负责 endpoint 选择、request 字段、认证，以及判断哪些失败可以安全重试。请求的其余部分由 `streamProviderRequest` 负责：assistant message builder、失败阶段、诊断、错误规范化，以及终止的 `done` 或 `error` 事件。`ModelContext` 中的能力开关已由 Agent 解析，adapter 不再重复检查模型 metadata。共享代码不会静默切换 provider、endpoint 或 protocol。
 
 Provider 专属行为分别见 [DeepSeek](deepseek-provider.zh-CN.md)、[OpenAI Codex](openai-codex-provider.zh-CN.md)与[自定义 OpenAI-compatible](custom-provider.zh-CN.md)。
 
@@ -54,7 +54,7 @@ Phase 包括 `validation`、`authentication`、`request_build`、`http_request` 
 
 上游取消与无活动 timeout 保持不同 outcome；二者都会停止接纳重试、中止等待中的 retry delay，并阻止后续请求。Adapter 在完整 request 生命周期结算后释放 timer 与连接的 listener。
 
-共享 retry helper 把 HTTP `408`、`429` 和 `5xx` 识别为可重试，支持把 `Retry-After` 解析为秒数或 HTTP 日期并限制在 30 秒，否则使用 1、2、4、8 秒后保持 8 秒的指数延迟。Adapter 仍持有循环及其 `maxRetries` 预算。保留的 HTTP 错误体最多 16 KiB。
+共享 retry helper 把 HTTP `408`、`429` 和 `5xx` 识别为可重试，支持把 `Retry-After` 解析为秒数或 HTTP 日期并限制在 30 秒，否则使用 1、2、4、8 秒后保持 8 秒的指数延迟。所有 adapter 都通过 `fetchWithRetries` 在各自的 `maxRetries` 预算内执行重试循环；adapter 可以收窄可重试的 HTTP 错误范围，也可以在首次遇到 `401` 时刷新一次凭据。保留的 HTTP 错误体最多 16 KiB。
 
 当前带认证 adapter 会拒绝 redirect，避免凭据被转发到另一个 origin。Provider 专属配置决定 endpoint 是否允许 HTTP；凭据需要穿过不可信网络时应使用 HTTPS。
 
@@ -72,7 +72,7 @@ Adapter 可以扩展识别信号，但不能把模糊 server failure 变成自�
 
 已配置的 assistant replay 字段会从 `choice.delta` 聚合、作为不透明 provider state 保存，并且仅向同一 provider、endpoint 和模型恢复。跨 provider replay 仍只发送可见助手文本和本地 function call；不会重新解释 provider 自有字段或 hosted-tool 状态。
 
-SSE reader 会保留跨网络 chunk 的不完整 frame，忽略只有 heartbeat 的 frame，增量装配有序 reasoning text、可见文本与工具调用，并把 `stop`、`length`、`tool_calls` 映射为 core stop reason。Kana 只请求一条助手消息，因此额外 choice 会被忽略。工具调用终止不完整或互相矛盾时按协议失败处理，不猜测输出。
+SSE reader 会保留跨网络 chunk 的不完整 frame，忽略只有 heartbeat 的 frame，增量装配有序 reasoning text、可见文本与工具调用，并把 `stop`、`length`、`tool_calls` 映射为 core stop reason。Kana 只请求一条助手消息，因此额外 choice 会被忽略。工具调用终止不完整或互相矛盾时按协议失败处理，不猜测输出。所有 adapter 中，不是合法 JSON 的工具参数都保留原始文本，使校验结果能向模型指出参数格式错误。
 
 ## Semantic Responses 处理
 
@@ -88,7 +88,7 @@ SSE reader 会保留跨网络 chunk 的不完整 frame，忽略只有 heartbeat 
 
 ## 新增或修改 adapter
 
-- 保持 provider 输出为有序 core content，并发送完整克隆 snapshot。
+- 使用 `AssistantMessageBuilder` 构建 provider 输出，使每个 snapshot 完整并共享未变化的块。
 - 把 endpoint、认证、request 转换、replay 与重试接纳留在 adapter 内。
 - 只在 wire 语义真正一致时复用共享 codec。
 - 网络 I/O 前按模型 metadata 校验 request budget。

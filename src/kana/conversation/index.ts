@@ -1,8 +1,13 @@
 export type { KanaGoalSnapshot } from "./goal-controller";
-export { createKanaConversationHost, type KanaConversationHostSession } from "./host";
+export {
+  createKanaConversationHost,
+  type KanaConversationHostSession,
+  type KanaLaunchMode,
+} from "./host";
 export {
   type ConversationAgentIdentity,
   type ConversationInputQueueSnapshot,
+  type ConversationRunSource,
   ConversationRuntime,
   type ConversationRuntimeEvent,
   type ConversationRuntimeOptions,
@@ -13,5 +18,4 @@ export {
   createWakeScheduler,
   type WakeEvent,
   type WakeEventOrigin,
-  type WakeScheduler,
 } from "./wake-scheduler";

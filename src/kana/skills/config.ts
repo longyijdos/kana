@@ -1,10 +1,11 @@
 import path from "node:path";
+import { Type } from "typebox";
+import { parseWithSchema, writeFileAtomic } from "@/utils";
 
 import {
   mergeConfigStringSet,
   readOptionalConfigFile,
   withLockedConfigFile,
-  writeConfigFileAtomically,
 } from "../config/file-storage";
 import { getKanaConfigPaths } from "../path";
 import type { LoadKanaSkillsOptions } from "./types";
@@ -15,34 +16,18 @@ export function loadEnabledGlobalSkillNames(globalSkillsDir: string): Set<string
   return parseEnabledGlobalSkillNames(readOptionalConfigFile(configPath));
 }
 
+const SKILLS_CONFIG_SCHEMA = Type.Object({
+  model_invocation: Type.Optional(
+    Type.Object({ enabled: Type.Optional(Type.Array(Type.String())) }),
+  ),
+});
+
 function parseEnabledGlobalSkillNames(content: string | undefined): Set<string> {
   if (content === undefined) {
     return new Set();
   }
-
-  const parsed = Bun.TOML.parse(content) as unknown;
-  const raw = asRecord(parsed, "skills config");
-  const modelInvocation =
-    raw.model_invocation === undefined ? {} : asRecord(raw.model_invocation, "model_invocation");
-  const enabled = modelInvocation.enabled;
-
-  if (enabled === undefined) {
-    return new Set();
-  }
-
-  if (!Array.isArray(enabled)) {
-    throw new Error("Invalid skills.toml: model_invocation.enabled must be an array");
-  }
-
-  return new Set(
-    enabled.map((value, index) => {
-      if (typeof value !== "string") {
-        throw new Error(`Invalid skills.toml: model_invocation.enabled[${index}] must be a string`);
-      }
-
-      return value;
-    }),
-  );
+  const config = parseWithSchema(SKILLS_CONFIG_SCHEMA, Bun.TOML.parse(content), "skills.toml");
+  return new Set(config.model_invocation?.enabled);
 }
 
 export function saveEnabledGlobalSkillNames(
@@ -65,7 +50,7 @@ export function persistEnabledGlobalSkillNames(
   withLockedConfigFile(configPath, () => {
     const persisted = [...parseEnabledGlobalSkillNames(readOptionalConfigFile(configPath))];
     const merged = mergeConfigStringSet(persisted, previousSnapshot, nextSnapshot);
-    writeConfigFileAtomically(configPath, serializeSkillsConfig(merged));
+    writeFileAtomic(configPath, serializeSkillsConfig(merged));
   });
 }
 
@@ -73,12 +58,4 @@ function serializeSkillsConfig(enabledNames: string[]): string {
   const enabled = enabledNames.map((name) => JSON.stringify(name)).join(", ");
 
   return ["[model_invocation]", `enabled = [${enabled}]`, ""].join("\n");
-}
-
-function asRecord(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`Invalid skills.toml: ${label} must be a table`);
-  }
-
-  return value as Record<string, unknown>;
 }

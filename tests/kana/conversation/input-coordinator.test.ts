@@ -100,15 +100,6 @@ describe("ConversationInputCoordinator", () => {
     ]);
     expect(harness.agent.inbox.nextTurn.map((item) => item.message.id)).toEqual([queuedInput.id]);
 
-    const pendingSnapshot = snapshot.pending[0];
-    const scheduledSnapshot = snapshot.scheduled[0];
-    if (pendingSnapshot) {
-      pendingSnapshot.content = "Mutated projection.";
-    }
-    if (scheduledSnapshot) {
-      scheduledSnapshot.message = "Mutated wake.";
-      scheduledSnapshot.dueAt.setTime(0);
-    }
     expect(harness.coordinator.queue.pending[0]?.content).toBe("Queued input.");
     expect(harness.coordinator.queue.scheduled[0]).toMatchObject({
       message: "Scheduled input.",
@@ -387,7 +378,7 @@ describe("ConversationInputCoordinator", () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
     const harness = createHarness({ getBackgroundJobs: () => jobs });
-    const completion = deferred<{ status: "canceled"; exitCode: null }>();
+    const completion = deferred<{ status: "cancelled"; exitCode: null }>();
     const job = jobs.start({ kind: "test", label: "lifecycle", run: () => completion.promise });
 
     expect(harness.coordinator.queue.pending).toEqual([]);
@@ -396,14 +387,14 @@ describe("ConversationInputCoordinator", () => {
     const cancellation = jobs.kill(job.id, { source: "tui" });
     expect(harness.coordinator.queue.pending).toEqual([]);
 
-    completion.resolve({ status: "canceled", exitCode: null });
+    completion.resolve({ status: "cancelled", exitCode: null });
     await cancellation;
     await waitFor(() => harness.coordinator.queue.pending.length === 1);
 
     expect(harness.coordinator.queue.pending).toMatchObject([
-      { kind: "job", jobId: job.id, content: expect.stringContaining("canceled") },
+      { kind: "job", jobId: job.id, content: expect.stringContaining("cancelled") },
     ]);
-    expect(harness.agent.inbox.nextTurn[0]?.message.content).toContain("reached canceled");
+    expect(harness.agent.inbox.nextTurn[0]?.message.content).toContain("reached cancelled");
     expect(harness.agent.inbox.nextTurn).toHaveLength(1);
 
     jobs.observe(job.id);

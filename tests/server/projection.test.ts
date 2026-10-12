@@ -89,7 +89,7 @@ describe("server event projection", () => {
       const projection = new ServerProjection(f.runtime, () => {});
       const context = projection.snapshot().context;
       expect(context).toEqual({
-        estimated_tokens: f.runtime.state.estimatedContextTokens ?? null,
+        estimated_tokens: f.runtime.estimateContextTokens() ?? null,
         context_limit: 32_000,
       });
       expect(context.estimated_tokens).toBeGreaterThan(100);
@@ -256,9 +256,9 @@ describe("server event projection", () => {
       ]);
       const events = timeline.filter((entry) => entry.type !== "message");
       expect(session.timeline).toEqual([
-        events[0],
+        events[0]!,
         { type: "message", id: "user", parentId: "start", timestamp: "t1", message_id: user.id },
-        events[1],
+        events[1]!,
         {
           type: "message",
           id: "assistant",
@@ -266,7 +266,7 @@ describe("server event projection", () => {
           timestamp: "t3",
           message_id: assistant.id,
         },
-        events[2],
+        events[2]!,
       ]);
       const byId = new Map(session.messages.map((message) => [message.id, message]));
       for (const entry of session.timeline) {
@@ -281,15 +281,6 @@ describe("server event projection", () => {
       expect(serialized).not.toContain("providerState");
       expect(timeline[1]).toMatchObject({ message: user });
       expect(assistant.content[0]!.providerState.value).toBe("opaque");
-      const projectedUser = session.messages.find((message) => message.role === "user")!;
-      if (projectedUser.role === "user") projectedUser.images![0]!.data = "changed";
-      const projectedTodo = session.timeline.find((entry) => entry.type === "todo_state")!;
-      if (projectedTodo.type === "todo_state") projectedTodo.items[0]!.content = "changed";
-      const next = projection.snapshot().session!;
-      expect(next.messages[0]).toEqual(user);
-      expect(next.timeline.find((entry) => entry.type === "todo_state")).toEqual(
-        timeline.find((entry) => entry.type === "todo_state"),
-      );
     } finally {
       await f.close();
     }

@@ -128,40 +128,9 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
         startInResumePicker: options.showResumePicker,
       },
       conversation: {
-        initialSession: host.initialSession
-          ? {
-              id: host.initialSession.metadata.id,
-              messages: host.initialSession.messages,
-              timeline: host.initialSession.timeline,
-              todoState: host.initialSession.todoState,
-              contextCheckpoint: host.initialSession.contextCheckpoint,
-            }
-          : undefined,
+        ...host.runtimeOptions,
         getResumeSessionId: () => host.resumeSessionId,
-        createNewSession: () => host.createNewSession(),
-        forkSession: (messages, contextCheckpoint, prompt) =>
-          host.forkSession(messages, contextCheckpoint, prompt),
-        listSessions: () => host.listSessions(),
-        loadSession: (sessionId) => {
-          const session = host.loadSession(sessionId);
-          return {
-            id: session.metadata.id,
-            messages: session.messages,
-            timeline: session.timeline,
-            todoState: session.todoState,
-            contextCheckpoint: session.contextCheckpoint,
-          };
-        },
-        deleteSession: (sessionId) => host.deleteSession(sessionId),
-        goalMaxRounds: host.config.agent.goalMaxRounds,
-        wakeScheduler: host.wakeScheduler,
-        getBackgroundJobs: (sessionId) => host.getBackgroundJobs(sessionId),
-        getSubagents: (sessionId) => host.getSubagents(sessionId),
-        getUserTasks: (sessionId) => host.getUserTasks(sessionId),
-        getSessionTimeline: (sessionId) => host.getSessionTimeline(sessionId),
         loadSubagentProfiles: () => host.loadSubagentProfiles(),
-        disposeSession: (sessionId, source, foregroundSettled) =>
-          host.disposeSession(sessionId, source, foregroundSettled),
       },
       skills: {
         load: () => host.loadSkills(),
@@ -243,7 +212,7 @@ export async function startTui(options: StartTuiOptions = {}): Promise<void> {
 
   removeProcessSignals = registerTuiProcessSignals((signal) => {
     host.getLogger().info("tui.signal_received", { signal });
-    void app?.stop();
+    void app.stop();
   });
 
   try {

@@ -5,8 +5,6 @@ export type {
 } from "./format";
 export { createKanaSessionJournal, KanaSessionJournal } from "./journal";
 export {
-  appendKanaSessionMessages,
-  appendKanaSessionRun,
   createKanaSession,
   deleteKanaSession,
   listKanaSessions,

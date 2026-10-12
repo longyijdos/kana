@@ -1,17 +1,6 @@
 import { color, dim, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import {
-  isDown,
-  isEnd,
-  isEnter,
-  isEscape,
-  isHome,
-  isLeft,
-  isPageDown,
-  isPageUp,
-  isRight,
-  isUp,
-} from "../runtime";
+import { isEnter, isEscape } from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
@@ -70,33 +59,8 @@ export class ToolHistoryPicker implements Component {
       return;
     }
 
-    if (isUp(data)) {
-      this.move(-1);
+    if (this.viewport.handleNavigationKey(data, this.entries.length)) {
       return;
-    }
-
-    if (isDown(data)) {
-      this.move(1);
-      return;
-    }
-
-    if (isLeft(data) || isPageUp(data)) {
-      this.movePage(-1);
-      return;
-    }
-
-    if (isRight(data) || isPageDown(data)) {
-      this.movePage(1);
-      return;
-    }
-
-    if (isHome(data)) {
-      this.viewport.moveTo(0, this.entries.length);
-      return;
-    }
-
-    if (isEnd(data)) {
-      this.viewport.moveTo(this.entries.length - 1, this.entries.length);
     }
   }
 
@@ -116,20 +80,16 @@ export class ToolHistoryPicker implements Component {
       ),
       this.entries.length,
     );
-    const viewport = this.viewport.window(this.entries.length);
+    const viewport = this.viewport.visible(this.entries);
 
     if (viewport.hiddenBefore > 0) {
       lines.push(dim(`... ${viewport.hiddenBefore} earlier tools`));
     }
 
-    for (let index = viewport.start; index < viewport.end; index += 1) {
-      const entry = this.entries[index];
-      const marker = index === this.viewport.selectedIndex ? "> " : "  ";
+    for (const { item: entry, selected } of viewport.rows) {
+      const marker = selected ? "> " : "  ";
       const label = `${marker}${formatEntry(entry)}`;
-      const rendered =
-        index === this.viewport.selectedIndex
-          ? color(label, tuiTheme.user)
-          : color(label, tuiTheme.muted);
+      const rendered = selected ? color(label, tuiTheme.user) : color(label, tuiTheme.muted);
 
       lines.push(truncateToWidth(rendered, width));
     }
@@ -139,14 +99,6 @@ export class ToolHistoryPicker implements Component {
     }
 
     return lines;
-  }
-
-  private move(delta: number): void {
-    this.viewport.move(delta, this.entries.length);
-  }
-
-  private movePage(delta: number): void {
-    this.viewport.movePage(delta, this.entries.length);
   }
 }
 

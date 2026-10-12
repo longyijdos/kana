@@ -24,7 +24,7 @@ export class QueuedInputController {
     const message =
       typeof input === "string"
         ? createUserMessage({ content: input, provenance: { kind: "user_input" } })
-        : structuredClone(input);
+        : input;
     this.turnInputs.push({
       input: message,
     });

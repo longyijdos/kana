@@ -1,4 +1,5 @@
 import { createNoopLogger, type Logger } from "@/logging";
+import { formatError, SerialTaskQueue } from "@/utils";
 import type { KanaConfig } from "../config";
 import type { KanaCustomProviderSnapshot } from "../custom-provider";
 import {
@@ -56,27 +57,11 @@ export type CreateMemoryConsolidationSchedulerOptions = {
 };
 
 export function createMemoryConsolidationQueue(): MemoryConsolidationQueue {
-  const tails = new Map<KanaMemoryScope, Promise<void>>();
-
-  return {
-    enqueue(scope, operation) {
-      const previous = tails.get(scope) ?? Promise.resolve();
-      const result = previous.catch(() => undefined).then(operation);
-      const tail = result.then(
-        () => undefined,
-        () => undefined,
-      );
-
-      tails.set(scope, tail);
-      void tail.finally(() => {
-        if (tails.get(scope) === tail) {
-          tails.delete(scope);
-        }
-      });
-
-      return result;
-    },
+  const queues: Record<KanaMemoryScope, SerialTaskQueue> = {
+    global: new SerialTaskQueue(),
+    project: new SerialTaskQueue(),
   };
+  return { enqueue: (scope, operation) => queues[scope].run(operation) };
 }
 
 export function createMemoryConsolidationScheduler(
@@ -161,7 +146,7 @@ export function createMemoryConsolidationScheduler(
                 publish({
                   type: "failed",
                   scope,
-                  error: error instanceof Error ? error.message : String(error),
+                  error: formatError(error),
                 });
               }
               throw error;

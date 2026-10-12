@@ -60,7 +60,7 @@ function createInternalMemoryTools(): Map<string, Tool> {
 // Derive the conversation built-in tools from the real registration path
 // (createKanaAgent) instead of a hand-maintained list, with every optional
 // built-in enabled so a newly added tool is checked automatically.
-function createAgentBuiltInTools(): Tool[] {
+function createAgentBuiltInTools(): readonly Tool[] {
   const home = mkdtempSync(path.join(tmpdir(), "kana-strict-schemas-"));
   tempDirs.push(home);
   const previousHome = process.env.KANA_HOME;
@@ -88,11 +88,9 @@ function createAgentBuiltInTools(): Tool[] {
     };
     const agent = createKanaAgent(
       config.agent,
+      { providers: config.provider },
       {
-        providers: config.provider,
-        memoryEnabled: config.memory.enabled,
-      },
-      {
+        memoryEnabled: true,
         backgroundJobs,
         resolveMcp: () => ({
           catalog: [{ name: "fixture", description: "Schema fixture." }],

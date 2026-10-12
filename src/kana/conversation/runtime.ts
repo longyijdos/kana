@@ -31,53 +31,53 @@ export type {
 } from "./input-coordinator";
 
 export type ConversationSessionSnapshot = {
-  id: string;
-  messages: Message[];
-  timeline: KanaSessionTimelineEntry[];
-  todoState?: KanaTodoItem[];
-  contextCheckpoint?: ContextCheckpoint;
+  readonly id: string;
+  readonly messages: readonly Message[];
+  readonly timeline: readonly KanaSessionTimelineEntry[];
+  readonly todoState?: readonly KanaTodoItem[];
+  readonly contextCheckpoint?: ContextCheckpoint;
 };
 
 export type ConversationRunSource = ConversationInputRunSource | "compaction";
 
 export type ConversationRuntimeEvent =
   | {
-      type: "run_start";
-      source: ConversationRunSource;
-      input?: UserMessage;
+      readonly type: "run_start";
+      readonly source: ConversationRunSource;
+      readonly input?: UserMessage;
     }
   | {
-      type: "agent_event";
-      source: ConversationRunSource;
-      event: AgentEvent;
+      readonly type: "agent_event";
+      readonly source: ConversationRunSource;
+      readonly event: AgentEvent;
     }
   | {
-      type: "run_end";
-      source: ConversationRunSource;
-      event?: Extract<AgentEvent, { type: "agent_end" }>;
-      goal?: KanaGoalSnapshot;
+      readonly type: "run_end";
+      readonly source: ConversationRunSource;
+      readonly event?: Extract<AgentEvent, { type: "agent_end" }>;
+      readonly goal?: KanaGoalSnapshot;
     }
   | {
-      type: "run_error";
-      source: ConversationRunSource;
-      error: unknown;
+      readonly type: "run_error";
+      readonly source: ConversationRunSource;
+      readonly error: unknown;
     }
   | {
-      type: "session_changed";
-      action: "new" | "fork" | "resume";
-      session: ConversationSessionSnapshot;
+      readonly type: "session_changed";
+      readonly action: "new" | "fork" | "resume";
+      readonly session: ConversationSessionSnapshot;
     }
   | {
-      type: "input_queue_changed";
-      queue: ConversationInputQueueSnapshot;
+      readonly type: "input_queue_changed";
+      readonly queue: ConversationInputQueueSnapshot;
     }
   | {
-      type: "todo_state_changed";
-      source: ConversationRunSource;
-      change: KanaTodoStateChange;
+      readonly type: "todo_state_changed";
+      readonly source: ConversationRunSource;
+      readonly change: KanaTodoStateChange;
     }
   | {
-      type: "goal_state_changed";
+      readonly type: "goal_state_changed";
       change:
         | "started"
         | "round_admitted"
@@ -86,7 +86,7 @@ export type ConversationRuntimeEvent =
         | "cancelled"
         | "round_limit"
         | "discarded";
-      goal: KanaGoalSnapshot;
+      readonly goal: KanaGoalSnapshot;
     };
 
 export type ConversationRuntimeListener = (event: ConversationRuntimeEvent) => void;
@@ -102,7 +102,7 @@ type ConversationBeforeToolExecutionHook = (
 type CreateConversationAgentOptions<TConfiguration> = {
   beforeToolExecution: BeforeToolExecutionHook;
   bindBeforeToolExecution: (agent: ConversationAgentIdentity) => BeforeToolExecutionHook;
-  messages?: Message[];
+  messages?: readonly Message[];
   inbox?: AgentInboxSnapshot;
   sessionId?: string;
   contextCheckpoint?: ContextCheckpoint;
@@ -114,15 +114,15 @@ type CreateConversationAgentOptions<TConfiguration> = {
 
 export type ConversationRuntimeOptions<TConfiguration> = {
   initialSession?: ConversationSessionSnapshot;
-  // Returns a detached timeline snapshot owned by the caller.
-  getSessionTimeline?: (sessionId: string) => KanaSessionTimelineEntry[];
+  // Returns the latest committed timeline for the session.
+  getSessionTimeline?: (sessionId: string) => readonly KanaSessionTimelineEntry[];
   createAgent: (options: CreateConversationAgentOptions<TConfiguration>) => Agent;
   createNewSession: () => { id: string };
   forkSession: (
-    messages: Message[],
+    messages: readonly Message[],
     contextCheckpoint: ContextCheckpoint | undefined,
     prompt: string,
-  ) => { id: string; todoState?: KanaTodoItem[] };
+  ) => { id: string; todoState?: readonly KanaTodoItem[] };
   loadSession: (sessionId: string) => ConversationSessionSnapshot;
   listSessions?: () => KanaSessionMetadata[];
   deleteSession?: (sessionId: string) => Promise<boolean> | boolean;
@@ -158,7 +158,7 @@ export class ConversationRuntime<TConfiguration = never> {
   private closePromise?: Promise<void>;
 
   constructor(private readonly options: ConversationRuntimeOptions<TConfiguration>) {
-    this.sessionData = cloneSession(options.initialSession);
+    this.sessionData = options.initialSession;
     this.getLogger = options.getLogger ?? createNoopLogger;
     this.inputCoordinator = new ConversationInputCoordinator({
       wakeScheduler: options.wakeScheduler ?? createWakeScheduler(),
@@ -193,6 +193,10 @@ export class ConversationRuntime<TConfiguration = never> {
     return this.agent.state;
   }
 
+  estimateContextTokens(): number | undefined {
+    return this.agent.estimateContextTokens();
+  }
+
   getStableContext(): ReturnType<Agent["getStableContext"]> {
     return this.agent.getStableContext();
   }
@@ -209,19 +213,19 @@ export class ConversationRuntime<TConfiguration = never> {
 
     const timeline = this.options.getSessionTimeline
       ? this.options.getSessionTimeline(session.id)
-      : structuredClone(session.timeline);
+      : session.timeline;
     const state = this.agent.state;
     return {
       id: session.id,
       messages: state.messages,
       timeline,
-      ...(session.todoState === undefined ? {} : { todoState: structuredClone(session.todoState) }),
+      ...(session.todoState === undefined ? {} : { todoState: session.todoState }),
       contextCheckpoint: state.contextCheckpoint,
     };
   }
 
-  get todoState(): KanaTodoItem[] {
-    return structuredClone(this.sessionData?.todoState ?? []);
+  get todoState(): readonly KanaTodoItem[] {
+    return this.sessionData?.todoState ?? [];
   }
 
   get goal(): KanaGoalSnapshot | undefined {
@@ -277,7 +281,7 @@ export class ConversationRuntime<TConfiguration = never> {
     this.assertCanStartRun();
     this.activeSource = "compaction";
     this.emit({ type: "run_start", source: "compaction" });
-    this.log("info", "conversation.compaction_started");
+    this.getLogger().info("conversation.compaction_started");
     const unsubscribe = this.agent.subscribe((event) => {
       this.handleAgentEvent(event);
     });
@@ -285,11 +289,11 @@ export class ConversationRuntime<TConfiguration = never> {
     try {
       const checkpoint = await this.agent.compact();
       this.emit({ type: "run_end", source: "compaction" });
-      this.log("info", "conversation.compaction_completed");
+      this.getLogger().info("conversation.compaction_completed");
       return checkpoint;
     } catch (error) {
       this.emit({ type: "run_error", source: "compaction", error });
-      this.log("error", "conversation.compaction_failed", { error });
+      this.getLogger().error("conversation.compaction_failed", { error });
       throw error;
     } finally {
       unsubscribe();
@@ -302,7 +306,7 @@ export class ConversationRuntime<TConfiguration = never> {
     this.assertIdle("reconfigure the conversation");
     this.replaceAgent(this.agent.state.messages, this.agent.state.contextCheckpoint, configuration);
     this.inputCoordinator.discardGoal("agent_reconfigured");
-    this.log("info", "conversation.agent_reconfigured");
+    this.getLogger().info("conversation.agent_reconfigured");
   }
 
   async startNewSession(): Promise<ConversationSessionSnapshot> {
@@ -326,7 +330,7 @@ export class ConversationRuntime<TConfiguration = never> {
       id: created.id,
       messages: state.messages,
       timeline: [],
-      todoState: structuredClone(created.todoState ?? this.sessionData?.todoState ?? []),
+      todoState: created.todoState ?? this.sessionData?.todoState ?? [],
       contextCheckpoint: state.contextCheckpoint,
     };
     await this.replaceSession("fork", session);
@@ -405,11 +409,11 @@ export class ConversationRuntime<TConfiguration = never> {
     );
     this.inputCoordinator.finishShutdown();
     this.listeners.clear();
-    this.log("info", "conversation.closed");
+    this.getLogger().info("conversation.closed");
   }
 
   private buildAgent(
-    messages?: Message[],
+    messages?: readonly Message[],
     contextCheckpoint?: ContextCheckpoint,
     configuration?: TConfiguration,
     sessionId = this.sessionData?.id,
@@ -451,7 +455,7 @@ export class ConversationRuntime<TConfiguration = never> {
       return;
     }
 
-    this.sessionData.todoState = structuredClone(change.items);
+    this.sessionData = { ...this.sessionData, todoState: change.items };
     this.emit({
       type: "todo_state_changed",
       source,
@@ -460,7 +464,7 @@ export class ConversationRuntime<TConfiguration = never> {
   }
 
   private replaceAgent(
-    messages?: Message[],
+    messages?: readonly Message[],
     contextCheckpoint?: ContextCheckpoint,
     configuration?: TConfiguration,
   ): void {
@@ -484,7 +488,7 @@ export class ConversationRuntime<TConfiguration = never> {
   ): Promise<void> {
     // Build against the candidate session before mutating runtime state. A
     // provider/configuration failure must leave the current Agent usable.
-    const nextSession = cloneSession(session) as ConversationSessionSnapshot;
+    const nextSession = session;
     const nextAgent = this.buildAgent(
       nextSession.messages,
       nextSession.contextCheckpoint,
@@ -533,7 +537,7 @@ export class ConversationRuntime<TConfiguration = never> {
       session: this.session as ConversationSessionSnapshot,
     });
     this.inputCoordinator.emitCurrentQueue();
-    this.log("info", "conversation.session_changed", { action });
+    this.getLogger().info("conversation.session_changed", { action });
   }
 
   private async disposeHostedSession(
@@ -567,7 +571,7 @@ export class ConversationRuntime<TConfiguration = never> {
       source,
       input,
     });
-    this.log("info", "conversation.run_started", { source });
+    this.getLogger().info("conversation.run_started", { source });
 
     // Agent awaits listeners before assembling the next prompt; consuming its
     // event stream here could acknowledge completion after model I/O starts.
@@ -603,17 +607,17 @@ export class ConversationRuntime<TConfiguration = never> {
         event: terminalEvent,
         ...(runGoal === undefined ? {} : { goal: runGoal }),
       });
-      this.log("info", "conversation.run_completed", {
+      this.getLogger().info("conversation.run_completed", {
         source,
         outcome: terminalEvent.reason,
       });
-      return { type: "completed", event: structuredClone(terminalEvent) };
+      return { type: "completed", event: terminalEvent };
     } catch (error) {
       if (source === "goal") {
         this.inputCoordinator.blockGoal("The goal run failed before it could continue.");
       }
       this.emit({ type: "run_error", source, error });
-      this.log("error", "conversation.run_failed", { source, error });
+      this.getLogger().error("conversation.run_failed", { source, error });
       return { type: "failed", error };
     } finally {
       unsubscribeCommittedInputs();
@@ -629,7 +633,7 @@ export class ConversationRuntime<TConfiguration = never> {
       return;
     }
     if (event.type === "agent_end") {
-      this.terminalEvent = structuredClone(event);
+      this.terminalEvent = event;
     }
     this.emit({
       type: "agent_event",
@@ -661,38 +665,13 @@ export class ConversationRuntime<TConfiguration = never> {
   private emit(event: ConversationRuntimeEvent): void {
     for (const listener of [...this.listeners]) {
       try {
-        listener(cloneRuntimeEvent(event));
+        listener(event);
       } catch (error) {
-        this.log("warn", "conversation.listener_failed", {
+        this.getLogger().warn("conversation.listener_failed", {
           eventType: event.type,
           error,
         });
       }
     }
   }
-
-  private log(
-    level: "info" | "warn" | "error",
-    event: string,
-    metadata?: Record<string, unknown>,
-  ): void {
-    try {
-      this.getLogger()[level](event, metadata);
-    } catch {
-      // Diagnostics must not change runtime lifecycle or cleanup behavior.
-    }
-  }
-}
-
-function cloneSession(
-  session: ConversationSessionSnapshot | undefined,
-): ConversationSessionSnapshot | undefined {
-  return session === undefined ? undefined : structuredClone(session);
-}
-
-function cloneRuntimeEvent(event: ConversationRuntimeEvent): ConversationRuntimeEvent {
-  if (event.type === "run_error") {
-    return { ...event };
-  }
-  return structuredClone(event);
 }

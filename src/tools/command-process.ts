@@ -107,7 +107,7 @@ export async function runCommandProcess(
     };
   }
   if (stopReason === "abort") {
-    return { status: "canceled", exitCode, timedOut: false, aborted: true };
+    return { status: "cancelled", exitCode, timedOut: false, aborted: true };
   }
   if (stopReason === "timeout") {
     return { status: "failed", exitCode: null, timedOut: true, aborted: false };

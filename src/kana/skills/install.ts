@@ -2,8 +2,7 @@ import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
-
-import { formatError } from "../format";
+import { formatError } from "@/utils";
 import { getKanaConfigPaths } from "../path";
 
 const execFileAsync = promisify(execFile);
@@ -94,7 +93,7 @@ async function runGitCommand(args: string[], options: { cwd?: string } = {}): Pr
   }
 }
 
-function isDirectory(filePath: string): boolean {
+export function isDirectory(filePath: string): boolean {
   try {
     return statSync(filePath).isDirectory();
   } catch {

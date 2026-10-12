@@ -1,3 +1,4 @@
+import { isRecord } from "@/utils";
 import { OAuthError, OAuthProtocolError, OAuthTokenEndpointError } from "./errors";
 import {
   assertOAuthMaxResponseBytes,
@@ -317,7 +318,7 @@ function parseTokenSet(
   now: number,
   acceptMissingBearerTokenType: boolean,
 ): OAuthTokenSet {
-  if (!isJsonObject(value)) {
+  if (!isRecord(value)) {
     throw new OAuthProtocolError("OAuth token response must be a JSON object.");
   }
   if (typeof value.access_token !== "string" || value.access_token.length === 0) {
@@ -371,13 +372,13 @@ function readOptionalNonEmptyString(
 }
 
 function readSafeOAuthError(value: unknown): string | undefined {
-  if (!isJsonObject(value)) {
+  if (!isRecord(value)) {
     return undefined;
   }
   const candidate =
     typeof value.error === "string"
       ? value.error
-      : isJsonObject(value.error) && typeof value.error.code === "string"
+      : isRecord(value.error) && typeof value.error.code === "string"
         ? value.error.code
         : undefined;
   return candidate !== undefined && /^[a-zA-Z0-9_.-]{1,64}$/.test(candidate)
@@ -441,10 +442,6 @@ function validateScopes(scopes: readonly string[] | undefined): void {
 
 function encodeFormComponent(value: string): string {
   return new URLSearchParams({ value }).toString().slice("value=".length);
-}
-
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function emitDiagnostic(

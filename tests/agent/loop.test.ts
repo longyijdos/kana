@@ -1,14 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
-import { ContextManager, estimateContextTokens } from "../../src/agent/context-manager";
+import { AssistantMessageBuilder } from "@/core";
+import { ContextManager } from "../../src/agent/context-manager";
 import type { AgentEvent } from "../../src/agent/events";
-import { runAgentLoop } from "../../src/agent/loop";
 import { createRepeatedToolCallPolicy } from "../../src/agent/repeated-tool-call-policy";
+import { estimateContextTokens } from "../../src/agent/token-estimate";
 import type { ModelContext } from "../../src/core/context";
 import type { AssistantMessage, Message } from "../../src/core/messages";
 import type { Model, ModelMetadata } from "../../src/core/model";
 import { AssistantEventStream } from "../../src/core/stream";
 import type { Tool } from "../../src/tools/tool";
+import { runTestLoop } from "../helpers/agent-loop";
 import { messageIdentityForTest } from "../helpers/messages";
 
 class ScriptedToolModel implements Model {
@@ -20,6 +22,7 @@ class ScriptedToolModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -69,6 +72,7 @@ class MultiToolCallModel implements Model {
     supportsParallelToolCalls: false,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -106,6 +110,7 @@ class ParallelToolCallModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -146,6 +151,7 @@ class AbortedModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
 
   stream(_context: ModelContext): AssistantEventStream {
@@ -186,6 +192,7 @@ class InterruptedToolCallModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
 
   constructor(
@@ -198,26 +205,22 @@ class InterruptedToolCallModel implements Model {
     const stream = new AssistantEventStream();
 
     queueMicrotask(() => {
-      const message: AssistantMessage = {
-        ...messageIdentityForTest("assistant"),
-        role: "assistant",
-        content: [],
-      };
+      const message = new AssistantMessageBuilder();
 
       stream.push({
         type: "start",
-        snapshot: structuredClone(message),
+        snapshot: message.snapshot(),
       });
 
       if (this.text) {
-        message.content.push({ type: "text", text: this.text });
+        message.add({ type: "text", text: this.text });
         stream.push({
           type: "text_start",
           contentIndex: 0,
-          snapshot: structuredClone(message),
+          snapshot: message.snapshot(),
         });
       }
-      message.content.push({
+      message.add({
         type: "tool_call",
         id: "call_1",
         name: "edit",
@@ -231,13 +234,13 @@ class InterruptedToolCallModel implements Model {
       stream.push({
         type: "toolcall_start",
         contentIndex: message.content.length - 1,
-        snapshot: structuredClone(message),
+        snapshot: message.snapshot(),
       });
       stream.error({
         type: "error",
         reason: this.reason,
         error: new Error(this.reason),
-        snapshot: structuredClone(message),
+        snapshot: message.snapshot(),
       });
     });
 
@@ -258,6 +261,7 @@ class AbortedHostedToolModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: true,
+    supportsImageInput: false,
   };
 
   stream(_context: ModelContext): AssistantEventStream {
@@ -283,13 +287,13 @@ class AbortedHostedToolModel implements Model {
       stream.push({
         type: "hosted_tool_start",
         contentIndex: 0,
-        snapshot: structuredClone(message),
+        snapshot: message,
       });
       stream.error({
         type: "error",
         reason: "aborted",
         error: new Error("aborted"),
-        snapshot: structuredClone(message),
+        snapshot: message,
       });
     });
 
@@ -310,6 +314,7 @@ class EmptyErrorModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
 
   stream(_context: ModelContext): AssistantEventStream {
@@ -345,6 +350,7 @@ class LengthTruncatedToolModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -390,34 +396,10 @@ const addTool = {
 } satisfies Tool<typeof addParameters, number>;
 
 describe("runAgentLoop configuration", () => {
-  test("rejects invalid maxTurns before emitting lifecycle events", async () => {
-    for (const maxTurns of [-2, 0, 1.5]) {
-      const model = new ScriptedToolModel();
-      const events: AgentEvent[] = [];
-
-      await expect(
-        runAgentLoop(
-          {
-            messages: [],
-          },
-          {
-            model,
-            maxTurns,
-          },
-          (event) => {
-            events.push(event);
-          },
-        ),
-      ).rejects.toThrow("maxTurns must be -1 or a positive integer.");
-      expect(model.contexts).toEqual([]);
-      expect(events).toEqual([]);
-    }
-  });
-
   test("disables parallel tool calls when model metadata does not support them", async () => {
     const model = new MultiToolCallModel();
 
-    await runAgentLoop(
+    await runTestLoop(
       {
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "add both pairs" }],
         tools: [addTool],
@@ -439,7 +421,7 @@ describe("runAgentLoop tool turns", () => {
     const model = new ScriptedToolModel();
     const events: AgentEvent[] = [];
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -489,7 +471,7 @@ describe("runAgentLoop tool turns", () => {
     const model = new ScriptedToolModel({ a: "2", b: 3 }, 2);
     const committedRoles: string[] = [];
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "keep adding" }],
         tools: [addTool],
@@ -529,7 +511,7 @@ describe("runAgentLoop tool turns", () => {
     } satisfies Tool<typeof addParameters, number>;
     let assemblyCalls = 0;
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -575,7 +557,7 @@ describe("runAgentLoop tool turns", () => {
       contextLimit: 128_000,
       maxOutputTokens: 16_000,
     });
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: initialMessages,
         tools: [addTool],
@@ -622,7 +604,7 @@ describe("runAgentLoop tool turns", () => {
       },
     } satisfies Tool<typeof addParameters, number>;
 
-    await runAgentLoop(
+    await runTestLoop(
       {
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "add the numbers" }],
         tools: [orderedTool],
@@ -652,7 +634,7 @@ describe("runAgentLoop tool turns", () => {
     ];
     let consumed = false;
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "Start." }],
       },
@@ -687,7 +669,7 @@ describe("runAgentLoop tool turns", () => {
   test("leaves turn input untouched when the turn limit cannot start another turn", async () => {
     let consumeCount = 0;
 
-    await runAgentLoop(
+    await runTestLoop(
       {
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "Start." }],
       },
@@ -725,7 +707,7 @@ describe("runAgentLoop tool turns", () => {
       maxOutputTokens: 8_192,
     });
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           { ...messageIdentityForTest("user"), role: "user", content: "Run the large tool" },
@@ -760,7 +742,7 @@ describe("runAgentLoop tool turns", () => {
   test("emits assistant and tool execution events in turn order", async () => {
     const events: AgentEvent[] = [];
 
-    await runAgentLoop(
+    await runTestLoop(
       {
         messages: [
           {
@@ -828,7 +810,7 @@ describe("runAgentLoop tool turns", () => {
       },
     } satisfies Tool<typeof addParameters, number>;
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "add both pairs" }],
         tools: [tool],
@@ -866,7 +848,7 @@ describe("runAgentLoop tool turns", () => {
       a: 1,
     });
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -918,7 +900,7 @@ describe("runAgentLoop tool turns", () => {
       },
     } satisfies Tool<typeof addParameters, number>;
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -971,7 +953,7 @@ describe("runAgentLoop cancellation", () => {
       },
     } satisfies Tool<typeof addParameters, string>;
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -1006,7 +988,7 @@ describe("runAgentLoop cancellation", () => {
       content: "Tool call rejected by user.",
       isError: true,
       result: {
-        canceled: true,
+        cancelled: true,
       },
     });
     expect(events.some((event) => event.type === "tool_execution_start")).toBe(false);
@@ -1016,7 +998,7 @@ describe("runAgentLoop cancellation", () => {
     });
   });
 
-  test("adds canceled results for remaining tool calls when aborting a run", async () => {
+  test("adds cancelled results for remaining tool calls when aborting a run", async () => {
     const beforeToolCallIds: string[] = [];
     const events: AgentEvent[] = [];
     let executeCount = 0;
@@ -1033,7 +1015,7 @@ describe("runAgentLoop cancellation", () => {
       },
     } satisfies Tool<typeof addParameters, number>;
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -1072,17 +1054,17 @@ describe("runAgentLoop cancellation", () => {
       content: "Tool call rejected by user.",
       isError: true,
       result: {
-        canceled: true,
+        cancelled: true,
       },
     });
     expect(messages[2]).toMatchObject({
       role: "tool",
       toolCallId: "call_2",
       toolName: "add",
-      content: "Tool call canceled because the run was aborted.",
+      content: "Tool call cancelled because the run was aborted.",
       isError: true,
       result: {
-        canceled: true,
+        cancelled: true,
       },
     });
     expect(
@@ -1092,7 +1074,7 @@ describe("runAgentLoop cancellation", () => {
       toolCallId: "call_2",
       isError: true,
       result: {
-        canceled: true,
+        cancelled: true,
       },
     });
   });
@@ -1102,7 +1084,7 @@ describe("runAgentLoop limits", () => {
   test("runs without a turn limit when maxTurns is -1", async () => {
     const model = new ScriptedToolModel({ a: 2, b: 3 }, 10);
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -1132,7 +1114,7 @@ describe("runAgentLoop limits", () => {
     const model = new ScriptedToolModel({ a: 2, b: 3 }, 3);
     const events: AgentEvent[] = [];
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -1170,7 +1152,7 @@ describe("runAgentLoop limits", () => {
     const model = new LengthTruncatedToolModel();
     const events: AgentEvent[] = [];
 
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -1206,7 +1188,7 @@ describe("runAgentLoop limits", () => {
 describe("runAgentLoop error recovery", () => {
   test("records aborted assistant turns on the final message", async () => {
     const events: AgentEvent[] = [];
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -1243,7 +1225,7 @@ describe("runAgentLoop error recovery", () => {
 
   test("does not persist empty provider error messages", async () => {
     const events: AgentEvent[] = [];
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           {
@@ -1275,7 +1257,7 @@ describe("runAgentLoop error recovery", () => {
         test(`does not commit or replay unexecuted calls after ${reason}: ${JSON.stringify({ rawArgs, text })}`, async () => {
           const events: AgentEvent[] = [];
           const committed: Message[] = [];
-          const messages = await runAgentLoop(
+          const messages = await runTestLoop(
             {
               messages: [
                 {
@@ -1290,7 +1272,7 @@ describe("runAgentLoop error recovery", () => {
               model: new InterruptedToolCallModel(reason, rawArgs, text),
               onMessageCommitted: (message) => {
                 expect(message.role).toBe("assistant");
-                committed.push(structuredClone(message));
+                committed.push(message);
               },
             },
             (event) => {
@@ -1312,16 +1294,16 @@ describe("runAgentLoop error recovery", () => {
           expect(events.at(-1)).toMatchObject({ type: "agent_end", reason, messages });
 
           const nextModel = new ScriptedToolModel(undefined, 0);
-          await runAgentLoop({ messages }, { model: nextModel }, () => {});
+          await runTestLoop({ messages }, { model: nextModel }, () => {});
           expect(nextModel.contexts[0]?.messages).toEqual(messages);
         });
       }
     }
   }
 
-  test("publishes and persists aborted hosted tools with a canceled semantic status", async () => {
+  test("publishes and persists aborted hosted tools with a cancelled semantic status", async () => {
     const events: AgentEvent[] = [];
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [{ ...messageIdentityForTest("user"), role: "user", content: "search the web" }],
       },
@@ -1347,7 +1329,7 @@ describe("runAgentLoop error recovery", () => {
             type: "hosted_tool",
             id: "search-1",
             name: "web_search",
-            status: "canceled",
+            status: "cancelled",
           },
         ],
       },
@@ -1365,15 +1347,11 @@ function formatEventSequence(events: AgentEvent[]): string[] {
 }
 
 function streamToolCallMessage(stream: AssistantEventStream, args: unknown): void {
-  const message: AssistantMessage = {
-    ...messageIdentityForTest("assistant"),
-    role: "assistant",
-    content: [],
-  };
+  const message = new AssistantMessageBuilder();
 
   stream.push({
     type: "start",
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
 
   const toolCall = {
@@ -1384,36 +1362,32 @@ function streamToolCallMessage(stream: AssistantEventStream, args: unknown): voi
     rawArgs: JSON.stringify(args),
   } as const;
 
-  message.content.push(toolCall);
+  message.add(toolCall);
 
   stream.push({
     type: "toolcall_start",
     contentIndex: 0,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.push({
     type: "toolcall_end",
     contentIndex: 0,
     toolCall,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.end({
     type: "done",
     reason: "toolUse",
-    message: structuredClone(message),
+    message: message.snapshot(),
   });
 }
 
 function streamMultipleToolCallMessage(stream: AssistantEventStream): void {
-  const message: AssistantMessage = {
-    ...messageIdentityForTest("assistant"),
-    role: "assistant",
-    content: [],
-  };
+  const message = new AssistantMessageBuilder();
 
   stream.push({
     type: "start",
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
 
   const toolCalls = [
@@ -1434,41 +1408,37 @@ function streamMultipleToolCallMessage(stream: AssistantEventStream): void {
   ] as const;
 
   for (const [index, toolCall] of toolCalls.entries()) {
-    message.content.push(toolCall);
+    message.add(toolCall);
 
     stream.push({
       type: "toolcall_start",
       contentIndex: index,
-      snapshot: structuredClone(message),
+      snapshot: message.snapshot(),
     });
     stream.push({
       type: "toolcall_end",
       contentIndex: index,
       toolCall,
-      snapshot: structuredClone(message),
+      snapshot: message.snapshot(),
     });
   }
 
   stream.end({
     type: "done",
     reason: "toolUse",
-    message: structuredClone(message),
+    message: message.snapshot(),
   });
 }
 
 function streamLengthTruncatedToolCallMessage(stream: AssistantEventStream): void {
-  const message: AssistantMessage = {
-    ...messageIdentityForTest("assistant"),
-    role: "assistant",
-    content: [],
-  };
+  const message = new AssistantMessageBuilder();
 
   stream.push({
     type: "start",
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
 
-  message.content.push({
+  message.add({
     type: "tool_call",
     id: "call_1",
     name: "add",
@@ -1479,34 +1449,30 @@ function streamLengthTruncatedToolCallMessage(stream: AssistantEventStream): voi
   stream.push({
     type: "toolcall_start",
     contentIndex: 0,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.push({
     type: "toolcall_delta",
     contentIndex: 0,
     delta: '{"a":',
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.end({
     type: "done",
     reason: "length",
-    message: structuredClone(message),
+    message: message.snapshot(),
   });
 }
 
 function streamTextMessage(stream: AssistantEventStream, text: string): void {
-  const message: AssistantMessage = {
-    ...messageIdentityForTest("assistant"),
-    role: "assistant",
-    content: [],
-  };
+  const message = new AssistantMessageBuilder();
 
   stream.push({
     type: "start",
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
 
-  message.content.push({
+  message.add({
     type: "text",
     text,
   });
@@ -1514,23 +1480,23 @@ function streamTextMessage(stream: AssistantEventStream, text: string): void {
   stream.push({
     type: "text_start",
     contentIndex: 0,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.push({
     type: "text_delta",
     contentIndex: 0,
     delta: text,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.push({
     type: "text_end",
     contentIndex: 0,
     content: text,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.end({
     type: "done",
     reason: "stop",
-    message: structuredClone(message),
+    message: message.snapshot(),
   });
 }

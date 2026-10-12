@@ -1,8 +1,13 @@
-import { getBooleanProperty, getNumberProperty, getStringProperty } from "../properties";
+import {
+  getArrayProperty,
+  getBooleanProperty,
+  getNumberProperty,
+  getStringProperty,
+} from "../properties";
 
 export function formatGrepOutput(result: object): string {
   const path = getStringProperty(result, "path");
-  const matches = readObjectArrayLength(result, "matches");
+  const matches = getArrayProperty(result, "matches")?.length;
   const filesSearched = getNumberProperty(result, "filesSearched");
   const truncated = getBooleanProperty(result, "truncated");
 
@@ -14,9 +19,4 @@ export function formatGrepOutput(result: object): string {
   const files = filesSearched === undefined ? "" : ` in ${filesSearched} files`;
 
   return `${location}${matches} matches${files}${truncated ? " (truncated)" : ""}`;
-}
-function readObjectArrayLength(value: object, key: string): number | undefined {
-  const property = (value as Record<string, unknown>)[key];
-
-  return Array.isArray(property) ? property.length : undefined;
 }

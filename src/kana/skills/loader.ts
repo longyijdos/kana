@@ -1,7 +1,6 @@
 import { type Dirent, existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
-
-import { formatError } from "../format";
+import { formatError } from "@/utils";
 import { getKanaConfigPaths } from "../path";
 import { loadEnabledGlobalSkillNames } from "./config";
 import { loadSkillFromFile } from "./frontmatter";
@@ -59,10 +58,6 @@ export function loadKanaSkills(options: LoadKanaSkillsOptions = {}): LoadKanaSki
     skills: [...skillMap.values()],
     diagnostics,
   };
-}
-
-export function loadKanaSkillsFromDir(dir: string): LoadKanaSkillsResult {
-  return loadSkillsFromDir(dir, new Set<string>());
 }
 
 export function loadKanaSkillActivations(

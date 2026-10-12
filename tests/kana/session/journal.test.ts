@@ -2,13 +2,13 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import {
-  appendKanaSessionMessages,
   createKanaSession,
   createKanaSessionJournal,
   type KanaTodoItem,
   loadKanaSession,
 } from "@/kana";
 import { messageIdentityForTest } from "../../helpers/messages";
+import { appendSessionSnapshot } from "../../helpers/session";
 import { createSessionFixture } from "./session-fixture";
 
 const { cleanupTempDirs, createTempEnv } = createSessionFixture();
@@ -26,7 +26,7 @@ describe("Kana session journal", () => {
       content: "Do not write twice.",
     };
 
-    expect(() => appendKanaSessionMessages(session, [message, message])).toThrow(
+    expect(() => appendSessionSnapshot(session, [message, message])).toThrow(
       "Duplicate Kana logical message id",
     );
     expect(existsSync(session.path)).toBe(false);

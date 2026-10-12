@@ -374,8 +374,7 @@ export class Tui extends Container {
 export function extractCursorPosition(
   lines: string[],
 ): { row: number; column: number } | undefined {
-  for (let row = lines.length - 1; row >= 0; row -= 1) {
-    const line = lines[row];
+  for (const [row, line] of [...lines.entries()].reverse()) {
     const markerIndex = line.indexOf(CURSOR_MARKER);
 
     if (markerIndex < 0) {

@@ -1,18 +1,8 @@
 import type { KanaSessionMetadata } from "@/kana";
-import { color, dim, truncateToWidth } from "../render";
+import { shortId } from "@/utils";
+import { color, dim, pad2, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import {
-  isDown,
-  isEnd,
-  isEnter,
-  isEscape,
-  isHome,
-  isLeft,
-  isPageDown,
-  isPageUp,
-  isRight,
-  isUp,
-} from "../runtime";
+import { isEnter, isEscape } from "../runtime";
 import { tuiTheme } from "../theme";
 import type { Clock } from "../utils/elapsed-timer";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
@@ -94,33 +84,8 @@ export class SessionPicker implements Component {
       return;
     }
 
-    if (isUp(data)) {
-      this.move(-1);
+    if (this.viewport.handleNavigationKey(data, this.sessions.length)) {
       return;
-    }
-
-    if (isDown(data)) {
-      this.move(1);
-      return;
-    }
-
-    if (isLeft(data) || isPageUp(data)) {
-      this.movePage(-1);
-      return;
-    }
-
-    if (isRight(data) || isPageDown(data)) {
-      this.movePage(1);
-      return;
-    }
-
-    if (isHome(data)) {
-      this.viewport.moveTo(0, this.sessions.length);
-      return;
-    }
-
-    if (isEnd(data)) {
-      this.viewport.moveTo(this.sessions.length - 1, this.sessions.length);
     }
   }
 
@@ -146,21 +111,17 @@ export class SessionPicker implements Component {
       ),
       this.sessions.length,
     );
-    const viewport = this.viewport.window(this.sessions.length);
+    const viewport = this.viewport.visible(this.sessions);
     const now = this.now();
 
     if (viewport.hiddenBefore > 0) {
       lines.push(dim(`... ${viewport.hiddenBefore} earlier sessions`));
     }
 
-    for (let index = viewport.start; index < viewport.end; index += 1) {
-      const session = this.sessions[index];
-      const marker = index === this.viewport.selectedIndex ? "> " : "  ";
+    for (const { item: session, selected } of viewport.rows) {
+      const marker = selected ? "> " : "  ";
       const label = `${marker}${formatSession(session, now)}`;
-      const rendered =
-        index === this.viewport.selectedIndex
-          ? color(label, tuiTheme.user)
-          : color(label, tuiTheme.muted);
+      const rendered = selected ? color(label, tuiTheme.user) : color(label, tuiTheme.muted);
 
       lines.push(truncateToWidth(rendered, width));
     }
@@ -171,14 +132,6 @@ export class SessionPicker implements Component {
 
     lines.push(dim(SESSION_PICKER_HELP));
     return lines;
-  }
-
-  private move(delta: number): void {
-    this.viewport.move(delta, this.sessions.length);
-  }
-
-  private movePage(delta: number): void {
-    this.viewport.movePage(delta, this.sessions.length);
   }
 }
 
@@ -214,16 +167,8 @@ function formatActivityTime(timestamp: string, now: number): string {
   const date = new Date(activity);
 
   if (date.getFullYear() === new Date(now).getFullYear()) {
-    return `${MONTH_NAMES[date.getMonth()]} ${pad(date.getDate())}`;
+    return `${MONTH_NAMES[date.getMonth()]} ${pad2(date.getDate())}`;
   }
 
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
-function pad(value: number): string {
-  return value.toString().padStart(2, "0");
-}
-
-function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }

@@ -66,12 +66,11 @@ export function createMemoryConsolidationAgent(
     imageInput: runtime.imageInput,
     parallelToolCalls: runtime.parallelToolCalls,
     maxParallelToolCalls: memoryAgent.maxParallelToolCalls,
-    logger: options.logger,
-    loggerMetadata: {
+    logger: options.logger?.child({
       agentKind: "memory_consolidation",
       memoryScope: options.scope,
       memoryMode: options.mode,
-    },
+    }),
     context: {
       contextLimit: runtime.contextLimit,
       maxOutputTokens: runtime.maxOutputTokens,

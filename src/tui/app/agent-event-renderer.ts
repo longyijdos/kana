@@ -90,7 +90,7 @@ export class AgentEventRenderer {
         break;
       case "agent_end":
         if (event.reason === "aborted") {
-          this.toolCallBlocks.markPendingCanceled();
+          this.toolCallBlocks.markPendingCancelled();
         } else {
           this.toolCallBlocks.finishPreparation();
         }

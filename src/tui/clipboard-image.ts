@@ -1,5 +1,5 @@
 import type { UserImage } from "@/core";
-import { encodeUserImage } from "@/utils";
+import { encodeUserImage } from "@/tools";
 
 const MACOS_CLIPBOARD_FILE_PATHS_SCRIPT = `
 ObjC.import("AppKit");

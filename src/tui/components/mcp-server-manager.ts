@@ -1,17 +1,6 @@
-import { color, dim, stripTerminalControlSequences, truncateToWidth } from "../render";
+import { color, dim, setsEqual, singleLine, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import {
-  isDown,
-  isEnd,
-  isEnter,
-  isEscape,
-  isHome,
-  isLeft,
-  isPageDown,
-  isPageUp,
-  isRight,
-  isUp,
-} from "../runtime";
+import { isEnter, isEscape } from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
@@ -101,33 +90,8 @@ export class McpServerManager implements Component {
       return;
     }
 
-    if (isUp(data)) {
-      this.viewport.move(-1, this.servers.length);
+    if (this.viewport.handleNavigationKey(data, this.servers.length)) {
       return;
-    }
-
-    if (isDown(data)) {
-      this.viewport.move(1, this.servers.length);
-      return;
-    }
-
-    if (isLeft(data) || isPageUp(data)) {
-      this.viewport.movePage(-1, this.servers.length);
-      return;
-    }
-
-    if (isRight(data) || isPageDown(data)) {
-      this.viewport.movePage(1, this.servers.length);
-      return;
-    }
-
-    if (isHome(data)) {
-      this.viewport.moveTo(0, this.servers.length);
-      return;
-    }
-
-    if (isEnd(data)) {
-      this.viewport.moveTo(this.servers.length - 1, this.servers.length);
     }
   }
 
@@ -147,18 +111,16 @@ export class McpServerManager implements Component {
       ),
       this.servers.length,
     );
-    const viewport = this.viewport.window(this.servers.length);
+    const viewport = this.viewport.visible(this.servers);
 
     if (viewport.hiddenBefore > 0) {
       lines.push(dim(`... ${viewport.hiddenBefore} earlier servers`));
     }
 
-    for (let index = viewport.start; index < viewport.end; index += 1) {
-      const server = this.servers[index];
-      const selected = index === this.viewport.selectedIndex;
+    for (const { item: server, selected } of viewport.rows) {
       const marker = selected ? "> " : "  ";
       const checkbox = server.enabled ? "[x]" : "[ ]";
-      const label = `${marker}${checkbox} ${formatSingleLine(server.id)}  ${server.type}`;
+      const label = `${marker}${checkbox} ${singleLine(server.id)}  ${server.type}`;
 
       lines.push(truncateToWidth(color(label, selected ? tuiTheme.user : tuiTheme.muted), width));
 
@@ -183,20 +145,12 @@ export class McpServerManager implements Component {
   }
 }
 
-function setsEqual(first: ReadonlySet<string>, second: ReadonlySet<string>): boolean {
-  return first.size === second.size && [...first].every((value) => second.has(value));
-}
-
-function formatSingleLine(value: string): string {
-  return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
-}
-
 function formatServerDetail(server: McpServerManagerItem): string {
   return server.type === "http"
-    ? `  url: ${formatSingleLine(server.url)}${
+    ? `  url: ${singleLine(server.url)}${
         server.oauth === undefined ? "" : ` · OAuth: ${formatOAuthStatus(server.oauth)}`
       }`
-    : `  command: ${[server.command, ...server.args].map(formatSingleLine).join(" ")}`;
+    : `  command: ${[server.command, ...server.args].map(singleLine).join(" ")}`;
 }
 
 function formatOAuthStatus(status: McpServerOAuthStatus): string {

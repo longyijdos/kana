@@ -1,6 +1,12 @@
 export type OAuthFetch = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
-export type OAuthTokenEndpointAuthMethod = "none" | "client_secret_basic" | "client_secret_post";
+export const OAUTH_TOKEN_ENDPOINT_AUTH_METHODS = [
+  "none",
+  "client_secret_basic",
+  "client_secret_post",
+] as const;
+
+export type OAuthTokenEndpointAuthMethod = (typeof OAUTH_TOKEN_ENDPOINT_AUTH_METHODS)[number];
 
 export type OAuthClientCredentials = {
   clientId: string;
@@ -46,6 +52,13 @@ export type OAuthStoredToken = OAuthTokenSet & {
   issuer: string;
   clientId: string;
   resource?: string;
+};
+
+export type OAuthTokenStatus = {
+  state: "unauthorized" | "authorized" | "expired";
+  refreshable: boolean;
+  expiresAt?: number;
+  scopes?: string[];
 };
 
 export type OAuthTokenStore = {

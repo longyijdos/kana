@@ -1,8 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import path from "node:path";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { writeFileAtomic } from "@/utils";
 import { serializeKanaCustomProviderExample } from "../custom-provider";
 import { getKanaConfigPaths } from "../path";
-import { DEFAULT_KANA_TOOL_APPROVALS } from "../tool-approval-defaults";
 import type { KanaConfig } from "./contracts";
 import { DEFAULT_KANA_CONFIG } from "./defaults";
 import { parseKanaConfig } from "./parser";
@@ -11,133 +10,113 @@ import {
   serializeKanaPromptTemplateExample,
   serializeKanaSubagentProfileExample,
 } from "./reference";
+import { DEFAULT_KANA_TOOL_APPROVALS } from "./tool-approval";
 
-export type InstallKanaConfigResult = {
-  configPath: string;
-  configStatus: "defaults" | "exists";
-  configExamplePath: string;
-  configExampleStatus: "created" | "exists" | "updated";
-  mcpConfigPath: string;
-  mcpConfigStatus: "created" | "exists";
-  mcpEnabledPath: string;
-  mcpEnabledStatus: "created" | "exists";
-  approvalsPath: string;
-  approvalsStatus: "created" | "exists";
-  skillsConfigPath: string;
-  skillsConfigStatus: "created" | "exists";
-  subagentProfileExamplePath: string;
-  subagentProfileExampleStatus: "created" | "exists" | "updated";
-  promptTemplateExamplePath: string;
-  promptTemplateExampleStatus: "created" | "exists" | "updated";
-  customProviderExamplePath: string;
-  customProviderExampleStatus: "created" | "exists" | "updated";
+export type KanaInstalledFile = {
+  readonly name: string;
+  readonly path: string;
+  readonly status: "created" | "exists" | "updated";
 };
 
 export type ResetKanaConfigResult = {
-  configPath: string;
-  configRemoved: boolean;
-  configExamplePath: string;
-  mcpConfigPath: string;
-  mcpEnabledPath: string;
-  approvalsPath: string;
-  skillsConfigPath: string;
+  readonly configPath: string;
+  readonly configRemoved: boolean;
+  readonly resetFiles: readonly { readonly name: string; readonly path: string }[];
 };
 
 export function loadKanaConfig(env: NodeJS.ProcessEnv = process.env): KanaConfig {
   const { configPath } = getKanaConfigPaths(env);
 
   if (!existsSync(configPath)) {
-    return structuredClone(DEFAULT_KANA_CONFIG);
+    return DEFAULT_KANA_CONFIG;
   }
 
   const parsed = Bun.TOML.parse(readFileSync(configPath, "utf8")) as unknown;
   return parseKanaConfig(parsed);
 }
 
-export function installKanaConfig(env: NodeJS.ProcessEnv = process.env): InstallKanaConfigResult {
-  const {
-    home,
-    configPath,
-    configExamplePath,
-    mcpConfigPath,
-    mcpEnabledPath,
-    approvalsPath,
-    skillsConfigPath,
-    agentsDirectory,
-    subagentProfileExamplePath,
-    promptTemplateExamplePath,
-    providersDirectory,
-    customProviderExamplePath,
-  } = getKanaConfigPaths(env);
-  mkdirSync(home, { recursive: true });
-  mkdirSync(agentsDirectory, { recursive: true });
-  mkdirSync(providersDirectory, { recursive: true });
+// Creates missing support files and refreshes generated examples. config.toml
+// itself is never created; it is reported only when the user already has one.
+export function installKanaConfig(env: NodeJS.ProcessEnv = process.env): KanaInstalledFile[] {
+  const paths = getKanaConfigPaths(env);
+  mkdirSync(paths.home, { recursive: true });
+  mkdirSync(paths.agentsDirectory, { recursive: true });
+  mkdirSync(paths.providersDirectory, { recursive: true });
 
-  const configExists = existsSync(configPath);
+  const generated = (name: string, filePath: string, content: string): KanaInstalledFile => ({
+    name,
+    path: filePath,
+    status: writeGeneratedExample(filePath, content),
+  });
+  const installed = (name: string, filePath: string, content: string): KanaInstalledFile => ({
+    name,
+    path: filePath,
+    status: installKanaFile(filePath, content),
+  });
 
-  return {
-    configPath,
-    configStatus: configExists ? "exists" : "defaults",
-    configExamplePath,
-    configExampleStatus: writeGeneratedConfigExample(configExamplePath),
-    mcpConfigPath,
-    mcpConfigStatus: installKanaFile(
-      mcpConfigPath,
-      `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`,
-    ),
-    mcpEnabledPath,
-    mcpEnabledStatus: installKanaFile(
-      mcpEnabledPath,
-      `${JSON.stringify({ enabledServers: [] }, null, 2)}\n`,
-    ),
-    approvalsPath,
-    approvalsStatus: installKanaFile(
-      approvalsPath,
-      `${JSON.stringify(DEFAULT_KANA_TOOL_APPROVALS, null, 2)}\n`,
-    ),
-    skillsConfigPath,
-    skillsConfigStatus: installKanaFile(skillsConfigPath, serializeEmptySkillsConfig()),
-    subagentProfileExamplePath,
-    subagentProfileExampleStatus: writeGeneratedExample(
-      subagentProfileExamplePath,
+  return [
+    ...(existsSync(paths.configPath)
+      ? [{ name: "config", path: paths.configPath, status: "exists" as const }]
+      : []),
+    generated("config example", paths.configExamplePath, configExample()),
+    installed("MCP config", paths.mcpConfigPath, EMPTY_MCP_CONFIG),
+    installed("MCP activation state", paths.mcpEnabledPath, EMPTY_MCP_ACTIVATION),
+    installed("approvals", paths.approvalsPath, defaultApprovals()),
+    installed("skills config", paths.skillsConfigPath, EMPTY_SKILLS_CONFIG),
+    generated(
+      "subagent profile example",
+      paths.subagentProfileExamplePath,
       serializeKanaSubagentProfileExample(),
     ),
-    promptTemplateExamplePath,
-    promptTemplateExampleStatus: writeGeneratedExample(
-      promptTemplateExamplePath,
+    generated(
+      "prompt template example",
+      paths.promptTemplateExamplePath,
       serializeKanaPromptTemplateExample(),
     ),
-    customProviderExamplePath,
-    customProviderExampleStatus: writeGeneratedExample(
-      customProviderExamplePath,
+    generated(
+      "Custom provider example",
+      paths.customProviderExamplePath,
       serializeKanaCustomProviderExample(),
     ),
-  };
+  ];
 }
 
+// Reset touches only the explicit configuration allowlist. User data,
+// credentials, logs, AGENTS.md, and installed Skill directories stay intact.
 export function resetKanaConfig(env: NodeJS.ProcessEnv = process.env): ResetKanaConfigResult {
   const paths = getKanaConfigPaths(env);
   mkdirSync(paths.home, { recursive: true });
 
-  // Reset touches only the explicit configuration allowlist. User data,
-  // credentials, logs, AGENTS.md, and installed Skill directories stay intact.
   const configRemoved = existsSync(paths.configPath);
   rmSync(paths.configPath, { force: true });
-  writeGeneratedConfigExample(paths.configExamplePath);
-  writeKanaFile(paths.mcpConfigPath, `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`);
-  writeKanaFile(paths.mcpEnabledPath, `${JSON.stringify({ enabledServers: [] }, null, 2)}\n`);
-  writeKanaFile(paths.approvalsPath, `${JSON.stringify(DEFAULT_KANA_TOOL_APPROVALS, null, 2)}\n`);
-  writeKanaFile(paths.skillsConfigPath, serializeEmptySkillsConfig());
+  const resetFiles = [
+    { name: "config example", path: paths.configExamplePath, content: configExample() },
+    { name: "MCP config", path: paths.mcpConfigPath, content: EMPTY_MCP_CONFIG },
+    { name: "MCP activation state", path: paths.mcpEnabledPath, content: EMPTY_MCP_ACTIVATION },
+    { name: "approvals", path: paths.approvalsPath, content: defaultApprovals() },
+    { name: "skills config", path: paths.skillsConfigPath, content: EMPTY_SKILLS_CONFIG },
+  ];
+  for (const file of resetFiles) {
+    writeFileAtomic(file.path, file.content);
+  }
 
   return {
     configPath: paths.configPath,
     configRemoved,
-    configExamplePath: paths.configExamplePath,
-    mcpConfigPath: paths.mcpConfigPath,
-    mcpEnabledPath: paths.mcpEnabledPath,
-    approvalsPath: paths.approvalsPath,
-    skillsConfigPath: paths.skillsConfigPath,
+    resetFiles: resetFiles.map(({ name, path }) => ({ name, path })),
   };
+}
+
+const EMPTY_MCP_CONFIG = `${JSON.stringify({ mcpServers: {} }, null, 2)}\n`;
+const EMPTY_MCP_ACTIVATION = `${JSON.stringify({ enabledServers: [] }, null, 2)}\n`;
+const EMPTY_SKILLS_CONFIG = ["[model_invocation]", "enabled = []", ""].join("\n");
+
+function configExample(): string {
+  return serializeKanaConfigExample(DEFAULT_KANA_CONFIG);
+}
+
+function defaultApprovals(): string {
+  return `${JSON.stringify(DEFAULT_KANA_TOOL_APPROVALS, null, 2)}\n`;
 }
 
 function installKanaFile(filePath: string, content: string): "created" | "exists" {
@@ -145,15 +124,8 @@ function installKanaFile(filePath: string, content: string): "created" | "exists
     return "exists";
   }
 
-  writeKanaFile(filePath, content);
+  writeFileAtomic(filePath, content);
   return "created";
-}
-
-function writeGeneratedConfigExample(
-  configExamplePath: string,
-): InstallKanaConfigResult["configExampleStatus"] {
-  const content = serializeKanaConfigExample(DEFAULT_KANA_CONFIG);
-  return writeGeneratedExample(configExamplePath, content);
 }
 
 function writeGeneratedExample(
@@ -161,7 +133,7 @@ function writeGeneratedExample(
   content: string,
 ): "created" | "exists" | "updated" {
   if (!existsSync(filePath)) {
-    writeKanaFile(filePath, content);
+    writeFileAtomic(filePath, content);
     return "created";
   }
   if (readFileSync(filePath, "utf8") === content) {
@@ -170,15 +142,6 @@ function writeGeneratedExample(
 
   // The example is generated reference material rather than user configuration,
   // so refreshing it is safe and keeps upgrades aligned with the current schema.
-  writeKanaFile(filePath, content);
+  writeFileAtomic(filePath, content);
   return "updated";
-}
-
-function writeKanaFile(filePath: string, content: string): void {
-  mkdirSync(path.dirname(filePath), { recursive: true });
-  writeFileSync(filePath, content, { encoding: "utf8", mode: 0o600 });
-}
-
-function serializeEmptySkillsConfig(): string {
-  return ["[model_invocation]", "enabled = []", ""].join("\n");
 }

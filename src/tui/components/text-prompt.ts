@@ -9,33 +9,21 @@ import {
   visibleWidth,
 } from "../render";
 import type { Component } from "../runtime";
-import {
-  CURSOR_MARKER,
-  isDown,
-  isEnter,
-  isEscape,
-  isPrintable,
-  isShiftEnter,
-  isUp,
-} from "../runtime";
+import { isDown, isEnter, isEscape, isPrintable, isShiftEnter, isUp } from "../runtime";
 import { tuiTheme } from "../theme";
 import { BracketedPasteBuffer } from "../utils/bracketed-paste";
 import { visibleLimitForHeight } from "../utils/list-viewport";
+import { createEditorDisplayState, splitEditorDisplayRange } from "./editor/display";
 import { resolveEditorInputAction } from "./editor/input-actions";
 import {
-  createInputLayout,
-  type InputLayoutLine,
-  moveInputCursorVertically,
-} from "./editor/input-layout";
-import {
-  applyEditorAction,
-  createEditorDisplayState,
-  createPasteAction,
-  displayOffsetToSourceOffset,
-  type EditorDisplayState,
-  type EditorTextState,
-  splitEditorDisplayRange,
-} from "./editor/state";
+  createPasteInsertAction,
+  createTextInsertAction,
+  moveCursorVertically,
+  renderInputLine,
+} from "./editor/input-frame";
+import { createInputLayout } from "./editor/input-layout";
+import { applyEditorAction } from "./editor/state";
+import type { EditorDisplayState, EditorTextState } from "./editor/text-state";
 
 const MAX_INPUT_LINES = 5;
 const PROMPT = "> ";
@@ -94,7 +82,10 @@ export class TextPrompt implements Component {
       const linePrompt = index === 0 ? PROMPT : " ".repeat(visibleWidth(PROMPT));
       const content = renderHighlightedLine([
         { text: linePrompt, color: tuiTheme.user },
-        ...this.renderLine(line, index === layout.cursor.line, display),
+        ...renderInputLine(line, index === layout.cursor.line, display, {
+          placeholder: this.options.placeholder,
+          renderText: (text, start) => this.renderInputTokens(text, start, display),
+        }),
       ]);
 
       lines.push(`| ${padRightAnsi(content, contentWidth)} |`);
@@ -135,7 +126,7 @@ export class TextPrompt implements Component {
 
     const editAction = resolveEditorInputAction(data);
     if (editAction) {
-      this.applyAction(editAction);
+      this.state = applyEditorAction(this.state, editAction);
       return;
     }
 
@@ -147,37 +138,6 @@ export class TextPrompt implements Component {
     if (isPrintable(data)) {
       this.applyText(data);
     }
-  }
-
-  private renderLine(
-    line: InputLayoutLine,
-    showCursor: boolean,
-    display: EditorDisplayState,
-  ): HighlightedLineToken[] {
-    if (!showCursor) {
-      return this.renderInputTokens(line.text, line.startOffset, display);
-    }
-
-    if (!this.state.value) {
-      return [
-        { text: CURSOR_MARKER, color: tuiTheme.userMessageText },
-        ...(this.options.placeholder
-          ? [{ text: this.options.placeholder, color: tuiTheme.muted }]
-          : []),
-      ];
-    }
-
-    if (display.cursorOffset < line.startOffset || display.cursorOffset > line.endOffset) {
-      return this.renderInputTokens(line.text, line.startOffset, display);
-    }
-
-    const relativeOffset = display.cursorOffset - line.startOffset;
-
-    return [
-      ...this.renderInputTokens(line.text.slice(0, relativeOffset), line.startOffset, display),
-      { text: CURSOR_MARKER, color: tuiTheme.userMessageText },
-      ...this.renderInputTokens(line.text.slice(relativeOffset), display.cursorOffset, display),
-    ];
   }
 
   private renderInputTokens(
@@ -194,53 +154,28 @@ export class TextPrompt implements Component {
   }
 
   private applyText(text: string): void {
-    const normalized = normalizeLineEndings(text);
-
-    if (normalized) {
-      this.applyAction({ type: "insert", text: normalized });
-    }
+    const action = createTextInsertAction(text);
+    if (action) this.state = applyEditorAction(this.state, action);
   }
 
   private applyPaste(text: string): void {
-    const normalized = normalizeLineEndings(text);
-
-    if (normalized) {
-      this.applyAction(
-        this.options.collapseLongPastes === false
-          ? { type: "insert", text: normalized }
-          : createPasteAction(normalized),
-      );
-    }
-  }
-
-  private applyAction(action: Parameters<typeof applyEditorAction>[1]): void {
-    this.state = applyEditorAction(this.state, action);
+    const action = createPasteInsertAction(text, this.options.collapseLongPastes !== false);
+    if (action) this.state = applyEditorAction(this.state, action);
   }
 
   private moveVertically(direction: -1 | 1): void {
-    const display = createEditorDisplayState(this.state);
-    const currentLayout = createInputLayout({
-      value: display.value,
-      cursorOffset: display.cursorOffset,
-      columns: this.inputColumns,
-      maxLines: this.inputVisibleLines,
-      preferredStartLine: this.inputViewportStartLine,
-    });
-    const displayCursorOffset = moveInputCursorVertically({
-      value: display.value,
-      cursorOffset: display.cursorOffset,
-      columns: this.inputColumns,
+    const moved = moveCursorVertically(
+      this.state,
+      {
+        columns: this.inputColumns,
+        visibleLines: this.inputVisibleLines,
+        startLine: this.inputViewportStartLine,
+      },
       direction,
-    });
-
-    if (displayCursorOffset === undefined) {
-      return;
+    );
+    if (moved) {
+      this.state = moved.state;
+      this.inputViewportStartLine = moved.startLine;
     }
-
-    this.inputViewportStartLine = currentLayout.startLine;
-    this.state = {
-      ...this.state,
-      cursorOffset: displayOffsetToSourceOffset(display, displayCursorOffset),
-    };
   }
 }

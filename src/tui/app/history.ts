@@ -11,7 +11,7 @@ import { tuiTheme } from "../theme";
 
 export function addHistoryTimelineToTranscript(
   transcript: Transcript,
-  timeline: KanaSessionTimelineEntry[],
+  timeline: readonly KanaSessionTimelineEntry[],
   options: { hyperlinks?: boolean; renderLatex?: boolean; renderMermaid?: boolean } = {},
 ): void {
   const toolCalls = new Map<string, ToolCallContent>();
@@ -37,7 +37,7 @@ export function addHistoryTimelineToTranscript(
         break;
       case "todo_state":
         if (entry.toolCallId !== undefined) {
-          todoStates.set(entry.toolCallId, structuredClone(entry.items));
+          todoStates.set(entry.toolCallId, entry.items);
         }
         break;
     }
@@ -114,7 +114,7 @@ function addAssistantMessage(
 
   for (const content of message.content) {
     if (content.type === "tool_call") {
-      toolCalls.set(content.id, structuredClone(content));
+      toolCalls.set(content.id, content);
     }
   }
 }

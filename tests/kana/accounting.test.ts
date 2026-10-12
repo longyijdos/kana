@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -7,6 +7,8 @@ import {
   loadKanaUsageSummary,
   recordKanaAgentRunAccounting,
 } from "@/kana";
+import { getKanaAccountingPath } from "../../src/kana/accounting/storage";
+import { createRecordingLogger, type RecordedLog } from "../helpers/logging";
 import { messageIdentityForTest } from "../helpers/messages";
 
 const directories: string[] = [];
@@ -47,6 +49,32 @@ describe("Kana accounting", () => {
     });
     const globalSummary = loadKanaUsageSummary({ scope: "global", env, cwd: workspace });
     expect(globalSummary).toMatchObject({ runCount: 4, usage: { totalTokens: 65 } });
+  });
+
+  test("skips other versions silently and logs malformed records", () => {
+    const env = { KANA_HOME: temporaryHome() };
+    const cwd = "/work/one";
+    appendKanaRunAccounting(record("session-one", "main", 10), { env, cwd });
+    const accountingPath = getKanaAccountingPath("session-one", { env, cwd });
+    appendFileSync(
+      accountingPath,
+      ['{"type":"run","version":1}', "{not json", '{"type":"run","version":2}', ""].join("\n"),
+    );
+    const logs: RecordedLog[] = [];
+
+    expect(
+      loadKanaUsageSummary({
+        scope: "session",
+        sessionId: "session-one",
+        env,
+        cwd,
+        logger: createRecordingLogger(logs),
+      }),
+    ).toMatchObject({ runCount: 1, usage: { totalTokens: 10 } });
+    expect(logs.map(({ event, metadata }) => [event, metadata?.line])).toEqual([
+      ["accounting.record_skipped", 3],
+      ["accounting.record_skipped", 4],
+    ]);
   });
 
   test("writes token-only version 2 records", () => {
@@ -117,6 +145,7 @@ describe("Kana accounting", () => {
           supportsParallelToolCalls: false,
           protocol: null,
           supportsHostedWebSearch: false,
+          supportsImageInput: false,
         },
       });
 

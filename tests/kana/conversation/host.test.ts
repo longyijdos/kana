@@ -116,7 +116,7 @@ describe("Kana conversation host", () => {
     await host.close();
   });
 
-  test("queries committed timeline during runs and across session transitions without leaking state", async () => {
+  test("queries committed timeline during runs and across session transitions", async () => {
     const env = createTempEnv();
     const model = new ControlledModel();
     const host = createKanaConversationHost({
@@ -133,10 +133,12 @@ describe("Kana conversation host", () => {
     const originalId = runtime.sessionId!;
     const submit = (content: string) =>
       runtime.submit({ ...messageIdentityForTest("user"), role: "user", content });
-    const committedTimeline = (id: string) => host.getSessionTimeline(id);
+    const committedTimeline = (id: string) => host.runtimeOptions.getSessionTimeline(id);
     try {
       expect(runtime.session!.timeline).toEqual([]);
-      expect(() => host.getSessionTimeline("missing")).toThrow("has no session missing");
+      expect(() => host.runtimeOptions.getSessionTimeline("missing")).toThrow(
+        "has no session missing",
+      );
       const run = submit("First run.");
       await waitFor(() => model.requests.length === 1);
       const committed = committedTimeline(originalId);
@@ -144,16 +146,6 @@ describe("Kana conversation host", () => {
       expect(runtime.session!.timeline).toEqual(committed);
       model.requests[0]!.update("Partial reply");
       await waitFor(() => runtime.state.streamingMessage !== undefined);
-      expect(runtime.session!.timeline).toEqual(committed);
-
-      const hostSnapshot = host.getSessionTimeline(originalId);
-      hostSnapshot[0]!.timestamp = "changed";
-      hostSnapshot.splice(1);
-      const runtimeSnapshot = runtime.session!;
-      const message = runtimeSnapshot.timeline.find((entry) => entry.type === "message")!;
-      if (message.message.role === "user") message.message.content = "changed";
-      runtimeSnapshot.timeline.pop();
-      expect(host.getSessionTimeline(originalId)).toEqual(committed);
       expect(runtime.session!.timeline).toEqual(committed);
 
       model.requests[0]!.complete("First reply.");
@@ -388,7 +380,9 @@ describe("Kana conversation host", () => {
           "toolUse",
         );
         await waitFor(() => model.requests.length === 2);
-        expect(runtime.session!.timeline).toEqual(host.getSessionTimeline(runtime.sessionId!));
+        expect(runtime.session!.timeline).toEqual(
+          host.runtimeOptions.getSessionTimeline(runtime.sessionId!),
+        );
         expect(
           runtime.session!.timeline.filter((entry) => entry.type === "todo_state"),
         ).toHaveLength(2);
@@ -452,9 +446,7 @@ describe("Kana conversation host", () => {
     writeFileSync(profilePath, subagentProfile("Initial instructions."));
     const host = createKanaConversationHost({ env, session: { type: "none" } });
 
-    const first = host.loadSubagentProfiles();
-    const focused = first.profiles.find((profile) => profile.name === "focused");
-    if (focused) focused.instructions = "Changed returned snapshot.";
+    host.loadSubagentProfiles();
     writeFileSync(profilePath, subagentProfile("Updated on disk."));
     writeFileSync(path.join(agentsDirectory, "later.md"), subagentProfile("Added later."));
 
@@ -502,7 +494,7 @@ describe("Kana conversation host", () => {
     try {
       const sessionId = host.initialSession?.metadata.id ?? "";
       host.createAgent({ sessionId });
-      const client = host.getSubagents(sessionId);
+      const client = host.runtimeOptions.getSubagents(sessionId);
       const profile = host
         .loadSubagentProfiles()
         .profiles.find((entry) => entry.name === "focused");
@@ -596,15 +588,15 @@ describe("Kana conversation host", () => {
     expect(host.config.agent.model.name).toBe("deepseek-v4-pro");
     expect(host.resumeSessionId).toBeUndefined();
     expect(runtime.session!.timeline).toEqual([]);
-    expect(host.getSessionTimeline(runtime.sessionId!)).toEqual([]);
-    expect(host.listSessions()).toEqual([]);
+    expect(host.runtimeOptions.getSessionTimeline(runtime.sessionId!)).toEqual([]);
+    expect(host.runtimeOptions.listSessions()).toEqual([]);
     expect(() => host.loadSession("saved-session")).toThrow(
       "Saved sessions are unavailable in clean mode.",
     );
-    await expect(host.deleteSession("saved-session")).rejects.toThrow(
+    await expect(host.runtimeOptions.deleteSession("saved-session")).rejects.toThrow(
       "Saved sessions are unavailable in clean mode.",
     );
-    expect(() => host.forkSession([], undefined, "Fork the task.")).toThrow(
+    expect(() => host.runtimeOptions.forkSession([], undefined, "Fork the task.")).toThrow(
       "Forking sessions is unavailable in clean mode.",
     );
     expect(() => host.loadUsage("session")).toThrow("Session usage is unavailable in clean mode.");
@@ -618,12 +610,12 @@ describe("Kana conversation host", () => {
     const env = createTempEnv();
     writeFileSync(path.join(env.KANA_HOME ?? "", "mcp.json"), "invalid MCP config");
     let mcpStartCount = 0;
-    const seenLaunchModes: Array<string | undefined> = [];
+    const seenOptions: Array<{ mcp: boolean; memory: boolean | undefined }> = [];
     const host = createKanaConversationHost({
       env,
       launchMode: "clean",
       createAgent: (_config, options = {}) => {
-        seenLaunchModes.push(options.launchMode);
+        seenOptions.push({ mcp: options.resolveMcp !== undefined, memory: options.memoryEnabled });
         return new Agent({
           model: new MockModel({ provider: "mock", model: "mock" }),
           messages: options.messages,
@@ -647,7 +639,7 @@ describe("Kana conversation host", () => {
     host.createAgent({ sessionId });
     const mcpSnapshot = await host.startMcp();
 
-    expect(seenLaunchModes).toEqual(["clean"]);
+    expect(seenOptions).toEqual([{ mcp: false, memory: false }]);
     expect(mcpStartCount).toBe(0);
     expect(mcpSnapshot).toEqual({ diagnostics: [], selectedServerIds: [] });
     expect(host.loadMcpServers()).toEqual([]);
@@ -686,10 +678,8 @@ describe("Kana conversation host", () => {
     host.createAgent({ sessionId: source.id });
     expect(resolveTodoState?.()).toEqual(todoState);
 
-    const fork = host.forkSession([], undefined, "Continue independently.");
+    const fork = host.runtimeOptions.forkSession([], undefined, "Continue independently.");
     expect(fork.todoState).toEqual(todoState);
-    fork.todoState[0]!.content = "Mutated return value";
-    expect(resolveTodoState?.()).toEqual(todoState);
 
     const forkAgent = host.createAgent({ sessionId: fork.id });
     expect(resolveTodoState?.()).toEqual(todoState);
@@ -747,8 +737,8 @@ describe("Kana conversation host", () => {
     ]);
     const host = createKanaConversationHost({ env });
     host.loadSession(deletedSession.id);
-    const jobs = host.getBackgroundJobs(deletedSession.id);
-    let canceled = false;
+    const jobs = host.runtimeOptions.getBackgroundJobs(deletedSession.id);
+    let cancelled = false;
     jobs?.start({
       kind: "test",
       label: "pending cleanup",
@@ -757,18 +747,20 @@ describe("Kana conversation host", () => {
           signal.addEventListener(
             "abort",
             () => {
-              canceled = true;
-              resolve({ status: "canceled", exitCode: null });
+              cancelled = true;
+              resolve({ status: "cancelled", exitCode: null });
             },
             { once: true },
           );
         }),
     });
 
-    expect(await host.deleteSession(deletedSession.id)).toBe(true);
-    expect(canceled).toBe(true);
+    expect(await host.runtimeOptions.deleteSession(deletedSession.id)).toBe(true);
+    expect(cancelled).toBe(true);
     expect(jobs?.list()).toEqual([]);
-    expect(host.listSessions().some((session) => session.id === deletedSession.id)).toBe(false);
+    expect(
+      host.runtimeOptions.listSessions().some((session) => session.id === deletedSession.id),
+    ).toBe(false);
 
     await host.close();
   });
@@ -794,8 +786,8 @@ describe("Kana conversation host", () => {
         }),
     });
     const runtime = createRuntime(host);
-    const previousJobs = host.getBackgroundJobs(session.id);
-    let previousCanceled = false;
+    const previousJobs = host.runtimeOptions.getBackgroundJobs(session.id);
+    let previousCancelled = false;
     previousJobs?.start({
       kind: "test",
       label: "previous generation",
@@ -804,8 +796,8 @@ describe("Kana conversation host", () => {
           signal.addEventListener(
             "abort",
             () => {
-              previousCanceled = true;
-              resolve({ status: "canceled", exitCode: null });
+              previousCancelled = true;
+              resolve({ status: "cancelled", exitCode: null });
             },
             { once: true },
           );
@@ -813,9 +805,9 @@ describe("Kana conversation host", () => {
     });
 
     await runtime.resumeSession(session.id);
-    const currentJobs = host.getBackgroundJobs(session.id);
+    const currentJobs = host.runtimeOptions.getBackgroundJobs(session.id);
 
-    expect(previousCanceled).toBe(true);
+    expect(previousCancelled).toBe(true);
     expect(currentJobs).not.toBe(previousJobs);
     expect(() =>
       currentJobs?.start({
@@ -843,10 +835,10 @@ function createRuntime<TConfiguration>(
         }
       : undefined,
     createAgent: (options) => host.createAgent(options),
-    createNewSession: () => host.createNewSession(),
-    getSessionTimeline: (sessionId) => host.getSessionTimeline(sessionId),
+    createNewSession: () => host.runtimeOptions.createNewSession(),
+    getSessionTimeline: (sessionId) => host.runtimeOptions.getSessionTimeline(sessionId),
     forkSession: (messages, contextCheckpoint, prompt) =>
-      host.forkSession(messages, contextCheckpoint, prompt),
+      host.runtimeOptions.forkSession(messages, contextCheckpoint, prompt),
     loadSession: (sessionId) => {
       const session = host.loadSession(sessionId);
       return {
@@ -856,10 +848,10 @@ function createRuntime<TConfiguration>(
         contextCheckpoint: session.contextCheckpoint,
       };
     },
-    listSessions: () => host.listSessions(),
-    deleteSession: (sessionId) => host.deleteSession(sessionId),
+    listSessions: () => host.runtimeOptions.listSessions(),
+    deleteSession: (sessionId) => host.runtimeOptions.deleteSession(sessionId),
     disposeSession: (sessionId, source, foregroundSettled) =>
-      host.disposeSession(sessionId, source, foregroundSettled),
+      host.runtimeOptions.disposeSession(sessionId, source, foregroundSettled),
     wakeScheduler: host.wakeScheduler,
     goalMaxRounds: host.config.agent.goalMaxRounds,
     getLogger: () => host.getLogger(),

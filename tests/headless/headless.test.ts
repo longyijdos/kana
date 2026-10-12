@@ -1,5 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { Type } from "typebox";
+import { createLogger } from "@/logging";
 import { Agent, type AgentConfig } from "../../src/agent";
 import {
   AssistantEventStream,
@@ -23,14 +24,13 @@ import {
   type KanaGoalSnapshot,
 } from "../../src/kana";
 import { createUpdateGoalTool } from "../../src/kana/tools";
-import type { Logger } from "../../src/logging";
 import { MockModel } from "../../src/providers/mock";
 import type { Tool } from "../../src/tools";
 import { messageIdentityForTest } from "../helpers/messages";
 
 describe("headless output protocol", () => {
   test.each(["event", "completion"] as const)(
-    "returns detached Goal results after owning a %s snapshot",
+    "returns the Goal result from a %s snapshot",
     (source) => {
       const goal: KanaGoalSnapshot = {
         id: "goal",
@@ -53,10 +53,6 @@ describe("headless output protocol", () => {
       else output.completeGoal(goal);
       const first = output.result();
       expect(first.goal).toEqual(goal);
-      expect(first.goal).not.toBe(goal);
-      first.goal!.objective = "changed";
-      first.goal!.startedAt.setTime(0);
-      expect(output.result().goal).toEqual(goal);
     },
   );
 
@@ -256,13 +252,6 @@ describe("headless Goal execution", () => {
       }),
       goalMaxRounds: 2,
     });
-    runtime.subscribe((event) => {
-      if (event.type === "goal_state_changed") {
-        event.goal.objective = "changed by another listener";
-        event.goal.startedAt.setTime(0);
-      }
-    });
-
     const result = await runHeadlessConversation({
       runtime,
       prompt: "Finish the task.",
@@ -467,7 +456,7 @@ describe("headless timeout", () => {
     let toolAborted = false;
     const tool: Tool = {
       name: "change_state",
-      description: "Wait until the run is canceled.",
+      description: "Wait until the run is cancelled.",
       parameters: Type.Object({}),
       execute: (_args, context) =>
         new Promise((resolve) => {
@@ -488,14 +477,9 @@ describe("headless timeout", () => {
     });
     const stdout = new StringOutput();
     const logs: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
-    const logger: Logger = {
-      debug: () => {},
-      info: () => {},
-      warn: (event, metadata) => {
-        logs.push({ event, metadata });
-      },
-      error: () => {},
-    };
+    const logger = createLogger((level, event, metadata) => {
+      if (level === "warn") logs.push({ event, metadata });
+    });
 
     const result = await runHeadlessConversation({
       runtime,

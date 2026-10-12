@@ -18,12 +18,22 @@
 * Do not add `comment-check-ignore` suppressions without maintainer approval.
 * For imports under `src`, use relative imports within the same top-level `src` directory. Use the `@/` alias only across top-level directories and prefer target barrels such as `@/core` or `@/tools` over deep aliases.
 
+## Trust boundaries and state
+
+* Validate untrusted input once, at the edge where it enters: files, network and provider responses, tool arguments, CLI flags, and user input. Use `parseWithSchema` for structured formats.
+* Trust typed values inside the system. Do not re-validate, re-normalize, or guard states that the types already rule out, and do not add fallbacks for branches that cannot happen.
+* Treat data as immutable: declare readonly types, update by replacing values, and share them by reference. Copy only when handing a value to code that mutates it or when crossing a persistence or process boundary.
+* Give each resource one owner that handles idempotent close and cleanup. Callers do not add their own flags or wrappers around it.
+* The logger never throws, so do not wrap logging in `try`/`catch`. Isolate failures only around callbacks that a frontend or user supplies.
+* Before writing a helper, search `utils`, `core`, and the module's own helpers for an existing one.
+
 ## Tests
 
 * Treat tests as evidence for behavior, not as mandatory file churn for every code edit.
 * When observable behavior changes, inspect existing coverage first. Add or update tests only where the current suite does not adequately cover the changed contract or regression risk.
 * Add a regression test for a bug fix when it is practical, stable, and likely to prevent recurrence.
 * Do not change tests solely because implementation structure, comments, formatting, documentation, or generated references changed while behavior remained covered.
+* Do not write tests that assert defensive copies, frozen objects, or isolation from caller mutation; readonly types express that contract.
 * Before adding a case, identify the lowest behavior owner and search existing coverage. Prefer strengthening or consolidating an existing case when it remains independently readable.
 * Keep complete input and error matrices at the lowest owning layer. Higher-level tests should cover representative wiring and cross-module behavior instead of repeating those matrices.
 * Run checks in proportion to the change. Use the full `bun run check` for broad, risky, or commit-ready changes.
@@ -34,6 +44,7 @@
 * Update documentation only when the change would otherwise make a canonical document inaccurate or when it introduces a stable contract readers need. Typical examples are public CLI behavior, configuration and defaults, persistence or wire formats, provider/tool/Skill contracts, TUI interaction, and architecture boundaries.
 * A code change does not require a documentation edit merely because it is user-visible or touches a documented module. Do not update docs for internal refactors when the existing abstraction remains accurate.
 * Document invariants and the resulting current design, not implementation steps, commit chronology, or every local branch. Rename local code details in docs only when readers actually depend on those names.
+* Do not document internal safeguards such as copies, freezes, or repeated checks as contracts; a documented safeguard becomes a requirement that later changes preserve.
 * Use the ownership map in `docs/README.md` and `docs/README.zh-CN.md`. Update the narrowest owning document, consolidate overlapping material, and remove superseded explanations instead of appending another version.
 * Keep English and Chinese versions structurally and semantically aligned whenever a document changes. Update the documentation indexes only when the document set or ownership routing changes.
 * Do not add repeated ownership boilerplate to every document; keep routing guidance in the documentation indexes and write natural introductions in individual documents.

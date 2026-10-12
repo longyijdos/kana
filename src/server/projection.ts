@@ -55,7 +55,7 @@ export class ServerProjection {
       running: this.runtime.isRunning,
       run: this.run ? { ...this.run } : null,
       assistant: this.assistant ? projectAssistant(this.assistant) : null,
-      tools: structuredClone([...this.tools.values()]),
+      tools: [...this.tools.values()],
       context: this.context(),
       input_queue: this.runtime.inputQueue,
       todo: this.runtime.todoState,
@@ -66,7 +66,7 @@ export class ServerProjection {
   private context(estimatedTokens?: number) {
     const state = this.runtime.state;
     return {
-      estimated_tokens: estimatedTokens ?? state.estimatedContextTokens ?? null,
+      estimated_tokens: estimatedTokens ?? this.runtime.estimateContextTokens() ?? null,
       context_limit: state.contextLimit ?? state.model.metadata.contextWindow,
     };
   }

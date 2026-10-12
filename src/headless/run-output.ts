@@ -8,7 +8,7 @@ import {
   toKanaExecRunTermination,
   toKanaExecUsage,
 } from "./protocol";
-import type { HeadlessRunTermination } from "./run-lifecycle";
+import { type HeadlessRunTermination, SIGINT_EXIT_CODE } from "./run-lifecycle";
 
 export type HeadlessOutputStream = {
   write(chunk: string): unknown;
@@ -90,7 +90,6 @@ export class HeadlessRunOutputProjector {
     this.emit(createKanaExecEvent({ type: "run.started" }), "Running...");
   }
 
-  // The runtime listener transfers its detached event to this projector.
   handle(event: ConversationRuntimeEvent): void {
     switch (event.type) {
       case "run_start":
@@ -172,7 +171,7 @@ export class HeadlessRunOutputProjector {
       termination: this.termination,
       finalMessage: this.finalMessage,
       usage: this.usage,
-      ...(this.goal === undefined ? {} : { goal: structuredClone(this.goal) }),
+      ...(this.goal === undefined ? {} : { goal: this.goal }),
     };
   }
 
@@ -342,7 +341,7 @@ export class HeadlessRunOutputProjector {
       case "timeout":
         return 124;
       case "sigint":
-        return 130;
+        return SIGINT_EXIT_CODE;
       default:
         return this.options.goal
           ? this.goal?.status === "completed"

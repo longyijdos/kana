@@ -1,17 +1,6 @@
-import { color, dim, truncateToWidth } from "../render";
+import { collapseWhitespace, color, dim, setsEqual, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import {
-  isDown,
-  isEnd,
-  isEnter,
-  isEscape,
-  isHome,
-  isLeft,
-  isPageDown,
-  isPageUp,
-  isRight,
-  isUp,
-} from "../runtime";
+import { isEnter, isEscape } from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
@@ -69,33 +58,8 @@ export class SkillManager implements Component {
       return;
     }
 
-    if (isUp(data)) {
-      this.move(-1);
+    if (this.viewport.handleNavigationKey(data, this.skills.length)) {
       return;
-    }
-
-    if (isDown(data)) {
-      this.move(1);
-      return;
-    }
-
-    if (isLeft(data) || isPageUp(data)) {
-      this.movePage(-1);
-      return;
-    }
-
-    if (isRight(data) || isPageDown(data)) {
-      this.movePage(1);
-      return;
-    }
-
-    if (isHome(data)) {
-      this.viewport.moveTo(0, this.skills.length);
-      return;
-    }
-
-    if (isEnd(data)) {
-      this.viewport.moveTo(this.skills.length - 1, this.skills.length);
     }
   }
 
@@ -121,15 +85,13 @@ export class SkillManager implements Component {
       ),
       this.skills.length,
     );
-    const viewport = this.viewport.window(this.skills.length);
+    const viewport = this.viewport.visible(this.skills);
 
     if (viewport.hiddenBefore > 0) {
       lines.push(dim(`... ${viewport.hiddenBefore} earlier skills`));
     }
 
-    for (let index = viewport.start; index < viewport.end; index += 1) {
-      const skill = this.skills[index];
-      const selected = index === this.viewport.selectedIndex;
+    for (const { item: skill, selected } of viewport.rows) {
       const marker = selected ? "> " : "  ";
       const checkbox = skill.enabled ? "[x]" : "[ ]";
       const scope = skill.mutable ? "global" : "project";
@@ -142,7 +104,7 @@ export class SkillManager implements Component {
       lines.push(truncateToWidth(rendered, width));
 
       if (selected && skill.description.trim()) {
-        lines.push(truncateToWidth(dim(`  ${formatDescription(skill.description)}`), width));
+        lines.push(truncateToWidth(dim(`  ${collapseWhitespace(skill.description)}`), width));
       }
     }
 
@@ -163,20 +125,4 @@ export class SkillManager implements Component {
 
     skill.enabled = !skill.enabled;
   }
-
-  private move(delta: number): void {
-    this.viewport.move(delta, this.skills.length);
-  }
-
-  private movePage(delta: number): void {
-    this.viewport.movePage(delta, this.skills.length);
-  }
-}
-
-function formatDescription(description: string): string {
-  return description.trim().replace(/\s+/g, " ");
-}
-
-function setsEqual(first: ReadonlySet<string>, second: ReadonlySet<string>): boolean {
-  return first.size === second.size && [...first].every((value) => second.has(value));
 }

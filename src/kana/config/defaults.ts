@@ -1,5 +1,5 @@
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from "@/agent";
-import { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tool-names";
+import { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tools/names";
 import type { KanaConfig } from "./contracts";
 
 // Tools that own a longer runtime, such as shell, declare their own

@@ -1,4 +1,4 @@
-import { color, dim, stripTerminalControlSequences, truncateToWidth } from "../render";
+import { color, dim, singleLine, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
 import { isDown, isEnter, isEscape, isUp } from "../runtime";
 import { tuiTheme } from "../theme";
@@ -68,7 +68,7 @@ export class McpAuthActionMenu implements Component {
 
   render(width: number): string[] {
     const lines = [
-      color(`MCP OAuth · ${formatLabel(this.serverId)}`, tuiTheme.bottomTitle),
+      color(`MCP OAuth · ${singleLine(this.serverId)}`, tuiTheme.bottomTitle),
       dim(`Status: ${formatStatus(this.status)}`),
     ];
 
@@ -94,8 +94,4 @@ function formatStatus(status: McpServerOAuthStatus): string {
   return status.state === "expired" && status.refreshable
     ? "expired (refresh available)"
     : status.state;
-}
-
-function formatLabel(value: string): string {
-  return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
 }

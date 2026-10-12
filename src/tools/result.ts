@@ -11,11 +11,9 @@ export function normalizeToolResult(value: unknown): ToolResult {
       throw new TypeError("Tool result isError must be a boolean when provided.");
     }
 
-    // Detach validated observations at the normalization boundary so a tool
-    // cannot mutate them into an invalid provider or session message later.
     return {
       content: value.content,
-      ...(images === undefined ? {} : { images: structuredClone(images) }),
+      ...(images === undefined ? {} : { images }),
       result: value.result,
       ...(value.isError === undefined ? {} : { isError: value.isError }),
     };

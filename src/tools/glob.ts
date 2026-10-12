@@ -1,9 +1,10 @@
 import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
+import { clampLimit } from "./limit";
 import { strictObject } from "./strict-object";
-import type { Tool, ToolContext } from "./tool";
-import { resolveExistingWorkspaceDirectory } from "./workspace-path";
+import type { Tool } from "./tool";
+import { joinWorkspacePath, resolveExistingWorkspaceDirectory } from "./workspace-path";
 
 export const DEFAULT_GLOB_LIMIT = 200;
 const MAX_GLOB_LIMIT = 2000;
@@ -111,7 +112,7 @@ export function createGlobTool(
         dot: includeHidden,
         onlyFiles: false,
       })) {
-        throwIfAborted(context);
+        context.signal?.throwIfAborted();
 
         if (maxDepth !== undefined && pathDepth(relativePath) > maxDepth) {
           continue;
@@ -212,20 +213,6 @@ function compareMatches(left: GlobToolMatch, right: GlobToolMatch): number {
 
 function pathDepth(relativePath: string): number {
   return relativePath.split(/[\\/]+/).filter(Boolean).length;
-}
-
-function clampLimit(limit: number, max: number): number {
-  return Math.min(Math.max(Math.trunc(limit), 1), max);
-}
-
-function joinWorkspacePath(basePath: string, childPath: string): string {
-  return basePath === "." ? childPath : path.join(basePath, childPath);
-}
-
-function throwIfAborted(context: ToolContext): void {
-  if (context.signal?.aborted) {
-    throw new Error("Glob aborted.");
-  }
 }
 
 function formatGlobContent(result: GlobToolResult): string {

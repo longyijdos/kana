@@ -8,6 +8,5 @@ export {
 } from "./openai-codex";
 export {
   createKanaOAuthTokenStore,
-  type KanaOAuthTokenStatus,
   loadKanaOAuthTokenStatuses,
 } from "./token-store";

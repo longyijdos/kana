@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  buildKanaSystemPrompt,
   createKanaAgent,
   DEFAULT_KANA_CONFIG,
   formatKanaSkillInvocation,
@@ -11,9 +10,12 @@ import {
   getKanaConfigPaths,
   loadKanaSkillActivations,
   loadKanaSkills,
-  loadKanaSkillsFromDir,
   saveEnabledGlobalSkillNames,
 } from "@/kana";
+import {
+  type BuildKanaPromptAssemblyOptions,
+  buildKanaPromptAssembly,
+} from "../../../src/kana/prompt";
 import { createKanaSkillStore } from "../../../src/kana/skills/store";
 
 const tempDirs: string[] = [];
@@ -39,7 +41,7 @@ describe("Kana skills", () => {
       ].join("\n"),
     );
 
-    const { skills, diagnostics } = loadKanaSkillsFromDir(root);
+    const { skills, diagnostics } = loadKanaSkills({ includeDefaults: false, skillPaths: [root] });
 
     expect(diagnostics).toEqual([]);
     expect(skills).toEqual([
@@ -59,7 +61,7 @@ describe("Kana skills", () => {
       ["---", "name: missing-description", "---", "No metadata.", ""].join("\n"),
     );
 
-    const { skills, diagnostics } = loadKanaSkillsFromDir(root);
+    const { skills, diagnostics } = loadKanaSkills({ includeDefaults: false, skillPaths: [root] });
 
     expect(skills).toEqual([]);
     expect(diagnostics).toEqual([
@@ -81,7 +83,7 @@ describe("Kana skills", () => {
       ),
     );
 
-    const { skills, diagnostics } = loadKanaSkillsFromDir(root);
+    const { skills, diagnostics } = loadKanaSkills({ includeDefaults: false, skillPaths: [root] });
 
     expect(skills.map((skill) => skill.name)).toEqual(["Bad_Name"]);
     expect(diagnostics).toEqual([
@@ -113,7 +115,7 @@ describe("Kana skills", () => {
       ),
     );
 
-    const { skills } = loadKanaSkillsFromDir(root);
+    const { skills } = loadKanaSkills({ includeDefaults: false, skillPaths: [root] });
 
     expect(skills.map((skill) => skill.name)).toEqual(["child-skill", "root-preferred"]);
   });
@@ -136,7 +138,7 @@ describe("Kana skills", () => {
       ["---", "name: valid", "description: Should load.", "---", "Use valid.", ""].join("\n"),
     );
 
-    const { skills, diagnostics } = loadKanaSkillsFromDir(root);
+    const { skills, diagnostics } = loadKanaSkills({ includeDefaults: false, skillPaths: [root] });
 
     expect(diagnostics).toEqual([]);
     expect(skills.map((skill) => skill.name)).toEqual(["valid"]);
@@ -392,7 +394,7 @@ describe("Kana skills", () => {
   });
 
   test("builds the system prompt with available skills", () => {
-    const prompt = buildKanaSystemPrompt({
+    const prompt = buildSystemPrompt({
       cwd: "/repo",
       env: createTempEnv(),
       skills: [
@@ -410,7 +412,7 @@ describe("Kana skills", () => {
     expect(prompt).toContain("<name>test-skill</name>");
   });
 
-  test("createKanaAgent loads skills from the default directories", () => {
+  test("createKanaAgent lists skills loaded from the default directories", () => {
     const cwd = createTempDir();
     const home = createTempDir();
     const previousCwd = process.cwd();
@@ -443,10 +445,11 @@ describe("Kana skills", () => {
           },
         },
       };
-      const agent = createKanaAgent(config.agent, {
-        providers: config.provider,
-        memoryEnabled: config.memory.enabled,
-      });
+      const agent = createKanaAgent(
+        config.agent,
+        { providers: config.provider },
+        { skills: loadKanaSkillActivations().skills.filter((skill) => skill.enabled) },
+      );
 
       expect(agent.state.system).toContain("<name>project-skill</name>");
       expect(agent.state.system).toContain(
@@ -481,7 +484,7 @@ describe("Kana skills", () => {
       ].join("\n"),
     );
 
-    const { skills } = loadKanaSkillsFromDir(root);
+    const { skills } = loadKanaSkills({ includeDefaults: false, skillPaths: [root] });
 
     expect(skills[0]?.description).toBe("First line.\nSecond line.");
   });
@@ -523,4 +526,8 @@ function restoreEnv(name: string, value: string | undefined): void {
   }
 
   process.env[name] = value;
+}
+
+function buildSystemPrompt(options: BuildKanaPromptAssemblyOptions): string {
+  return buildKanaPromptAssembly(options).initialSystem ?? "";
 }

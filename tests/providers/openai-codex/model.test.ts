@@ -27,7 +27,7 @@ describe("OpenAI Codex model", () => {
       expect(error).toMatchObject({
         status: 429,
         providerCode: "subscription_sharing_usage_limit_exceeded",
-        param: "model",
+        providerParam: "model",
         requestId: "request-limit",
       });
       expect(String(error)).toContain("https://chatgpt.com/settings/usage");

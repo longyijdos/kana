@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { type TSchema, Type } from "typebox";
 import type { Tool } from "../../src/tools/tool";
-import { validateToolArguments, validateToolCall } from "../../src/tools/validation";
+import { validateToolArguments } from "../../src/tools/validation";
 
 const addParameters = Type.Object({
   a: Type.Number(),
@@ -41,34 +41,6 @@ describe("tool validation", () => {
       a: "1",
       b: 2,
     });
-  });
-
-  test("validates tool call arguments by tool name", () => {
-    const validated = validateToolCall([addTool], {
-      type: "tool_call",
-      id: "call_1",
-      name: "add",
-      args: {
-        a: 3,
-        b: "4",
-      },
-    });
-
-    expect(validated).toEqual({
-      a: 3,
-      b: 4,
-    });
-  });
-
-  test("throws when the tool does not exist", () => {
-    expect(() =>
-      validateToolCall([addTool], {
-        type: "tool_call",
-        id: "call_1",
-        name: "missing",
-        args: {},
-      }),
-    ).toThrow('Tool "missing" not found');
   });
 
   test("throws formatted validation errors", () => {

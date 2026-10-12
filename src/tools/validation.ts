@@ -1,27 +1,12 @@
 import type { Static, TSchema } from "typebox";
-import { Compile } from "typebox/compile";
 import type { TLocalizedValidationError } from "typebox/error";
 import { Value } from "typebox/value";
-import type { ToolCallContent } from "@/core";
+import { compileSchema } from "@/utils";
 import { coerceJsonSchemaValue, hasTypeBoxMetadata } from "./json-schema-coercion";
 import type { Tool } from "./tool";
 
-const validatorCache = new WeakMap<object, ReturnType<typeof Compile>>();
-
-function getValidator(schema: TSchema): ReturnType<typeof Compile> {
-  const cached = validatorCache.get(schema);
-  if (cached) {
-    return cached;
-  }
-
-  const validator = Compile(schema);
-  validatorCache.set(schema, validator);
-
-  return validator;
-}
-
 export function precompileToolParameters<T extends TSchema>(schema: T): T {
-  getValidator(schema);
+  compileSchema(schema);
   return schema;
 }
 
@@ -69,19 +54,6 @@ function formatValidationErrors(errors: TLocalizedValidationError[]): string {
   return formatted || "Unknown validation error";
 }
 
-export function validateToolCall<T extends TSchema>(
-  tools: Tool<T>[],
-  toolCall: ToolCallContent,
-): Static<T> {
-  const tool = tools.find((candidate) => candidate.name === toolCall.name);
-
-  if (!tool) {
-    throw new Error(`Tool "${toolCall.name}" not found`);
-  }
-
-  return validateToolArguments(tool, toolCall.args);
-}
-
 export function validateToolArguments<T extends TSchema>(tool: Tool<T>, args: unknown): Static<T> {
   let converted = Value.Convert(tool.parameters, structuredClone(args));
 
@@ -89,7 +61,7 @@ export function validateToolArguments<T extends TSchema>(tool: Tool<T>, args: un
     converted = coerceJsonSchemaValue(converted, tool.parameters);
   }
 
-  const validator = getValidator(tool.parameters);
+  const validator = compileSchema(tool.parameters);
 
   if (validator.Check(converted)) {
     return converted as Static<T>;

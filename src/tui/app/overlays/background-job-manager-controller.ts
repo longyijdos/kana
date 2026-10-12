@@ -1,0 +1,124 @@
+import type { BackgroundJobClient, BackgroundJobSummary } from "@/jobs";
+import { shortId } from "@/utils";
+import {
+  BackgroundJobManager,
+  type BackgroundJobManagerAction,
+  type Editor,
+} from "../../components";
+import type { Tui } from "../../runtime";
+import type { BottomAreaController } from "../bottom-area-controller";
+
+export type BackgroundJobManagerControllerOptions = {
+  editor: Editor;
+  bottomArea: BottomAreaController;
+  tui: Tui;
+  getJobs: () => BackgroundJobClient | undefined;
+  showError: (error: unknown) => void;
+  onClose: () => void;
+};
+
+export class BackgroundJobManagerController {
+  private manager?: BackgroundJobManager;
+  private jobs?: BackgroundJobClient;
+  private unsubscribe?: () => void;
+  private killing = false;
+
+  constructor(private readonly options: BackgroundJobManagerControllerOptions) {}
+
+  get active(): boolean {
+    return this.manager !== undefined;
+  }
+
+  open(): void {
+    if (this.manager) {
+      return;
+    }
+    this.options.editor.clear();
+    this.jobs = this.options.getJobs();
+    this.manager = new BackgroundJobManager((action) => this.handleAction(action));
+    this.unsubscribe = this.jobs?.subscribe(() => this.refresh());
+    this.refresh();
+    this.options.bottomArea.show(this.manager);
+  }
+
+  close(): void {
+    const manager = this.manager;
+    if (!manager) {
+      return;
+    }
+    this.unsubscribe?.();
+    this.unsubscribe = undefined;
+    this.manager = undefined;
+    this.jobs = undefined;
+    this.options.bottomArea.restore(manager);
+    this.options.onClose();
+  }
+
+  private handleAction(action: BackgroundJobManagerAction): void {
+    switch (action.type) {
+      case "close":
+        this.close();
+        break;
+      case "kill":
+        void this.kill(action.job);
+        break;
+      case "refresh":
+        this.refresh();
+        break;
+      case "select":
+        this.refreshPreview(action.job.id);
+        break;
+    }
+  }
+
+  private refresh(notice?: string): void {
+    const manager = this.manager;
+    if (!manager) {
+      return;
+    }
+    try {
+      const jobs = this.jobs?.list() ?? [];
+      manager.replaceJobs(jobs, notice ?? (this.jobs ? undefined : "No active session."));
+      this.refreshPreview(manager.selectedJob?.id);
+    } catch (error) {
+      this.options.showError(error);
+      manager.replaceJobs([], "Unable to load Background Jobs.");
+    }
+    this.options.tui.requestRender();
+  }
+
+  private refreshPreview(jobId: string | undefined): void {
+    const manager = this.manager;
+    if (!manager) {
+      return;
+    }
+    try {
+      manager.replacePreview(jobId ? this.jobs?.peek(jobId) : undefined);
+    } catch (error) {
+      this.options.showError(error);
+      manager.replacePreview(undefined);
+    }
+    this.options.tui.requestRender();
+  }
+
+  private async kill(job: BackgroundJobSummary): Promise<void> {
+    if (this.killing || !this.jobs) {
+      return;
+    }
+    this.killing = true;
+    try {
+      const settlement = this.jobs.kill(job.id, {
+        source: "tui",
+        reason: "Stopped from the /jobs manager.",
+      });
+      this.refresh(`Stopping ${shortId(job.id)}...`);
+      const result = await settlement;
+      this.refresh(`${shortId(result.id)} ${result.status}.`);
+    } catch (error) {
+      this.options.showError(error);
+      this.refresh("Unable to stop Background Job.");
+    } finally {
+      this.killing = false;
+    }
+  }
+}

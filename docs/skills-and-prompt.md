@@ -29,7 +29,7 @@ description: Check and release a TypeScript package.
 Run the project-required tests, then inspect changes.
 ```
 
-Frontmatter recognizes only `name` and `description`; unknown fields are ignored. It supports unquoted or single/double-quoted scalars and multi-line values after `|` or `>` with indented content. Frontmatter must begin with `---` on the first line and have a separate closing marker.
+Frontmatter recognizes only `name` and `description`; unknown fields are ignored. It supports unquoted or single/double-quoted scalars and multi-line values after `|` or `>` with indented content. Frontmatter must begin with `---` on the first line and have a separate closing marker. Declaring a key twice is a parse failure.
 
 If `name` is absent, `SKILL.md` uses its parent directory name. A file without frontmatter is still parsed, but it is not registered because it has no `description`. A description longer than 1024 characters, a name longer than 64 characters, invalid name characters, leading/trailing hyphens, or consecutive `--` produce warnings; the current implementation still registers a Skill with an invalid name when it has a description.
 

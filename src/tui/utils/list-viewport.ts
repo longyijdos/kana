@@ -1,8 +1,16 @@
+import { isDown, isEnd, isHome, isLeft, isPageDown, isPageUp, isRight, isUp } from "../runtime";
+
 export type ListViewportWindow = {
   start: number;
   end: number;
   hiddenBefore: number;
   hiddenAfter: number;
+};
+
+export type ListViewportRow<T> = {
+  item: T;
+  index: number;
+  selected: boolean;
 };
 
 export class ListViewport {
@@ -20,24 +28,11 @@ export class ListViewport {
   }
 
   move(delta: number, length: number): void {
-    if (length === 0) {
-      this.selectedIndex = 0;
-      this.start = 0;
-      return;
-    }
-
-    this.selectedIndex = clamp(this.selectedIndex + delta, 0, length - 1);
-    this.ensureSelectedVisible(length);
+    this.moveTo(this.selectedIndex + delta, length);
   }
 
   moveTo(index: number, length: number): void {
-    if (length === 0) {
-      this.selectedIndex = 0;
-      this.start = 0;
-      return;
-    }
-
-    this.selectedIndex = clamp(index, 0, length - 1);
+    this.selectedIndex = clampIndex(index, length);
     this.ensureSelectedVisible(length);
   }
 
@@ -45,99 +40,79 @@ export class ListViewport {
   // the same row. A window already parked at an end cannot move, so the selection
   // falls through to that end instead of staying put.
   movePage(delta: number, length: number): void {
-    if (length === 0) {
-      this.selectedIndex = 0;
-      this.start = 0;
-      return;
-    }
-
-    const visibleLimit = Math.max(1, this.visibleLimit);
-    const maxStart = Math.max(0, length - visibleLimit);
     const previousStart = this.start;
-
-    this.start = clamp(this.start + delta * visibleLimit, 0, maxStart);
-
+    this.start = clamp(this.start + delta * this.visibleLimit, 0, this.maxStart(length));
     const advanced = this.start - previousStart;
-    this.selectedIndex = clamp(
-      this.selectedIndex + (advanced === 0 ? delta * visibleLimit : advanced),
-      0,
-      length - 1,
+    this.moveTo(
+      this.selectedIndex + (advanced === 0 ? delta * this.visibleLimit : advanced),
+      length,
     );
-    this.ensureSelectedVisible(length);
+  }
+
+  // Applies the shared list keys: arrows move one row, left/right and page
+  // keys move one page, Home/End jump to the ends. Returns false for any other
+  // key so the component can handle it.
+  handleNavigationKey(data: string, length: number): boolean {
+    if (isUp(data)) this.move(-1, length);
+    else if (isDown(data)) this.move(1, length);
+    else if (isLeft(data) || isPageUp(data)) this.movePage(-1, length);
+    else if (isRight(data) || isPageDown(data)) this.movePage(1, length);
+    else if (isHome(data)) this.moveTo(0, length);
+    else if (isEnd(data)) this.moveTo(length - 1, length);
+    else return false;
+    return true;
   }
 
   page(delta: number, length: number): void {
-    if (length === 0) {
-      this.selectedIndex = 0;
-      this.start = 0;
-      return;
-    }
-
-    const visibleLimit = Math.max(1, this.visibleLimit);
-    const maxStart = Math.max(0, length - visibleLimit);
-
-    this.start = clamp(this.start + delta * visibleLimit, 0, maxStart);
-    this.selectedIndex = this.start;
+    this.scroll(delta * this.visibleLimit, length);
   }
 
   scroll(delta: number, length: number): void {
-    if (length === 0) {
-      this.selectedIndex = 0;
-      this.start = 0;
-      return;
-    }
-
-    const visibleLimit = Math.max(1, this.visibleLimit);
-    const maxStart = Math.max(0, length - visibleLimit);
-
-    this.start = clamp(this.start + delta, 0, maxStart);
+    this.start = clamp(this.start + delta, 0, this.maxStart(length));
     this.selectedIndex = this.start;
   }
 
   window(length: number): ListViewportWindow {
     this.clamp(length);
-
-    const visibleLimit = Math.max(1, this.visibleLimit);
-    const start = Math.min(this.start, Math.max(0, length - visibleLimit));
-    const end = Math.min(length, start + visibleLimit);
-
-    this.start = start;
-
+    const end = Math.min(length, this.start + this.visibleLimit);
     return {
-      start,
+      start: this.start,
       end,
-      hiddenBefore: start,
-      hiddenAfter: Math.max(0, length - end),
+      hiddenBefore: this.start,
+      hiddenAfter: length - end,
     };
+  }
+
+  visible<T>(items: readonly T[]): ListViewportWindow & { rows: ListViewportRow<T>[] } {
+    const window = this.window(items.length);
+    const rows = items.slice(window.start, window.end).map((item, offset) => {
+      const index = window.start + offset;
+      return { item, index, selected: index === this.selectedIndex };
+    });
+    return { ...window, rows };
   }
 
   private ensureSelectedVisible(length: number): void {
     this.clamp(length);
-
-    const visibleLimit = Math.max(1, this.visibleLimit);
-
     if (this.selectedIndex < this.start) {
       this.start = this.selectedIndex;
-      return;
-    }
-
-    if (this.selectedIndex >= this.start + visibleLimit) {
-      this.start = this.selectedIndex - visibleLimit + 1;
+    } else if (this.selectedIndex >= this.start + this.visibleLimit) {
+      this.start = this.selectedIndex - this.visibleLimit + 1;
     }
   }
 
   private clamp(length: number): void {
-    if (length === 0) {
-      this.selectedIndex = 0;
-      this.start = 0;
-      return;
-    }
-
-    const visibleLimit = Math.max(1, this.visibleLimit);
-
-    this.selectedIndex = Math.min(this.selectedIndex, length - 1);
-    this.start = Math.min(this.start, Math.max(0, length - visibleLimit));
+    this.selectedIndex = clampIndex(this.selectedIndex, length);
+    this.start = clamp(this.start, 0, this.maxStart(length));
   }
+
+  private maxStart(length: number): number {
+    return Math.max(0, length - this.visibleLimit);
+  }
+}
+
+function clampIndex(index: number, length: number): number {
+  return length === 0 ? 0 : clamp(index, 0, length - 1);
 }
 
 function clamp(value: number, min: number, max: number): number {

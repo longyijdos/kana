@@ -3,16 +3,19 @@ import { randomUUID } from "node:crypto";
 import {
   type AssistantMessage,
   createUserMessage,
-  type HostedToolContent,
   type Message,
   type ModelContext,
   type ModelUsage,
   type ToolCallContent,
-  type UserImage,
-  type UserMessage,
 } from "@/core";
-import { createNoopLogger, type Logger, type LogMetadata } from "@/logging";
-import { resolveRuntimeContextMessages } from "./prompt-assembly";
+import { createNoopLogger, type Logger } from "@/logging";
+import { errorFields, sliceUtf8Prefix, sliceUtf8Suffix } from "@/utils";
+import { isRuntimeContextMessage, resolveRuntimeContextMessages } from "./prompt-assembly";
+import {
+  estimateContextTokens,
+  estimateMessagesTokens,
+  estimateTextTokens,
+} from "./token-estimate";
 
 const DEFAULT_COMPACT_AT_RATIO = 0.8;
 const DEFAULT_TARGET_RATIO = 0.1;
@@ -28,26 +31,26 @@ class ContextCompactionError extends Error {
 }
 
 export type ContextCheckpoint = {
-  id: string;
-  baseCompactionId?: string;
-  summary: string;
+  readonly id: string;
+  readonly baseCompactionId?: string;
+  readonly summary: string;
   // The summary replaces this many messages from the start of the full
   // history. The marker can occur later because recent raw messages are kept.
-  coveredMessageCount: number;
+  readonly coveredMessageCount: number;
   // Persist the marker after the message that was current when compaction ran,
   // independently from the older cutoff represented by coveredMessageCount.
-  createdAfterMessageCount: number;
-  compactedMessageCount: number;
-  reason: ContextCompactionReason;
-  beforeTokens: number;
-  estimatedAfterTokens: number;
-  usage?: ModelUsage;
-  createdAt: string;
+  readonly createdAfterMessageCount: number;
+  readonly compactedMessageCount: number;
+  readonly reason: ContextCompactionReason;
+  readonly beforeTokens: number;
+  readonly estimatedAfterTokens: number;
+  readonly usage?: ModelUsage;
+  readonly createdAt: string;
 };
 
 export type CompactPolicyInput = {
   previousSummary?: string;
-  messages: Message[];
+  messages: readonly Message[];
   maxSummaryTokens: number;
   maxOutputTokens: number;
   signal?: AbortSignal;
@@ -70,7 +73,6 @@ export type ContextManagerConfig = {
   compactAtRatio?: number;
   targetRatio?: number;
   logger?: Logger;
-  loggerMetadata?: LogMetadata;
 };
 
 type ContextCompactionStart = {
@@ -111,22 +113,13 @@ export class ContextManager {
 
   private readonly compactPolicy?: CompactPolicy;
   private readonly logger: Logger;
-  private readonly loggerMetadata?: LogMetadata;
   private checkpointData?: ContextCheckpoint;
   private usageMeasurement?: UsageMeasurement;
   private readonly compactionData: ContextCheckpoint[] = [];
 
   constructor(config: ContextManagerConfig) {
-    assertPositiveInteger(config.contextLimit, "contextLimit");
-    assertPositiveInteger(config.maxOutputTokens, "maxOutputTokens");
-
     const compactAtRatio = config.compactAtRatio ?? DEFAULT_COMPACT_AT_RATIO;
     const targetRatio = config.targetRatio ?? DEFAULT_TARGET_RATIO;
-    assertRatio(compactAtRatio, "compactAtRatio");
-    assertRatio(targetRatio, "targetRatio");
-    if (targetRatio >= compactAtRatio) {
-      throw new Error("targetRatio must be smaller than compactAtRatio.");
-    }
 
     const safetyReserve = Math.min(8_192, Math.max(256, Math.floor(config.contextLimit * 0.05)));
     const promptBudget = config.contextLimit - safetyReserve;
@@ -153,21 +146,16 @@ export class ContextManager {
     );
     this.maxToolContentBytes = this.maxToolContentTokens * 3;
     this.compactPolicy = config.compactPolicy;
-    if (config.checkpoint) {
-      assertValidCheckpoint(config.checkpoint);
-    }
-    this.checkpointData =
-      config.checkpoint === undefined ? undefined : structuredClone(config.checkpoint);
+    this.checkpointData = config.checkpoint;
     this.logger = config.logger ?? createNoopLogger();
-    this.loggerMetadata = config.loggerMetadata;
   }
 
   get checkpoint(): ContextCheckpoint | undefined {
-    return this.checkpointData === undefined ? undefined : structuredClone(this.checkpointData);
+    return this.checkpointData === undefined ? undefined : this.checkpointData;
   }
 
   get compactions(): ContextCheckpoint[] {
-    return structuredClone(this.compactionData);
+    return this.compactionData;
   }
 
   fork(): ContextManager {
@@ -179,7 +167,6 @@ export class ContextManager {
       compactAtRatio: this.triggerTokens / this.promptBudget,
       targetRatio: this.targetTokens / this.promptBudget,
       logger: this.logger,
-      loggerMetadata: this.loggerMetadata,
     });
     manager.usageMeasurement =
       this.usageMeasurement === undefined ? undefined : { ...this.usageMeasurement };
@@ -238,7 +225,7 @@ export class ContextManager {
     const maxOutputTokens = Math.min(this.maxOutputTokens, this.promptBudget - estimatedTokens);
     prepared.maxOutputTokens = maxOutputTokens;
     if (maxOutputTokens < this.maxOutputTokens) {
-      this.log("debug", "context.output_limit_adjusted", {
+      this.logger.debug("context.output_limit_adjusted", {
         configuredMaxOutputTokens: this.maxOutputTokens,
         effectiveMaxOutputTokens: maxOutputTokens,
         estimatedPromptTokens: estimatedTokens,
@@ -267,7 +254,7 @@ export class ContextManager {
     // the request begins. That material is billable input but is not present in
     // Kana's replayable history, so it must not replace a clean prompt anchor.
     if (message.content.some((content) => content.type === "hosted_tool")) {
-      this.log("debug", "context.usage_anchor_skipped", {
+      this.logger.debug("context.usage_anchor_skipped", {
         reason: "hosted_tool",
         messageCount,
       });
@@ -284,7 +271,7 @@ export class ContextManager {
   // A resumed session restores messages and the checkpoint but not the in-memory
   // usage measurement. Rebuild the anchor from the latest persisted assistant
   // response, which carries the provider's prompt tokens for that request.
-  rehydrateUsageAnchor(messages: Message[]): void {
+  rehydrateUsageAnchor(messages: readonly Message[]): void {
     const checkpoint = this.checkpointData;
     // An anchor recorded before the current checkpoint was measured against a
     // different (pre-summary) projection, so it cannot calibrate the next
@@ -304,7 +291,7 @@ export class ContextManager {
         messageCount: index,
         promptTokens: message.usage.promptTokens,
       };
-      this.log("debug", "context.usage_anchor_hydrated", { messageCount: index });
+      this.logger.debug("context.usage_anchor_hydrated", { messageCount: index });
       return;
     }
   }
@@ -340,7 +327,7 @@ export class ContextManager {
       contextLimit: this.contextLimit,
     };
 
-    this.log("info", "context.compaction_started", {
+    this.logger.info("context.compaction_started", {
       reason,
       estimatedTokens: beforeTokens,
       compactedMessageCount,
@@ -372,7 +359,7 @@ export class ContextManager {
         );
       }
 
-      const checkpoint: ContextCheckpoint = {
+      const draft: ContextCheckpoint = {
         id: randomUUID(),
         baseCompactionId: this.checkpointData?.id,
         summary,
@@ -385,9 +372,14 @@ export class ContextManager {
         usage: result.usage,
         createdAt: new Date().toISOString(),
       };
-      this.checkpointData = checkpoint;
+      // The estimate projects the context through the new checkpoint itself.
+      this.checkpointData = draft;
       this.usageMeasurement = undefined;
-      checkpoint.estimatedAfterTokens = estimateContextTokens(this.createModelContext(context));
+      const checkpoint: ContextCheckpoint = {
+        ...draft,
+        estimatedAfterTokens: estimateContextTokens(this.createModelContext(context)),
+      };
+      this.checkpointData = checkpoint;
 
       if (checkpoint.estimatedAfterTokens >= this.promptBudget) {
         throw new Error(
@@ -395,23 +387,23 @@ export class ContextManager {
         );
       }
 
-      this.log("info", "context.compaction_ended", {
+      this.logger.info("context.compaction_ended", {
         reason,
         beforeTokens,
         estimatedAfterTokens: checkpoint.estimatedAfterTokens,
         compactedMessageCount,
       });
-      this.compactionData.push(structuredClone(checkpoint));
-      return structuredClone(checkpoint);
+      this.compactionData.push(checkpoint);
+      return checkpoint;
     } catch (error) {
       // A failed summary must leave the last usable projection intact.
       this.checkpointData = previousCheckpoint;
       this.usageMeasurement = previousMeasurement;
-      this.log("error", "context.compaction_failed", {
+      this.logger.error("context.compaction_failed", {
         reason,
         estimatedTokens: beforeTokens,
         compactedMessageCount,
-        errorType: error instanceof Error ? error.name : typeof error,
+        ...errorFields(error),
       });
       if (options.signal?.aborted) {
         throw error;
@@ -434,7 +426,7 @@ export class ContextManager {
       const coveredRuntimeContext = resolveRuntimeContextMessages(
         context.messages,
         coveredMessageCount,
-      ).map(({ message }) => structuredClone(message));
+      ).map(({ message }) => message);
       messages.unshift(
         createUserMessage({
           content: formatSummaryForModel(this.checkpointData.summary),
@@ -446,8 +438,8 @@ export class ContextManager {
 
     return {
       system: context.system,
-      messages: structuredClone(messages),
-      tools: context.tools ? [...context.tools] : undefined,
+      messages,
+      tools: context.tools,
       signal: context.signal,
     };
   }
@@ -501,7 +493,7 @@ export class ContextManager {
     return lastValidBoundary;
   }
 
-  private assertCheckpointFits(messages: Message[]): void {
+  private assertCheckpointFits(messages: readonly Message[]): void {
     if (
       this.checkpointData &&
       (this.checkpointData.coveredMessageCount <= 0 ||
@@ -510,143 +502,37 @@ export class ContextManager {
       throw new Error("Context checkpoint does not match the available message history.");
     }
   }
-
-  private log(level: "debug" | "info" | "error", event: string, metadata?: LogMetadata): void {
-    try {
-      this.logger[level](event, {
-        ...this.loggerMetadata,
-        ...metadata,
-      });
-    } catch {
-      // Diagnostics must not change context preparation or recovery behavior.
-    }
-  }
-}
-
-function isRuntimeContextMessage(message: Message): message is UserMessage {
-  return message.role === "user" && message.provenance.kind === "runtime_context";
 }
 
 function messageForCompaction(message: Message): Message {
   switch (message.role) {
     case "user":
-      return structuredClone(message);
+      return message;
     case "tool":
       return {
         id: message.id,
-        provenance: structuredClone(message.provenance),
+        provenance: message.provenance,
         role: "tool",
         toolCallId: message.toolCallId,
         toolName: message.toolName,
         content: message.content,
-        ...(message.images?.length ? { images: structuredClone(message.images) } : {}),
+        ...(message.images?.length ? { images: message.images } : {}),
         isError: message.isError,
       };
     case "assistant":
       return {
         id: message.id,
-        provenance: structuredClone(message.provenance),
+        provenance: message.provenance,
         role: "assistant",
         stopReason: message.stopReason,
-        content: structuredClone(
-          message.content.filter(
-            (content) => content.type !== "thinking" && content.type !== "hosted_tool",
-          ),
+        content: message.content.filter(
+          (content) => content.type !== "thinking" && content.type !== "hosted_tool",
         ),
       };
   }
 }
 
-export function estimateContextTokens(context: ModelContext): number {
-  return (
-    8 +
-    estimateTextTokens(context.system ?? "") +
-    estimateTextTokens(
-      context.tools
-        ? stringifyForEstimate(
-            context.tools.map(({ name, description, parameters }) => ({
-              name,
-              description,
-              parameters,
-            })),
-          )
-        : "",
-    ) +
-    estimateMessagesTokens(context.messages)
-  );
-}
-
-export function estimateTextTokens(text: string): number {
-  return Math.ceil(Buffer.byteLength(text, "utf8") / 3);
-}
-
-function estimateMessagesTokens(messages: Message[]): number {
-  return messages.reduce((total, message) => total + estimateMessageTokens(message), 0);
-}
-
-function estimateMessageTokens(message: Message): number {
-  switch (message.role) {
-    case "user":
-      return 6 + estimateTextTokens(message.content) + estimateImageTokens(message.images);
-    case "tool":
-      return (
-        10 +
-        estimateTextTokens(message.toolName) +
-        estimateTextTokens(message.toolCallId) +
-        estimateTextTokens(message.content) +
-        estimateImageTokens(message.images)
-      );
-    case "assistant":
-      return (
-        8 +
-        message.content.reduce((total, content) => {
-          switch (content.type) {
-            case "text":
-            case "thinking":
-              return total + 4 + estimateTextTokens(content.text);
-            case "tool_call":
-              return total + estimateToolCallTokens(content);
-            case "hosted_tool":
-              return total + estimateHostedToolTokens(content);
-          }
-          return total;
-        }, 0)
-      );
-  }
-}
-
-function estimateImageTokens(images: readonly UserImage[] | undefined): number {
-  // Current Codex models use 32px image patches at original/auto detail. Keep
-  // base64 bytes out of token estimation because they are not textual input.
-  return (images ?? []).reduce(
-    (total, image) => total + Math.ceil(image.width / 32) * Math.ceil(image.height / 32),
-    0,
-  );
-}
-
-function estimateHostedToolTokens(content: HostedToolContent): number {
-  return (
-    8 + estimateTextTokens(content.name) + estimateTextTokens(stringifyForEstimate(content.action))
-  );
-}
-
-function estimateToolCallTokens(content: ToolCallContent): number {
-  return (
-    10 +
-    estimateTextTokens(content.name) +
-    estimateTextTokens(content.rawArgs ?? stringifyForEstimate(content.args))
-  );
-}
-
-function stringifyForEstimate(value: unknown): string {
-  try {
-    return JSON.stringify(value) ?? "";
-  } catch {
-    return "[unserializable]";
-  }
-}
-
-function isCompleteTurnBoundary(messages: Message[], boundary: number): boolean {
+function isCompleteTurnBoundary(messages: readonly Message[], boundary: number): boolean {
   const previous = messages[boundary - 1];
   if (!previous) {
     return false;
@@ -701,80 +587,4 @@ function truncateTextToEstimatedTokens(text: string, maxTokens: number): string 
   const prefix = sliceUtf8Prefix(text, Math.floor(availableBytes * 0.7));
   const suffix = sliceUtf8Suffix(text, Math.ceil(availableBytes * 0.3));
   return `${prefix}${marker}${suffix}`;
-}
-
-function sliceUtf8Prefix(text: string, maxBytes: number): string {
-  let bytes = 0;
-  let index = 0;
-  while (index < text.length) {
-    const codePoint = text.codePointAt(index);
-    if (codePoint === undefined) {
-      break;
-    }
-    const character = String.fromCodePoint(codePoint);
-    const nextBytes = Buffer.byteLength(character, "utf8");
-    if (bytes + nextBytes > maxBytes) {
-      break;
-    }
-    bytes += nextBytes;
-    index += character.length;
-  }
-  return text.slice(0, index);
-}
-
-function sliceUtf8Suffix(text: string, maxBytes: number): string {
-  let bytes = 0;
-  let index = text.length;
-  while (index > 0) {
-    const previousIndex =
-      index >= 2 && isLowSurrogate(text.charCodeAt(index - 1)) ? index - 2 : index - 1;
-    const character = text.slice(previousIndex, index);
-    const nextBytes = Buffer.byteLength(character, "utf8");
-    if (bytes + nextBytes > maxBytes) {
-      break;
-    }
-    bytes += nextBytes;
-    index = previousIndex;
-  }
-  return text.slice(index);
-}
-
-function isLowSurrogate(value: number): boolean {
-  return value >= 0xdc00 && value <= 0xdfff;
-}
-
-function assertPositiveInteger(value: number, name: string): void {
-  if (!Number.isInteger(value) || value <= 0) {
-    throw new Error(`${name} must be a positive integer.`);
-  }
-}
-
-function assertRatio(value: number, name: string): void {
-  if (!Number.isFinite(value) || value <= 0 || value >= 1) {
-    throw new Error(`${name} must be greater than 0 and smaller than 1.`);
-  }
-}
-
-function assertValidCheckpoint(checkpoint: ContextCheckpoint): void {
-  if (
-    !checkpoint.id ||
-    !checkpoint.createdAt ||
-    !checkpoint.summary.trim() ||
-    (checkpoint.baseCompactionId !== undefined && !checkpoint.baseCompactionId) ||
-    (checkpoint.reason !== "threshold" &&
-      checkpoint.reason !== "provider_limit" &&
-      checkpoint.reason !== "manual") ||
-    !Number.isInteger(checkpoint.coveredMessageCount) ||
-    checkpoint.coveredMessageCount <= 0 ||
-    !Number.isInteger(checkpoint.createdAfterMessageCount) ||
-    checkpoint.createdAfterMessageCount < checkpoint.coveredMessageCount ||
-    !Number.isInteger(checkpoint.compactedMessageCount) ||
-    checkpoint.compactedMessageCount <= 0 ||
-    !Number.isInteger(checkpoint.beforeTokens) ||
-    checkpoint.beforeTokens < 0 ||
-    !Number.isInteger(checkpoint.estimatedAfterTokens) ||
-    checkpoint.estimatedAfterTokens < 0
-  ) {
-    throw new Error("Invalid context checkpoint.");
-  }
 }

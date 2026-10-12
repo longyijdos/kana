@@ -1,17 +1,8 @@
 import type { BackgroundJobPeekSnapshot, BackgroundJobSummary } from "@/jobs";
-import { color, dim, stripTerminalControlSequences, truncateToWidth } from "../render";
+import { shortId } from "@/utils";
+import { color, dim, singleLine, stripTerminalControlSequences, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import {
-  isDown,
-  isEnd,
-  isEscape,
-  isHome,
-  isLeft,
-  isPageDown,
-  isPageUp,
-  isRight,
-  isUp,
-} from "../runtime";
+import { isEscape } from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
@@ -26,7 +17,7 @@ export type BackgroundJobManagerAction =
 
 export class BackgroundJobManager implements Component {
   private readonly viewport = new ListViewport(JOB_VISIBLE_LIMIT);
-  private jobs: BackgroundJobSummary[] = [];
+  private jobs: readonly BackgroundJobSummary[] = [];
   private preview?: BackgroundJobPeekSnapshot;
   private notice?: string;
 
@@ -34,13 +25,13 @@ export class BackgroundJobManager implements Component {
 
   get selectedJob(): BackgroundJobSummary | undefined {
     const job = this.jobs[this.viewport.selectedIndex];
-    return job ? cloneJob(job) : undefined;
+    return job ? job : undefined;
   }
 
   replaceJobs(jobs: BackgroundJobSummary[], notice?: string): void {
     const selectedId = this.selectedJob?.id;
     const previousIndex = this.viewport.selectedIndex;
-    this.jobs = jobs.map(cloneJob);
+    this.jobs = jobs;
     this.notice = notice;
 
     const selectedIndex = selectedId
@@ -75,33 +66,8 @@ export class BackgroundJobManager implements Component {
       }
       return;
     }
-    if (isUp(data)) {
-      this.moveBy(() => this.viewport.move(-1, this.jobs.length));
+    if (this.moveBy(() => this.viewport.handleNavigationKey(data, this.jobs.length))) {
       return;
-    }
-
-    if (isDown(data)) {
-      this.moveBy(() => this.viewport.move(1, this.jobs.length));
-      return;
-    }
-
-    if (isLeft(data) || isPageUp(data)) {
-      this.moveBy(() => this.viewport.movePage(-1, this.jobs.length));
-      return;
-    }
-
-    if (isRight(data) || isPageDown(data)) {
-      this.moveBy(() => this.viewport.movePage(1, this.jobs.length));
-      return;
-    }
-
-    if (isHome(data)) {
-      this.moveBy(() => this.viewport.moveTo(0, this.jobs.length));
-      return;
-    }
-
-    if (isEnd(data)) {
-      this.moveBy(() => this.viewport.moveTo(this.jobs.length - 1, this.jobs.length));
     }
   }
 
@@ -117,15 +83,13 @@ export class BackgroundJobManager implements Component {
       visibleLimitForHeight(JOB_VISIBLE_LIMIT, availableHeight, JOB_RESERVED_ROWS),
       this.jobs.length,
     );
-    const viewport = this.viewport.window(this.jobs.length);
+    const viewport = this.viewport.visible(this.jobs);
     if (viewport.hiddenBefore > 0) {
       lines.push(dim(`... ${viewport.hiddenBefore} earlier Jobs`));
     }
-    for (let index = viewport.start; index < viewport.end; index += 1) {
-      const job = this.jobs[index];
-      const selected = index === this.viewport.selectedIndex;
+    for (const { item: job, selected } of viewport.rows) {
       const marker = selected ? "> " : "  ";
-      const label = `${marker}${shortJobId(job.id)} · ${job.status} · ${singleLine(job.label)}`;
+      const label = `${marker}${shortId(job.id)} · ${job.status} · ${singleLine(job.label)}`;
       lines.push(truncateToWidth(color(label, selected ? tuiTheme.user : tuiTheme.muted), width));
     }
     if (viewport.hiddenAfter > 0) {
@@ -134,7 +98,7 @@ export class BackgroundJobManager implements Component {
 
     const selected = this.selectedJob;
     if (selected) {
-      lines.push(dim(`${shortJobId(selected.id)} output tail (non-consuming)`));
+      lines.push(dim(`${shortId(selected.id)} output tail (non-consuming)`));
       lines.push(...this.renderPreview(width, availableHeight, lines.length));
     }
     if (this.notice) {
@@ -144,15 +108,16 @@ export class BackgroundJobManager implements Component {
     return lines;
   }
 
-  private moveBy(apply: () => void): void {
+  private moveBy(apply: () => boolean): boolean {
     const previous = this.viewport.selectedIndex;
-    apply();
+    const handled = apply();
     if (this.viewport.selectedIndex !== previous) {
       const job = this.selectedJob;
       if (job) {
         this.onAction({ type: "select", job });
       }
     }
+    return handled;
   }
 
   private renderPreview(
@@ -185,22 +150,6 @@ export class BackgroundJobManager implements Component {
   }
 }
 
-function cloneJob(job: BackgroundJobSummary): BackgroundJobSummary {
-  return {
-    ...job,
-    startedAt: new Date(job.startedAt.getTime()),
-    ...(job.finishedAt === undefined ? {} : { finishedAt: new Date(job.finishedAt.getTime()) }),
-  };
-}
-
 function isActive(job: BackgroundJobSummary): boolean {
   return job.status === "running" || job.status === "stopping";
-}
-
-function shortJobId(jobId: string): string {
-  return jobId.startsWith("job_") ? jobId.slice(4, 12) : jobId.slice(0, 8);
-}
-
-function singleLine(value: string): string {
-  return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
 }

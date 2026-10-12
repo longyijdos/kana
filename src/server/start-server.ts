@@ -1,4 +1,4 @@
-import { ConversationRuntime, createKanaConversationHost, type KanaLaunchMode } from "@/kana";
+import { type ConversationRuntime, createKanaConversationHost, type KanaLaunchMode } from "@/kana";
 import { createServerApi } from "./api";
 
 export type StartServerOptions = {
@@ -36,41 +36,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<voi
   process.once("SIGTERM", onSignal);
 
   try {
-    runtime = new ConversationRuntime({
-      initialSession: host.initialSession
-        ? {
-            id: host.initialSession.metadata.id,
-            messages: host.initialSession.messages,
-            timeline: host.initialSession.timeline,
-            todoState: host.initialSession.todoState,
-            contextCheckpoint: host.initialSession.contextCheckpoint,
-          }
-        : undefined,
-      createAgent: (agentOptions) => host.createAgent(agentOptions),
-      createNewSession: () => host.createNewSession(),
-      getSessionTimeline: (sessionId) => host.getSessionTimeline(sessionId),
-      forkSession: (messages, checkpoint, prompt) => host.forkSession(messages, checkpoint, prompt),
-      loadSession: (id) => {
-        const session = host.loadSession(id);
-        return {
-          id: session.metadata.id,
-          messages: session.messages,
-          timeline: session.timeline,
-          contextCheckpoint: session.contextCheckpoint,
-          todoState: session.todoState,
-        };
-      },
-      listSessions: () => host.listSessions(),
-      deleteSession: (id) => host.deleteSession(id),
-      getBackgroundJobs: (id) => host.getBackgroundJobs(id),
-      getSubagents: (id) => host.getSubagents(id),
-      disposeSession: (id, source, settled) => host.disposeSession(id, source, settled),
-      wakeScheduler: host.wakeScheduler,
-      goalMaxRounds: host.config.agent.goalMaxRounds,
+    runtime = host.createRuntime({
       backgroundJobCompletionRuns: true,
       subagentCompletionRuns: true,
       scheduledRuns: true,
-      getLogger: () => host.getLogger(),
     });
     host.getLogger().info("server.starting", { port });
     const mcp = await host.startMcp();

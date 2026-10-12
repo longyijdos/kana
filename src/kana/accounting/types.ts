@@ -1,4 +1,5 @@
 import type { ModelUsage } from "@/core";
+import type { Logger } from "@/logging";
 
 export const KANA_ACCOUNTING_VERSION = 2;
 
@@ -38,6 +39,7 @@ export type KanaUsageScope = "session" | "project" | "global";
 export type LoadKanaUsageSummaryOptions = AppendKanaRunAccountingOptions & {
   scope: KanaUsageScope;
   sessionId?: string;
+  logger?: Logger;
 };
 
 export type KanaUsageSummary = {

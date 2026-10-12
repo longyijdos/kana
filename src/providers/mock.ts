@@ -1,16 +1,14 @@
 import {
   AssistantEventStream,
-  type AssistantMessage,
+  AssistantMessageBuilder,
   BaseModel,
-  createMessageIdentity,
-  type ModelConfig,
   type ModelContext,
   type ModelMetadata,
-  type TextContent,
 } from "@/core";
 
-export type MockModelConfig = ModelConfig & {
+export type MockModelConfig = {
   provider: "mock";
+  model: string;
   response?: string;
 };
 
@@ -37,69 +35,37 @@ export class MockModel extends BaseModel {
 
     // Match real providers: stream() returns before events start arriving.
     queueMicrotask(() => {
-      const message: AssistantMessage = {
-        ...createMessageIdentity({ kind: "model_output" }),
-        role: "assistant",
-        content: [],
-      };
-
-      const signal = context.signal;
-
-      if (signal?.aborted) {
+      const message = new AssistantMessageBuilder();
+      if (context.signal?.aborted) {
         stream.error({
           type: "error",
           reason: "aborted",
-          error: signal.reason,
-          snapshot: structuredClone(message),
+          error: context.signal.reason,
+          snapshot: message.snapshot(),
         });
         return;
       }
 
       const response = this.config.response ?? "Hello from mock.";
-      const contentIndex = 0;
-
-      stream.push({
-        type: "start",
-        // Snapshots must not share the mutable message object used below.
-        snapshot: structuredClone(message),
-      });
-
-      const textContent: TextContent = {
-        type: "text",
-        text: "",
-      };
-
-      message.content.push(textContent);
-
-      stream.push({
-        type: "text_start",
-        contentIndex,
-        snapshot: structuredClone(message),
-      });
-
+      stream.push({ type: "start", snapshot: message.snapshot() });
+      const contentIndex = message.add({ type: "text", text: "" });
+      stream.push({ type: "text_start", contentIndex, snapshot: message.snapshot() });
       if (response) {
-        textContent.text = response;
-
+        message.appendText(contentIndex, response);
         stream.push({
           type: "text_delta",
           contentIndex,
           delta: response,
-          snapshot: structuredClone(message),
+          snapshot: message.snapshot(),
         });
       }
-
       stream.push({
         type: "text_end",
         contentIndex,
         content: response,
-        snapshot: structuredClone(message),
+        snapshot: message.snapshot(),
       });
-
-      stream.end({
-        type: "done",
-        reason: "stop",
-        message: structuredClone(message),
-      });
+      stream.end({ type: "done", reason: "stop", message: message.snapshot() });
     });
 
     return stream;

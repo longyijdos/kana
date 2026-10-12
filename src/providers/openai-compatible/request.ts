@@ -1,4 +1,5 @@
 import type { AssistantContent, Message, ModelContext, ToolCallContent, ToolSpec } from "@/core";
+import { isRecord } from "@/utils";
 import type { OpenAICompatibleModelConfig } from "./types";
 import { OPENAI_COMPATIBLE_ASSISTANT_REPLAY_TYPE } from "./types";
 
@@ -39,8 +40,7 @@ function toMessages(
 ): Array<Record<string, unknown>> {
   const messages: Array<Record<string, unknown>> = [];
   const pendingToolImageMessages: Array<Extract<Message, { role: "tool" }>> = [];
-  const supportsImageInput =
-    context.imageInput === true && config.metadata.supportsImageInput === true;
+  const supportsImageInput = context.imageInput === true;
   if (context.system) {
     // The system role remains the most widely implemented instruction shape
     // across OpenAI-compatible Chat Completions endpoints.
@@ -147,7 +147,7 @@ function toUserContent(
 }
 
 function toAssistantMessage(
-  content: AssistantContent[],
+  content: readonly AssistantContent[],
   config: OpenAICompatibleModelConfig,
 ): Record<string, unknown> {
   const text = content
@@ -166,7 +166,7 @@ function toAssistantMessage(
 }
 
 function readAssistantReplayFields(
-  content: AssistantContent[],
+  content: readonly AssistantContent[],
   config: OpenAICompatibleModelConfig,
 ): Record<string, unknown> {
   const configuredFields = config.metadata.assistantReplayFields;
@@ -194,7 +194,7 @@ function readAssistantReplayFields(
       configuredFields.flatMap((field) =>
         isManagedAssistantField(field) || !Object.hasOwn(storedFields, field)
           ? []
-          : [[field, structuredClone(storedFields[field])]],
+          : [[field, storedFields[field]]],
       ),
     );
   }
@@ -203,10 +203,6 @@ function readAssistantReplayFields(
 
 function isManagedAssistantField(field: string): boolean {
   return field === "role" || field === "content" || field === "tool_calls";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function toToolCall(content: ToolCallContent): Record<string, unknown> {

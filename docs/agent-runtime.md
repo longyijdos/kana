@@ -46,7 +46,7 @@ agent_start
   → agent_end
 ```
 
-Both stream types support `for await` and an independent `result()` promise. Agent listeners and stream consumers receive separate event clones; constructor messages and `Agent.state` are likewise detached from mutable internal history. Listener exceptions are logged as `agent.listener_failed` and do not terminate the run.
+Both stream types support `for await` and an independent `result()` promise. Events, messages, and state are readonly values shared by reference: the Agent never mutates a value after publishing it, and consumers must not mutate what they receive. Listener exceptions are logged as `agent.listener_failed` and do not terminate the run.
 
 ## Prompt assembly and runtime context
 
@@ -79,7 +79,7 @@ Repeat within maxTurns:
 Emit agent_end
 ```
 
-Standalone `Agent` and `runAgentLoop` default to eight turns. Kana configures `max_turns = -1`, meaning unlimited; only `-1` or a positive integer is valid. If the final allowed turn still executes tool calls, the run ends with `turn_limit`. A message ending with `length` never executes tool calls, and provider failure without assistant content does not add an empty assistant message. An aborted or failed partial assistant message retains safe text or thinking content but drops unexecuted calls before history and journal commit, even when their arguments are complete.
+Standalone `Agent` and `runAgentLoop` default to eight turns. `-1` means unlimited, which is what Kana configures; Kana's configuration parser rejects other non-positive values before an Agent is built. If the final allowed turn still executes tool calls, the run ends with `turn_limit`. A message ending with `length` never executes tool calls, and provider failure without assistant content does not add an empty assistant message. An aborted or failed partial assistant message retains safe text or thinking content but drops unexecuted calls before history and journal commit, even when their arguments are complete.
 
 Tool validation, approval, concurrency, deadlines, event timing, result policies, and built-in behavior belong to [Tools and execution](tools.md). The loop waits for that boundary and starts the next model step only with model-ordered committed results.
 
@@ -96,9 +96,9 @@ The Agent owns one in-memory inbox with two lanes:
 
 The Agent never starts a new run from `next-turn`. Kana's [conversation runtime](conversation-runtime.md) observes and drains that lane, adds scheduled/Goal/Job delivery metadata, and publishes frontend queue snapshots without creating another queue.
 
-`Agent.state` exposes detached snapshots of the model, assembled system prompt and tools, history, inbox, current run state, streaming assistant message, pending tool-call IDs, context checkpoint, and final error. `waitForIdle()` covers journal closure and injected post-processing, not only provider and tool execution.
+`Agent.state` exposes readonly views of the model, assembled system prompt and tools, history, inbox, current run state, streaming assistant message, pending tool-call IDs, context checkpoint, and final error. `agent.settings` exposes the resolved run settings: model capabilities combined with configured limits and defaults, used unchanged by the loop and tool runtime. `estimateContextTokens()` walks the history on demand, so status displays prefer the estimate carried by `turn_end`. `waitForIdle()` covers journal closure and injected post-processing, not only provider and tool execution.
 
-`Agent.getStableContext()` exposes detached messages, their matching context checkpoint, the assembled system prompt, and the current model, image-input policy, and context/output limits. It advances after initial run input is accepted, before each complete `turn_end`, and before each consumed `turn_input`. Streaming and individual tool commits do not advance it; unexecuted calls in failed or truncated responses do not establish a complete boundary. The loop supplies complete context independently of journal-backed history updates. Construction, reset, and successful idle manual compaction initialize or refresh the snapshot.
+`Agent.getStableContext()` exposes readonly messages, their matching context checkpoint, the assembled system prompt, and the current model, image-input policy, and context/output limits. It advances after initial run input is accepted, before each complete `turn_end`, and before each consumed `turn_input`. Streaming and individual tool commits do not advance it; unexecuted calls in failed or truncated responses do not establish a complete boundary. The loop supplies complete context independently of journal-backed history updates. Construction, reset, and successful idle manual compaction initialize or refresh the snapshot.
 
 ## Context budgeting and compaction
 

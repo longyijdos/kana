@@ -5,9 +5,6 @@ import {
   type ContextCheckpoint,
   ContextManager,
   createModelCompactPolicy,
-  estimateContextTokens,
-  estimateTextTokens,
-  runAgentLoop,
 } from "@/agent";
 import {
   AssistantEventStream,
@@ -19,7 +16,9 @@ import {
   type ModelMetadata,
 } from "@/core";
 import { createRuntimeContextMessage } from "../../src/agent/prompt-assembly";
+import { estimateContextTokens, estimateTextTokens } from "../../src/agent/token-estimate";
 import type { Tool } from "../../src/tools/tool";
+import { runTestLoop } from "../helpers/agent-loop";
 import { messageIdentityForTest } from "../helpers/messages";
 
 const MODEL_METADATA: ModelMetadata = {
@@ -30,6 +29,7 @@ const MODEL_METADATA: ModelMetadata = {
   supportsParallelToolCalls: true,
   protocol: null,
   supportsHostedWebSearch: false,
+  supportsImageInput: false,
 };
 
 describe("ContextManager budgets and checkpoints", () => {
@@ -190,14 +190,14 @@ describe("ContextManager budgets and checkpoints", () => {
 
     expect(policyInput?.messages).toHaveLength(5);
     expect(policyInput?.messages[1]).toEqual({
-      id: messages[1]?.id,
+      id: messages[1]!.id,
       provenance: { kind: "model_output" },
       role: "assistant",
       stopReason: "stop",
       content: [{ type: "text", text: "Old answer" }],
     });
     expect(policyInput?.messages[4]).toEqual({
-      id: messages[4]?.id,
+      id: messages[4]!.id,
       provenance: { kind: "tool_result" },
       role: "tool",
       toolCallId: "call-1",
@@ -269,7 +269,7 @@ describe("ContextManager budgets and checkpoints", () => {
       compactedMessageCount: 3,
       estimatedAfterTokens: prepared.estimatedTokens,
     });
-    expect(policyInput?.messages).toEqual([messages[0], messages[2]]);
+    expect(policyInput?.messages).toEqual([messages[0]!, messages[2]!]);
     expect(prepared.context.messages).toEqual([
       expect.objectContaining({ provenance: { kind: "context_summary" } }),
       coveredRuntimeContext,
@@ -362,7 +362,7 @@ describe("ContextManager budgets and checkpoints", () => {
       coveredMessageCount: 4,
       compactedMessageCount: 4,
     });
-    expect(policyInput?.messages).toEqual([messages[0], messages[3]]);
+    expect(policyInput?.messages).toEqual([messages[0]!, messages[3]!]);
     expect(JSON.stringify(policyInput)).not.toContain("runtime_context");
     expect(prepared.context.messages).toEqual([
       expect.objectContaining({
@@ -1265,7 +1265,7 @@ describe("context-limit recovery", () => {
       role: "user" as const,
       content: "Current question",
     };
-    const messages = await runAgentLoop(
+    const messages = await runTestLoop(
       {
         messages: [
           { ...messageIdentityForTest("user"), role: "user", content: "Old question" },

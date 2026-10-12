@@ -1,0 +1,280 @@
+import type { KanaMcpServerActivation } from "@/kana";
+import type { OAuthTokenStatus } from "@/oauth";
+import type { Editor, StatusLineState, Transcript } from "../../components";
+import {
+  type McpAuthAction,
+  McpAuthActionMenu,
+  type McpAuthActionMenuDecision,
+  McpServerManager,
+  type McpServerManagerDecision,
+  type McpServerManagerItem,
+  TextBlock,
+} from "../../components";
+import { singleLine } from "../../render";
+import type { Tui } from "../../runtime";
+import { tuiTheme } from "../../theme";
+import type { BottomAreaController } from "../bottom-area-controller";
+import type { RunPhase } from "../status-phase";
+
+export type McpServerManagerControllerOptions = {
+  editor: Editor;
+  bottomArea: BottomAreaController;
+  transcript: Transcript;
+  tui: Tui;
+  loadServers: () => KanaMcpServerActivation[];
+  saveEnabledServerIds: (serverIds: string[]) => void;
+  authorizeServer?(
+    serverId: string,
+    onAuthorizationUrl: (url: string) => void,
+    signal: AbortSignal,
+  ): Promise<OAuthTokenStatus>;
+  signOutServer?(serverId: string): Promise<OAuthTokenStatus>;
+  onClose: (changed: boolean) => void;
+  showError: (error: unknown) => void;
+  updateStatus: (phase: RunPhase, extra?: Partial<StatusLineState>) => void;
+};
+
+export class McpServerManagerController {
+  private activeManager?: McpServerManager;
+  private activeAuthMenu?: McpAuthActionMenu;
+  private servers: McpServerManagerItem[] = [];
+  private authOperation?: { controller: AbortController; block: TextBlock; serverId: string };
+  private reloadRequired = false;
+
+  constructor(private readonly options: McpServerManagerControllerOptions) {}
+
+  get active(): boolean {
+    return this.activeManager !== undefined || this.activeAuthMenu !== undefined;
+  }
+
+  open(): void {
+    if (this.activeManager) {
+      return;
+    }
+
+    this.options.editor.clear();
+
+    let servers: KanaMcpServerActivation[];
+    try {
+      servers = this.options.loadServers();
+    } catch (error) {
+      this.options.showError(error);
+      this.options.bottomArea.showFallback();
+      return;
+    }
+
+    this.servers = servers.map((server) =>
+      server.type === "stdio"
+        ? { ...server, args: server.args.slice() }
+        : {
+            ...server,
+            ...(server.oauth === undefined ? {} : { oauth: { ...server.oauth } }),
+          },
+    );
+    this.reloadRequired = false;
+    const manager = new McpServerManager(this.servers, (decision) => this.finish(decision));
+    this.activeManager = manager;
+    this.options.bottomArea.show(manager);
+  }
+
+  close(): void {
+    this.cancelAuthOperation();
+    this.closeInternal(false);
+  }
+
+  private finish(decision: McpServerManagerDecision): void {
+    if (decision.type === "manage_auth") {
+      this.openAuthMenu(decision.serverId);
+      return;
+    }
+
+    if (!decision.changed && !this.reloadRequired) {
+      this.closeInternal(false);
+      return;
+    }
+
+    if (decision.changed) {
+      try {
+        this.options.saveEnabledServerIds(decision.enabledServerIds);
+      } catch (error) {
+        this.options.showError(error);
+        return;
+      }
+    }
+
+    this.closeInternal(true);
+  }
+
+  private openAuthMenu(serverId: string): void {
+    const server = this.servers.find((candidate) => candidate.id === serverId);
+    if (server?.type !== "http" || server.oauth === undefined || !this.activeManager) {
+      return;
+    }
+
+    const menu = new McpAuthActionMenu(serverId, server.oauth, (decision) =>
+      this.finishAuthAction(serverId, decision),
+    );
+    this.activeAuthMenu = menu;
+    this.options.bottomArea.show(menu);
+  }
+
+  private finishAuthAction(serverId: string, decision: McpAuthActionMenuDecision): void {
+    if (decision.type === "back") {
+      this.returnToManager();
+      return;
+    }
+    if (decision.type === "cancel_operation") {
+      this.cancelAuthOperation();
+      return;
+    }
+    void this.runAuthAction(serverId, decision.action);
+  }
+
+  private async runAuthAction(serverId: string, action: McpAuthAction): Promise<void> {
+    const menu = this.activeAuthMenu;
+    const server = this.servers.find((candidate) => candidate.id === serverId);
+    if (!menu || server?.type !== "http" || server.oauth === undefined || this.authOperation) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const block = new TextBlock(formatAuthOperationStart(serverId, action), {
+      color: tuiTheme.muted,
+    });
+    const operation = { controller, block, serverId };
+    this.authOperation = operation;
+    this.options.transcript.addChild(block);
+    menu.setOperation(formatAuthMenuOperation(action));
+    this.options.updateStatus("starting", { activeTool: undefined });
+    this.options.tui.requestRender();
+
+    try {
+      const wasEnabled = server.enabled;
+      const status = await this.runConfiguredAuthAction(
+        serverId,
+        action,
+        operation,
+        controller.signal,
+      );
+      if (this.authOperation !== operation) {
+        return;
+      }
+
+      server.oauth = { type: "oauth2", ...status };
+      if (action === "sign_out") {
+        server.enabled = false;
+        this.reloadRequired ||= wasEnabled;
+        block.setText(
+          `Signed out of MCP OAuth server ${singleLine(serverId)}. The server has been disabled.`,
+        );
+      } else {
+        this.reloadRequired ||= server.enabled;
+        block.setText(`MCP OAuth authorized: ${singleLine(serverId)}.`);
+      }
+    } catch (error) {
+      if (this.authOperation !== operation) {
+        return;
+      }
+      if (controller.signal.aborted) {
+        block.setText(`MCP OAuth authorization cancelled: ${singleLine(serverId)}.`);
+      } else {
+        this.options.transcript.removeChild(block);
+        this.options.showError(error);
+      }
+    } finally {
+      if (this.authOperation === operation) {
+        this.authOperation = undefined;
+        menu.setOperation(undefined);
+        this.options.updateStatus("idle", { activeTool: undefined });
+        this.returnToManager();
+      }
+    }
+  }
+
+  private runConfiguredAuthAction(
+    serverId: string,
+    action: McpAuthAction,
+    operation: { controller: AbortController; block: TextBlock; serverId: string },
+    signal: AbortSignal,
+  ): Promise<OAuthTokenStatus> {
+    if (action === "sign_out") {
+      if (this.options.signOutServer === undefined) {
+        return Promise.reject(new Error("MCP OAuth sign-out is unavailable."));
+      }
+      return this.options.signOutServer(serverId);
+    }
+    if (this.options.authorizeServer === undefined) {
+      return Promise.reject(new Error("MCP OAuth authorization is unavailable."));
+    }
+    return this.options.authorizeServer(
+      serverId,
+      (url) => {
+        if (this.authOperation !== operation) {
+          return;
+        }
+        operation.block.setText(formatAuthorizationUrl(serverId, url));
+        this.options.tui.requestRender();
+      },
+      signal,
+    );
+  }
+
+  private cancelAuthOperation(): void {
+    const operation = this.authOperation;
+    if (!operation) {
+      return;
+    }
+    operation.block.setText(
+      `MCP OAuth authorization cancelled: ${singleLine(operation.serverId)}.`,
+    );
+    operation.controller.abort(new Error("MCP OAuth authorization was cancelled."));
+    this.options.tui.requestRender();
+  }
+
+  private returnToManager(): void {
+    const manager = this.activeManager;
+    if (!manager) {
+      return;
+    }
+    this.activeAuthMenu = undefined;
+    this.options.bottomArea.show(manager);
+  }
+
+  private closeInternal(changed: boolean): void {
+    const manager = this.activeManager;
+    const authMenu = this.activeAuthMenu;
+    if (!manager && !authMenu) {
+      return;
+    }
+
+    const visible = authMenu && this.options.bottomArea.isShowing(authMenu) ? authMenu : manager;
+    this.activeManager = undefined;
+    this.activeAuthMenu = undefined;
+    this.authOperation = undefined;
+    this.servers = [];
+
+    if (visible) {
+      this.options.bottomArea.restore(visible);
+    }
+    this.options.onClose(changed);
+  }
+}
+
+function formatAuthOperationStart(serverId: string, action: McpAuthAction): string {
+  const label = singleLine(serverId);
+  return action === "sign_out"
+    ? `Signing out of MCP OAuth server ${label}...`
+    : `Preparing OAuth authorization for MCP server ${label}...`;
+}
+
+function formatAuthMenuOperation(action: McpAuthAction): string {
+  return action === "sign_out" ? "Signing out..." : "Waiting for browser authorization...";
+}
+
+function formatAuthorizationUrl(serverId: string, url: string): string {
+  return [
+    `Authorizing MCP server ${singleLine(serverId)} in your browser.`,
+    "If the browser did not open, use this temporary URL:",
+    url,
+  ].join("\n");
+}

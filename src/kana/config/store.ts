@@ -1,12 +1,9 @@
+import { escapeRegExp, writeFileAtomic } from "@/utils";
 import { getKanaConfigPaths } from "../path";
-import type { KanaConfig } from "./contracts";
-import {
-  readOptionalConfigFile,
-  withLockedConfigFile,
-  writeConfigFileAtomically,
-} from "./file-storage";
+import type { KanaConfig, KanaConfigDraft } from "./contracts";
+import { readOptionalConfigFile, withLockedConfigFile } from "./file-storage";
 import { applyKanaConfigOverrides } from "./overrides";
-import { parseKanaConfig, validateKanaConfig } from "./parser";
+import { listKanaConfigLeaves, parseKanaConfig, reviseKanaConfig } from "./parser";
 import { loadKanaConfig } from "./persistence";
 
 type KanaConfigValue =
@@ -17,107 +14,14 @@ type KanaConfigValue =
   | readonly number[]
   | undefined;
 
-type KanaConfigField = {
-  section: string;
-  key: string;
-  read(config: KanaConfig): KanaConfigValue;
-};
-
 export type KanaConfigStore = {
   load(): KanaConfig;
-  update(mutate: (draft: KanaConfig) => void): KanaConfig;
+  update(mutate: (draft: KanaConfigDraft) => void): KanaConfig;
 };
 
-// Keep the typed config and its canonical TOML leaves in one registry. Updates
-// can then preserve comments instead of serializing defaults.
-const CONFIG_FIELDS: KanaConfigField[] = [
-  field("provider.deepseek", "api_key_env", (config) => config.provider.deepseek.apiKeyEnv),
-  field("provider.deepseek", "timeout_ms", (config) => config.provider.deepseek.timeoutMs),
-  field("provider.deepseek", "max_retries", (config) => config.provider.deepseek.maxRetries),
-  field(
-    "provider.openai-codex",
-    "reasoning_summary",
-    (config) => config.provider["openai-codex"].reasoningSummary,
-  ),
-  field(
-    "provider.openai-codex",
-    "timeout_ms",
-    (config) => config.provider["openai-codex"].timeoutMs,
-  ),
-  field(
-    "provider.openai-codex",
-    "max_retries",
-    (config) => config.provider["openai-codex"].maxRetries,
-  ),
-  field("agent", "tools", (config) => config.agent.tools),
-  field("agent", "codemode", (config) => config.agent.codemode),
-  field("agent", "web_search", (config) => config.agent.webSearch),
-  field("agent", "image_input", (config) => config.agent.imageInput),
-  field("agent", "max_turns", (config) => config.agent.maxTurns),
-  field("agent", "goal_max_rounds", (config) => config.agent.goalMaxRounds),
-  field("agent", "tool_deadline_ms", (config) => config.agent.toolDeadlineMs),
-  field("agent", "parallel_tool_calls", (config) => config.agent.parallelToolCalls),
-  field("agent", "max_parallel_tool_calls", (config) => config.agent.maxParallelToolCalls),
-  field("agent", "tool_result_artifacts", (config) => config.agent.toolResultArtifacts),
-  field("agent.model", "provider", (config) => config.agent.model.provider),
-  field("agent.model", "name", (config) => config.agent.model.name),
-  field("agent.model", "reasoning_effort", (config) => config.agent.model.reasoningEffort),
-  field("agent.model", "max_output_tokens", (config) => config.agent.model.maxOutputTokens),
-  field("agent.model", "context_limit", (config) => config.agent.model.contextLimit),
-  field(
-    "agent.background_jobs",
-    "max_concurrent",
-    (config) => config.agent.backgroundJobs.maxConcurrent,
-  ),
-  field("agent.subagents", "max_live", (config) => config.agent.subagents.maxLive),
-  field(
-    "agent.repeated_tool_calls",
-    "reminder_thresholds",
-    (config) => config.agent.repeatedToolCalls.reminderThresholds,
-  ),
-  field(
-    "agent.repeated_tool_calls",
-    "excluded_tools",
-    (config) => config.agent.repeatedToolCalls.excludedTools,
-  ),
-  field("approval", "mode", (config) => config.approval.mode),
-  field("notification", "backend", (config) => config.notification.backend),
-  field("notification", "on_agent_completed", (config) => config.notification.onAgentCompleted),
-  field("notification", "on_approval_required", (config) => config.notification.onApprovalRequired),
-  field("tui", "theme", (config) => config.tui.theme),
-  field("tui", "hyperlinks", (config) => config.tui.hyperlinks),
-  field("tui", "render_latex", (config) => config.tui.renderLatex),
-  field("tui", "render_mermaid", (config) => config.tui.renderMermaid),
-  field("tui", "smooth_text_streaming", (config) => config.tui.smoothTextStreaming),
-  field("tui", "collapse_long_pastes", (config) => config.tui.collapseLongPastes),
-  field("memory", "enabled", (config) => config.memory.enabled),
-  field("memory", "max_chars", (config) => config.memory.maxChars),
-  field("memory", "daily_retention_days", (config) => config.memory.dailyRetentionDays),
-  field("memory.agent", "web_search", (config) => config.memory.agent.webSearch),
-  field("memory.agent", "image_input", (config) => config.memory.agent.imageInput),
-  field("memory.agent", "max_turns", (config) => config.memory.agent.maxTurns),
-  field("memory.agent", "tool_deadline_ms", (config) => config.memory.agent.toolDeadlineMs),
-  field("memory.agent", "parallel_tool_calls", (config) => config.memory.agent.parallelToolCalls),
-  field(
-    "memory.agent",
-    "max_parallel_tool_calls",
-    (config) => config.memory.agent.maxParallelToolCalls,
-  ),
-  field("memory.agent.model", "provider", (config) => config.memory.agent.model.provider),
-  field("memory.agent.model", "name", (config) => config.memory.agent.model.name),
-  field(
-    "memory.agent.model",
-    "reasoning_effort",
-    (config) => config.memory.agent.model.reasoningEffort,
-  ),
-  field(
-    "memory.agent.model",
-    "max_output_tokens",
-    (config) => config.memory.agent.model.maxOutputTokens,
-  ),
-  field("memory.agent.model", "context_limit", (config) => config.memory.agent.model.contextLimit),
-  field("logging", "level", (config) => config.logging.level),
-];
+// Updates patch only the changed TOML leaves so user comments and layout
+// survive instead of serializing every default.
+const CONFIG_LEAVES = listKanaConfigLeaves();
 
 export function createKanaConfigStore(
   env: NodeJS.ProcessEnv = process.env,
@@ -126,36 +30,30 @@ export function createKanaConfigStore(
   let snapshot = applyKanaConfigOverrides(loadKanaConfig(env), overrides);
 
   return {
-    load: () => structuredClone(snapshot),
+    load: () => snapshot,
     update(mutate) {
-      const current = structuredClone(snapshot);
-      const next = structuredClone(current);
-      mutate(next);
-      const validated = validateKanaConfig(next);
-      const changedFields = CONFIG_FIELDS.filter(
-        (candidate) => !sameConfigValue(candidate.read(current), candidate.read(validated)),
+      const current = snapshot;
+      const next = reviseKanaConfig(current, mutate);
+      const changedLeaves = CONFIG_LEAVES.filter(
+        (leaf) => !sameConfigValue(readLeaf(current, leaf), readLeaf(next, leaf)),
       );
-      if (changedFields.length === 0) {
-        return structuredClone(current);
+      if (changedLeaves.length === 0) {
+        return current;
       }
 
       const { configPath } = getKanaConfigPaths(env);
       withLockedConfigFile(configPath, () => {
         let document = readOptionalConfigFile(configPath) ?? "";
-        for (const changedField of changedFields) {
-          document = updateTomlField(
-            document,
-            changedField.section,
-            changedField.key,
-            changedField.read(validated),
-          );
+        for (const leaf of changedLeaves) {
+          document = updateTomlField(document, leaf.section, leaf.key, readLeaf(next, leaf));
         }
 
+        // The line-based patch cannot handle every TOML layout, such as inline
+        // or dotted-key tables, so confirm it produced the intended values.
         const persisted = parseKanaConfig(Bun.TOML.parse(document) as unknown);
         if (
-          changedFields.some(
-            (changedField) =>
-              !sameConfigValue(changedField.read(persisted), changedField.read(validated)),
+          changedLeaves.some(
+            (leaf) => !sameConfigValue(readLeaf(persisted, leaf), readLeaf(next, leaf)),
           )
         ) {
           throw new Error(
@@ -163,16 +61,20 @@ export function createKanaConfigStore(
           );
         }
 
-        writeConfigFileAtomically(configPath, document);
+        writeFileAtomic(configPath, document);
       });
-      snapshot = validated;
-      return structuredClone(snapshot);
+      snapshot = next;
+      return snapshot;
     },
   };
 }
 
-function field(section: string, key: string, read: KanaConfigField["read"]): KanaConfigField {
-  return { section, key, read };
+function readLeaf(config: KanaConfig, leaf: { fieldPath: readonly string[] }): KanaConfigValue {
+  let value: unknown = config;
+  for (const key of leaf.fieldPath) {
+    value = (value as Record<string, unknown> | undefined)?.[key];
+  }
+  return value as KanaConfigValue;
 }
 
 function sameConfigValue(left: KanaConfigValue, right: KanaConfigValue): boolean {
@@ -261,8 +163,4 @@ function formatTomlValue(value: Exclude<KanaConfigValue, undefined>): string {
     return JSON.stringify(value);
   }
   return String(value);
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

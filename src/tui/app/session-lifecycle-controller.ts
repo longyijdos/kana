@@ -9,7 +9,7 @@ import { tuiTheme } from "../theme";
 import type { BottomAreaController } from "./bottom-area-controller";
 import { addHistoryTimelineToTranscript } from "./history";
 import type { TuiModelSelection } from "./model-selection";
-import { SessionOverlayController } from "./session-overlay-controller";
+import { SessionOverlayController } from "./overlays/session-overlay-controller";
 import type { RunPhase } from "./status-phase";
 import { renderWelcomeLogoLines } from "./welcome-logo";
 
@@ -56,7 +56,7 @@ export class SessionLifecycleController {
     });
   }
 
-  initializeTranscript(timeline: KanaSessionTimelineEntry[]): void {
+  initializeTranscript(timeline: readonly KanaSessionTimelineEntry[]): void {
     if (timeline.length > 0) {
       this.options.transcript.addChild(
         new TextBlock(`Resumed session ${this.options.conversation.sessionId ?? ""}.`, {
@@ -91,15 +91,7 @@ export class SessionLifecycleController {
       this.options.showError(error);
       return;
     }
-    this.overlay.close();
-    this.options.closeContentViewer();
-    this.options.resetAgentEvents();
-    this.options.transcript.clear();
-    this.options.clearMcpOAuthBlocks();
-    this.options.editor.clear();
-    this.initializeTranscript([]);
-    this.options.updateContextUsage();
-    this.options.updateStatus("idle");
+    this.showSession([]);
     this.options.tui.requestRender();
   }
 
@@ -158,16 +150,21 @@ export class SessionLifecycleController {
       return;
     }
 
+    this.showSession(session.timeline);
+    this.options.bottomArea.showFallback();
+    this.options.activateSession();
+  }
+
+  // Replaces the transcript with the adopted session's history.
+  private showSession(timeline: readonly KanaSessionTimelineEntry[]): void {
     this.overlay.close();
     this.options.closeContentViewer();
     this.options.resetAgentEvents();
     this.options.transcript.clear();
     this.options.clearMcpOAuthBlocks();
     this.options.editor.clear();
-    this.initializeTranscript(session.timeline);
+    this.initializeTranscript(timeline);
     this.options.updateContextUsage();
     this.options.updateStatus("idle");
-    this.options.bottomArea.showFallback();
-    this.options.activateSession();
   }
 }

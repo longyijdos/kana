@@ -1,7 +1,9 @@
-import { createNoopLogger, type Logger } from "@/logging";
+import type { Logger } from "@/logging";
+import { formatError } from "@/utils";
 import { type Editor, type StatusLineState, TextBlock, type Transcript } from "../components";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
+import { AuxiliaryRun } from "./auxiliary-run";
 import type { RunPhase } from "./status-phase";
 
 export type MemoryScope = "global" | "project" | "both";
@@ -24,79 +26,58 @@ export type MemoryCompactControllerOptions = {
     userRequest: string | undefined,
     signal: AbortSignal,
   ) => Promise<MemoryCompactSummary[]>;
-  getLogger?: () => Logger;
+  getLogger: () => Logger;
 };
 
 export class MemoryCompactController {
-  private abortController?: AbortController;
+  private readonly run: AuxiliaryRun;
 
-  constructor(private readonly options: MemoryCompactControllerOptions) {}
+  constructor(private readonly options: MemoryCompactControllerOptions) {
+    this.run = new AuxiliaryRun(options);
+  }
 
   abort(): boolean {
-    if (!this.abortController) {
+    if (!this.run.abort()) {
       return false;
     }
-
-    this.abortController.abort();
-    this.options.updateStatus("aborted");
-    (this.options.getLogger ?? createNoopLogger)().info("memory_compact.abort_requested");
+    this.options.getLogger().info("memory_compact.abort_requested");
     return true;
   }
 
   async compact(target: MemoryScope, userRequest?: string): Promise<void> {
-    if (this.abortController) {
+    if (this.run.active) {
       return;
     }
 
-    const logger = (this.options.getLogger ?? createNoopLogger)();
-    const abortController = new AbortController();
-    this.abortController = abortController;
+    const logger = this.options.getLogger();
     this.options.editor.clear();
     this.options.transcript.addChild(
-      new TextBlock(`Compacting ${formatTarget(target)} memory…`, {
-        color: tuiTheme.muted,
-      }),
+      new TextBlock(`Compacting ${formatTarget(target)} memory…`, { color: tuiTheme.muted }),
     );
-    this.options.onRunStart();
-    this.options.updateStatus("tool", { activeTool: "memory" });
-    this.options.tui.requestRender();
     logger.info("memory_compact.started", { target });
 
-    try {
-      const summaries = await this.options.compactMemory(
-        target,
-        userRequest,
-        abortController.signal,
-      );
-      this.options.transcript.addChild(
-        new TextBlock(formatSummaries(summaries), {
-          color: summaries.some((summary) => summary.outcome === "error")
-            ? tuiTheme.error
-            : tuiTheme.muted,
-        }),
-      );
-      this.options.updateStatus(
-        summaries.some((summary) => summary.outcome === "error") ? "error" : "done",
-      );
-      logger.info("memory_compact.ended", {
-        target,
-        outcomes: summaries.map((summary) => summary.outcome),
-      });
-    } catch (error) {
-      this.options.transcript.addChild(
-        new TextBlock(error instanceof Error ? error.message : String(error), {
-          color: tuiTheme.error,
-        }),
-      );
-      this.options.updateStatus(abortController.signal.aborted ? "aborted" : "error");
-      logger.error("memory_compact.failed", { target, error });
-    } finally {
-      if (this.abortController === abortController) {
-        this.abortController = undefined;
+    await this.run.run("memory", async (signal) => {
+      try {
+        const summaries = await this.options.compactMemory(target, userRequest, signal);
+        const failed = summaries.some((summary) => summary.outcome === "error");
+        this.options.transcript.addChild(
+          new TextBlock(formatSummaries(summaries), {
+            color: failed ? tuiTheme.error : tuiTheme.muted,
+          }),
+        );
+        logger.info("memory_compact.ended", {
+          target,
+          outcomes: summaries.map((summary) => summary.outcome),
+        });
+        return failed ? "error" : "done";
+      } catch (error) {
+        this.options.transcript.addChild(
+          new TextBlock(formatError(error), { color: tuiTheme.error }),
+        );
+        logger.error("memory_compact.failed", { target, error });
+        return signal.aborted ? "aborted" : "error";
       }
-      this.options.onRunEnd();
-      this.options.tui.requestRender();
-    }
+    });
   }
 }
 

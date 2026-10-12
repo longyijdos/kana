@@ -1,5 +1,6 @@
 import { Agent, type AgentStableContext } from "@/agent";
 import type { Logger } from "@/logging";
+import { errorFields, formatError } from "@/utils";
 import { type ContentView, ContentViewer, MarkdownBlock, TextBlock } from "../components";
 import { dim } from "../render";
 import { tuiTheme } from "../theme";
@@ -67,8 +68,7 @@ export class BtwController {
       maxTurns: 1,
       webSearch: false,
       imageInput: snapshot.imageInput,
-      logger: this.options.getLogger(),
-      loggerMetadata: { agentKind: "btw" },
+      logger: this.options.getLogger().child({ agentKind: "btw" }),
       context:
         snapshot.contextLimit !== undefined && snapshot.maxOutputTokens !== undefined
           ? {
@@ -143,7 +143,7 @@ export class BtwController {
           if (event.reason === "error") {
             throw new Error("BTW request failed.");
           }
-          outcome = event.reason === "aborted" ? "Canceled" : "Done";
+          outcome = event.reason === "aborted" ? "Cancelled" : "Done";
         }
         if (this.slot === slot) {
           this.options.requestRender();
@@ -152,9 +152,9 @@ export class BtwController {
       await stream.result();
     } catch (error) {
       outcome = "Failed";
-      slot.error = error instanceof Error ? error.message : String(error);
+      slot.error = formatError(error);
       this.options.getLogger().error("tui.btw_failed", {
-        errorType: error instanceof Error ? error.name : typeof error,
+        ...errorFields(error),
       });
     } finally {
       await slot.agent.waitForIdle();

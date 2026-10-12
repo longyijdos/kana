@@ -20,7 +20,6 @@ import {
   type AppendCompactionOptions,
   type AppendKanaSessionMessagesOptions,
   type AppendSnapshotOptions,
-  assertContextCheckpointForAppend,
   contextCheckpointToEntry,
   createEntryId,
   createMessageEntry,
@@ -49,7 +48,7 @@ type JournalState = {
   logicalMessageIds: Set<MessageId>;
   compactionIds: Set<string>;
   todoToolCallIds: Set<string>;
-  activeTurnTodoStates: Map<string, KanaTodoItem[]>;
+  activeTurnTodoStates: Map<string, readonly KanaTodoItem[]>;
 };
 
 export class KanaSessionJournal {
@@ -64,13 +63,13 @@ export class KanaSessionJournal {
     logicalMessageIds: new Set<MessageId>(),
     compactionIds: new Set<string>(),
     todoToolCallIds: new Set<string>(),
-    activeTurnTodoStates: new Map<string, KanaTodoItem[]>(),
+    activeTurnTodoStates: new Map<string, readonly KanaTodoItem[]>(),
   };
   private fileCreated: boolean;
   private writeFailed = false;
 
   constructor(
-    private readonly session: KanaSessionMetadata,
+    private session: KanaSessionMetadata,
     timeline: readonly KanaSessionTimelineEntry[] = [],
   ) {
     this.fileCreated = existsSync(session.path);
@@ -85,9 +84,9 @@ export class KanaSessionJournal {
 
   startTurn(
     turnId: string,
-    messages: Extract<Message, { role: "user" }>[],
+    messages: readonly Extract<Message, { role: "user" }>[],
     options: AppendKanaSessionMessagesOptions = {},
-  ): KanaSessionTimelineEntry[] {
+  ): readonly KanaSessionTimelineEntry[] {
     if (this.state.activeTurn) {
       throw new Error(
         `Cannot start session turn ${turnId}; turn ${this.state.activeTurn.turnId} is still open.`,
@@ -118,7 +117,7 @@ export class KanaSessionJournal {
     }
 
     this.appendEntries(entries, messages);
-    return structuredClone(entries);
+    return entries;
   }
 
   appendMessage(
@@ -134,14 +133,13 @@ export class KanaSessionJournal {
     );
 
     this.appendEntries([entry]);
-    return structuredClone(entry);
+    return entry;
   }
 
   appendCompaction(
     checkpoint: ContextCheckpoint,
     options: AppendCompactionOptions = {},
   ): KanaSessionContextCompactionEntry {
-    assertContextCheckpointForAppend(checkpoint);
     if (options.turnId !== undefined) {
       this.assertActiveTurn(options.turnId);
     } else if (this.state.activeTurn) {
@@ -162,7 +160,7 @@ export class KanaSessionJournal {
       this.state.compactionIds,
     );
     this.appendEntries([entry]);
-    return structuredClone(entry);
+    return entry;
   }
 
   appendTodoState(
@@ -196,7 +194,7 @@ export class KanaSessionJournal {
       items: normalizeKanaTodoItems(items),
     };
     this.appendEntries([entry]);
-    return structuredClone(entry);
+    return entry;
   }
 
   endTurn(
@@ -215,52 +213,22 @@ export class KanaSessionJournal {
     };
 
     this.appendEntries([entry]);
-    return structuredClone(entry);
+    return entry;
   }
 
   appendSnapshot(
-    messages: Message[],
+    messages: readonly Message[],
     options: AppendSnapshotOptions = {},
-  ): KanaSessionTimelineEntry[] {
+  ): readonly KanaSessionTimelineEntry[] {
     if (this.state.activeTurn) {
       throw new Error(
         `Cannot append a session snapshot while turn ${this.state.activeTurn.turnId} is open.`,
       );
     }
 
-    const compactions = structuredClone(options.compactions ?? []);
-    for (const checkpoint of compactions) {
-      assertContextCheckpointForAppend(checkpoint);
-    }
-    compactions.sort(
+    const compactions = [...(options.compactions ?? [])].sort(
       (left, right) => left.createdAfterMessageCount - right.createdAfterMessageCount,
     );
-
-    if (messages.length === 0 && options.todoState === undefined) {
-      const entries: KanaSessionContextCompactionEntry[] = [];
-      let parentId = this.state.tailId;
-      const knownCompactionIds = new Set(this.state.compactionIds);
-
-      for (const checkpoint of compactions) {
-        if (checkpoint.createdAfterMessageCount !== this.state.messageIds.length) {
-          throw new Error(
-            "Context compaction references messages that have not been persisted at this timeline position.",
-          );
-        }
-        const entry = contextCheckpointToEntry(
-          checkpoint,
-          parentId,
-          this.state.messageIds,
-          knownCompactionIds,
-        );
-        entries.push(entry);
-        parentId = entry.id;
-        knownCompactionIds.add(entry.id);
-      }
-
-      this.appendEntries(entries);
-      return structuredClone(entries);
-    }
 
     const timestamp = options.timestamp ?? new Date().toISOString();
     const turnId = randomUUID();
@@ -282,16 +250,13 @@ export class KanaSessionJournal {
     entries.push(startEntry);
     parentId = startEntry.id;
 
+    // Each checkpoint follows the message it was created after.
     const appendEligibleCompactions = (): void => {
-      while (
-        compactionIndex < compactions.length &&
-        (compactions[compactionIndex]?.createdAfterMessageCount ?? Number.POSITIVE_INFINITY) <=
-          messageCount
+      for (
+        let checkpoint = compactions[compactionIndex];
+        checkpoint && checkpoint.createdAfterMessageCount <= messageCount;
+        checkpoint = compactions[compactionIndex]
       ) {
-        const checkpoint = compactions[compactionIndex];
-        if (!checkpoint) {
-          break;
-        }
         if (checkpoint.createdAfterMessageCount < this.state.messageIds.length) {
           throw new Error("Context compaction predates the snapshot being appended.");
         }
@@ -345,11 +310,11 @@ export class KanaSessionJournal {
     entries.push(endEntry);
 
     this.appendEntries(entries, messages);
-    return structuredClone(entries);
+    return entries;
   }
 
   recoverInterruptedTurn(): {
-    entries: KanaSessionTimelineEntry[];
+    entries: readonly KanaSessionTimelineEntry[];
     turnId: string;
     unknownToolCallCount: number;
   } {
@@ -418,7 +383,7 @@ export class KanaSessionJournal {
 
     this.appendEntries(entries);
     return {
-      entries: structuredClone(entries),
+      entries: entries,
       turnId: activeTurn.turnId,
       unknownToolCallCount,
     };
@@ -466,7 +431,7 @@ export class KanaSessionJournal {
         mode: 0o600,
       });
 
-      this.session.title = title;
+      this.session = { ...this.session, title };
       this.fileCreated = true;
       for (const entry of entries) {
         this.applyEntry(entry);
@@ -499,7 +464,7 @@ export class KanaSessionJournal {
         if (this.state.turnIds.has(entry.turnId)) {
           throw new Error(`Duplicate Kana session turn id: ${entry.turnId}`);
         }
-        this.state.activeTurn = structuredClone(entry);
+        this.state.activeTurn = entry;
         this.state.activeTurnMessages = [];
         this.state.activeTurnTodoStates.clear();
         this.state.turnIds.add(entry.turnId);
@@ -514,7 +479,7 @@ export class KanaSessionJournal {
         }
         this.state.messageIds.push(entry.id);
         this.state.logicalMessageIds.add(entry.message.id);
-        this.state.activeTurnMessages.push(structuredClone(entry.message));
+        this.state.activeTurnMessages.push(entry.message);
         break;
 
       case "context_compaction":
@@ -550,7 +515,7 @@ export class KanaSessionJournal {
             );
           }
           this.state.todoToolCallIds.add(entry.toolCallId);
-          this.state.activeTurnTodoStates.set(entry.toolCallId, structuredClone(entry.items));
+          this.state.activeTurnTodoStates.set(entry.toolCallId, entry.items);
         }
         break;
 
@@ -604,7 +569,7 @@ function findUnresolvedToolCalls(messages: readonly Message[]): ToolCallContent[
     if (message.role === "assistant") {
       for (const content of message.content) {
         if (content.type === "tool_call") {
-          unresolved.set(content.id, structuredClone(content));
+          unresolved.set(content.id, content);
         }
       }
       continue;

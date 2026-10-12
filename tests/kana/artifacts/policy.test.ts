@@ -6,6 +6,7 @@ import { Type } from "typebox";
 
 import type { Message } from "@/core";
 import type { Logger, LogMetadata } from "@/logging";
+import { createLogger } from "@/logging";
 import { createGrepTool, createReadTool, createShellTool, type Tool } from "@/tools";
 import { ToolRuntime } from "../../../src/agent/tool-runtime";
 import {
@@ -105,7 +106,7 @@ describe("Kana tool-result artifacts", () => {
       {
         tools: [shell],
         toolContentByteLimit: 1_024,
-        toolResultPolicy: createKanaToolResultArtifactPolicy({ store }),
+        toolResultPolicies: [createKanaToolResultArtifactPolicy({ store })],
       },
       (event) => {
         if (event.type === "tool_execution_end") {
@@ -224,11 +225,13 @@ describe("Kana tool-result artifacts", () => {
         tools: [tool],
         toolContentByteLimit: 768,
         limitToolContent: () => "ordinary bounded fallback",
-        toolResultPolicy: createKanaToolResultArtifactPolicy({
-          store: createRecordingStore(async () => {
-            throw Object.assign(new Error("disk full"), { code: "ENOSPC" });
+        toolResultPolicies: [
+          createKanaToolResultArtifactPolicy({
+            store: createRecordingStore(async () => {
+              throw Object.assign(new Error("disk full"), { code: "ENOSPC" });
+            }),
           }),
-        }),
+        ],
         onMessageCommitted: (message) => {
           committed.push(message);
         },
@@ -247,7 +250,7 @@ describe("Kana tool-result artifacts", () => {
     expect(liveResult).toBe(canonicalResult);
     expect(result.toolResults[0]).toMatchObject({ content: "ordinary bounded fallback" });
     expect(result.toolResults[0]).not.toHaveProperty("result");
-    expect(committed).toEqual(result.toolResults);
+    expect(committed).toEqual([...result.toolResults]);
   });
 
   test("preserves oversized structured results without spilling inline text", async () => {
@@ -305,10 +308,9 @@ function createRecordingStore(
 }
 
 function createRecordingLogger(records: Array<{ event: string; metadata?: LogMetadata }>): Logger {
-  const record = (event: string, metadata?: LogMetadata): void => {
+  return createLogger((_level, event, metadata) => {
     records.push({ event, metadata });
-  };
-  return { debug: record, info: record, warn: record, error: record };
+  });
 }
 
 function createToolContext() {

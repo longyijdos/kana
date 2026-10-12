@@ -3,8 +3,6 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
 import path from "node:path";
 import type { Message } from "@/core";
 import {
-  appendKanaSessionMessages,
-  appendKanaSessionRun,
   createKanaSession,
   createKanaSessionJournal,
   deleteKanaSession,
@@ -13,6 +11,7 @@ import {
   loadKanaSession,
 } from "@/kana";
 import { messageIdentityForTest } from "../../helpers/messages";
+import { appendSessionSnapshot } from "../../helpers/session";
 import { createSessionFixture } from "./session-fixture";
 
 const { cleanupTempDirs, createTempEnv } = createSessionFixture();
@@ -43,7 +42,7 @@ describe("Kana session repository", () => {
       },
     ];
 
-    appendKanaSessionMessages(session, messages, {
+    appendSessionSnapshot(session, messages, {
       timestamp: "2026-06-12T00:00:00.000Z",
     });
 
@@ -58,6 +57,7 @@ describe("Kana session repository", () => {
     expect(header.model).toBeUndefined();
     expect(loaded.metadata).toEqual({
       ...session,
+      title: "hi",
       updatedAt: "2026-06-12T00:00:00.000Z",
     });
     expect(loaded.messages).toEqual(messages);
@@ -67,7 +67,6 @@ describe("Kana session repository", () => {
       "message",
       "turn_end",
     ]);
-    expect(session.title).toBe("hi");
     expect(loaded.contextCheckpoint).toBeUndefined();
   });
   test("identifies unknown message and checkpoint references in corrupted sessions", () => {
@@ -83,7 +82,7 @@ describe("Kana session repository", () => {
         content: [{ type: "text", text: "Answer" }],
       },
     ];
-    appendKanaSessionRun(session, messages, {
+    appendSessionSnapshot(session, messages, {
       compactions: [
         {
           id: "compact-corrupted",
@@ -127,10 +126,10 @@ describe("Kana session repository", () => {
     const first = createKanaSession({ cwd, env, id: "first" });
     const second = createKanaSession({ cwd, env, id: "second" });
 
-    appendKanaSessionMessages(first, [
+    appendSessionSnapshot(first, [
       { ...messageIdentityForTest("user"), role: "user", content: "first" },
     ]);
-    appendKanaSessionMessages(second, [
+    appendSessionSnapshot(second, [
       { ...messageIdentityForTest("user"), role: "user", content: "second" },
     ]);
 
@@ -149,10 +148,10 @@ describe("Kana session repository", () => {
     const first = createKanaSession({ cwd, env, id: "first" });
     const second = createKanaSession({ cwd, env, id: "second" });
 
-    appendKanaSessionMessages(first, [userMessage("first")], {
+    appendSessionSnapshot(first, [userMessage("first")], {
       timestamp: "2026-06-10T00:00:00.000Z",
     });
-    appendKanaSessionMessages(second, [userMessage("second")], {
+    appendSessionSnapshot(second, [userMessage("second")], {
       timestamp: "2026-06-11T00:00:00.000Z",
     });
 
@@ -163,7 +162,7 @@ describe("Kana session repository", () => {
 
     expect(sessionIds(env, cwd)).toEqual(["second", "first"]);
 
-    appendKanaSessionMessages(first, [userMessage("more")], {
+    appendSessionSnapshot(first, [userMessage("more")], {
       timestamp: "2026-06-12T00:00:00.000Z",
     });
 
@@ -177,10 +176,10 @@ describe("Kana session repository", () => {
     const interrupted = createKanaSession({ cwd, env, id: "interrupted" });
     const complete = createKanaSession({ cwd, env, id: "complete" });
 
-    appendKanaSessionMessages(interrupted, [userMessage("interrupted")], {
+    appendSessionSnapshot(interrupted, [userMessage("interrupted")], {
       timestamp: "2026-06-10T00:00:00.000Z",
     });
-    appendKanaSessionMessages(complete, [userMessage("complete")], {
+    appendSessionSnapshot(complete, [userMessage("complete")], {
       timestamp: "2026-06-11T00:00:00.000Z",
     });
     appendFileSync(
@@ -214,7 +213,7 @@ describe("Kana session repository", () => {
       parentSessionPath: "/tmp/source.jsonl",
     });
 
-    appendKanaSessionMessages(fork, messages);
+    appendSessionSnapshot(fork, messages);
 
     const loaded = loadKanaSession("fork", { env, cwd });
     const header = JSON.parse(readFileSync(fork.path, "utf8").split("\n")[0] ?? "{}") as Record<
@@ -242,7 +241,7 @@ describe("Kana session repository", () => {
       title: "Compare parser approaches",
     });
 
-    appendKanaSessionMessages(session, [
+    appendSessionSnapshot(session, [
       {
         ...messageIdentityForTest("user"),
         role: "user",
@@ -286,7 +285,7 @@ describe("Kana session repository", () => {
     const cwd = path.join(env.HOME ?? "", "repo");
     const session = createKanaSession({ cwd, env, id: "delete-me" });
 
-    appendKanaSessionMessages(session, [
+    appendSessionSnapshot(session, [
       { ...messageIdentityForTest("user"), role: "user", content: "remove this" },
     ]);
 

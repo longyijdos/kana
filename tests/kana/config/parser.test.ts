@@ -314,16 +314,32 @@ describe("Kana config parser", () => {
   });
 
   test.each([
-    ["top-level key", "agnent = true\n", "agnent"],
-    ["top-level table", "[agnent]\nmax_turns = 5\n", "agnent"],
-    ["nested table", '[agent.modle]\nname = "typo"\n', "agent.modle"],
-    ["nested field", '[agent.model]\nnam = "typo"\n', "agent.model.nam"],
-    ["inline table field", '[agent]\nmodel = { nam = "typo" }\n', "agent.model.nam"],
-    ["memory agent field", "[memory.agent]\nweb_serch = true\n", "memory.agent.web_serch"],
-  ])("rejects unknown %s in config.toml", (_label, document, field) => {
+    ["top-level key", "agnent = true\n", "config contains unknown field agnent."],
+    ["top-level table", "[agnent]\nmax_turns = 5\n", "config contains unknown field agnent."],
+    [
+      "nested table",
+      '[agent.modle]\nname = "typo"\n',
+      "config.agent contains unknown field modle.",
+    ],
+    [
+      "nested field",
+      '[agent.model]\nnam = "typo"\n',
+      "config.agent.model contains unknown field nam.",
+    ],
+    [
+      "inline table field",
+      '[agent]\nmodel = { nam = "typo" }\n',
+      "config.agent.model contains unknown field nam.",
+    ],
+    [
+      "memory agent field",
+      "[memory.agent]\nweb_serch = true\n",
+      "config.memory.agent contains unknown field web_serch.",
+    ],
+  ])("rejects unknown %s in config.toml", (_label, document, error) => {
     const env = createTempEnv();
     writeFileSync(getKanaConfigPaths(env).configPath, document);
-    expect(() => loadKanaConfig(env)).toThrow(`Unknown config field: ${field}.`);
+    expect(() => loadKanaConfig(env)).toThrow(error);
   });
 
   test("loads and validates the built-in tool selection", () => {

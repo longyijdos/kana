@@ -11,6 +11,7 @@ export { resolveShell } from "./command-process";
 export { createEditTool } from "./edit";
 export { createGlobTool, DEFAULT_GLOB_LIMIT } from "./glob";
 export { createGrepTool, DEFAULT_GREP_INCLUDE, DEFAULT_GREP_LIMIT } from "./grep";
+export { encodeUserImage, loadUserImageFile } from "./image-input";
 export { createListTool, DEFAULT_LIST_LIMIT } from "./list";
 export { createReadTool, DEFAULT_READ_LIMIT } from "./read";
 export { normalizeToolResult } from "./result";

@@ -1,17 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { Type } from "typebox";
-import {
-  Agent,
-  type ContextCheckpoint,
-  createPromptAssembly,
-  estimateContextTokens,
-} from "../../src/agent";
+import { AssistantMessageBuilder } from "@/core";
+import { createLogger } from "@/logging";
+import { Agent, type ContextCheckpoint, createPromptAssembly } from "../../src/agent";
 import type { AgentEvent } from "../../src/agent/events";
+import { estimateContextTokens } from "../../src/agent/token-estimate";
 import type { ModelContext } from "../../src/core/context";
 import { type AssistantMessage, createUserMessage, type Message } from "../../src/core/messages";
 import type { Model, ModelMetadata, ModelUsage } from "../../src/core/model";
 import { AssistantEventStream } from "../../src/core/stream";
-import type { Logger } from "../../src/logging";
 import type { Tool } from "../../src/tools/tool";
 import { deferred } from "../helpers/async-control";
 import { createRecordingLogger, type RecordedLog } from "../helpers/logging";
@@ -26,6 +23,7 @@ class TextModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -50,43 +48,34 @@ class TextModel implements Model {
     const stream = new AssistantEventStream();
 
     queueMicrotask(() => {
-      const message: AssistantMessage = {
+      const empty: AssistantMessage = {
         ...(this.identity ?? messageIdentityForTest("assistant")),
         role: "assistant",
         content: [],
       };
+      const message: AssistantMessage = {
+        ...empty,
+        content: [{ type: "text", text: this.response }],
+      };
 
-      stream.push({
-        type: "start",
-        snapshot: structuredClone(message),
-      });
-
-      message.content.push({
-        type: "text",
-        text: this.response,
-      });
-
-      stream.push({
-        type: "text_start",
-        contentIndex: 0,
-        snapshot: structuredClone(message),
-      });
+      stream.push({ type: "start", snapshot: empty });
+      stream.push({ type: "text_start", contentIndex: 0, snapshot: message });
       stream.push({
         type: "text_delta",
         contentIndex: 0,
         delta: this.response,
-        snapshot: structuredClone(message),
+        snapshot: message,
       });
       stream.push({
         type: "text_end",
         contentIndex: 0,
         content: this.response,
-        snapshot: structuredClone(message),
+        snapshot: message,
       });
       stream.end({
         type: "done",
         reason: "stop",
-        message: structuredClone(message),
+        message,
         usage: this.usage,
       });
     });
@@ -108,33 +97,30 @@ class AbortAwareModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
 
   stream(context: ModelContext): AssistantEventStream {
     const stream = new AssistantEventStream();
 
     queueMicrotask(() => {
-      const message: AssistantMessage = {
-        ...messageIdentityForTest("assistant"),
-        role: "assistant",
-        content: [],
-      };
+      const message = new AssistantMessageBuilder();
 
       const abort = (): void => {
         stream.error({
           type: "error",
           reason: "aborted",
           error: context.signal?.reason ?? new Error("aborted"),
-          snapshot: structuredClone(message),
+          snapshot: message.snapshot(),
         });
       };
 
       stream.push({
         type: "start",
-        snapshot: structuredClone(message),
+        snapshot: message.snapshot(),
       });
 
-      message.content.push({
+      message.add({
         type: "text",
         text: "partial",
       });
@@ -142,13 +128,13 @@ class AbortAwareModel implements Model {
       stream.push({
         type: "text_start",
         contentIndex: 0,
-        snapshot: structuredClone(message),
+        snapshot: message.snapshot(),
       });
       stream.push({
         type: "text_delta",
         contentIndex: 0,
         delta: "partial",
-        snapshot: structuredClone(message),
+        snapshot: message.snapshot(),
       });
 
       if (context.signal?.aborted) {
@@ -176,6 +162,7 @@ class RepeatedToolModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
   private requestCount = 0;
 
@@ -201,23 +188,14 @@ class RepeatedToolModel implements Model {
 }
 
 describe("Agent lifecycle", () => {
-  test("stores runtime limits and rejects invalid construction options", () => {
-    expect(new Agent({ model: new TextModel() }).state.toolDeadlineMs).toBe(300_000);
+  test("resolves runtime limits from options and defaults", () => {
+    expect(new Agent({ model: new TextModel() }).settings.toolDeadlineMs).toBe(300_000);
     expect(
       new Agent({
         model: new TextModel(),
         toolDeadlineMs: 120_000,
-      }).state.toolDeadlineMs,
+      }).settings.toolDeadlineMs,
     ).toBe(120_000);
-
-    const invalidOptions = [
-      [{ maxTurns: 0 }, "maxTurns must be -1 or a positive integer."],
-      [{ toolDeadlineMs: 0 }, "defaultDeadlineMs must be a positive integer."],
-      [{ maxParallelToolCalls: 0 }, "maxParallelToolCalls must be a positive integer."],
-    ] as const;
-    for (const [options, expectedError] of invalidOptions) {
-      expect(() => new Agent({ model: new TextModel(), ...options })).toThrow(expectedError);
-    }
   });
 
   test("passes configured model capabilities to providers", async () => {
@@ -334,25 +312,16 @@ describe("Agent lifecycle", () => {
 
   test("writes lifecycle events without logging message content", async () => {
     const records: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
-    const logger: Logger = {
-      debug: (event, metadata) => records.push({ event, metadata }),
-      info: (event, metadata) => records.push({ event, metadata }),
-      warn: (event, metadata) => records.push({ event, metadata }),
-      error: (event, metadata) => records.push({ event, metadata }),
-    };
+    const logger = createLogger((_level, event, metadata) => records.push({ event, metadata }));
     const agent = new Agent({
       model: new TextModel("secret answer"),
-      logger,
-      loggerMetadata: { agentKind: "conversation" },
+      logger: logger.child({ agentKind: "conversation" }),
     });
 
     await agent.prompt("secret prompt");
 
     expect(records.map((record) => record.event)).toEqual([
-      "agent.parallel_tool_calls_configured",
-      "agent.model_capabilities_configured",
-      "agent.repeated_tool_calls_configured",
-      "agent.tool_result_policies_configured",
+      "agent.configured",
       "agent.run_started",
       "agent.started",
       "agent.turn_started",
@@ -360,41 +329,17 @@ describe("Agent lifecycle", () => {
       "agent.ended",
     ]);
     expect(records[0]).toEqual({
-      event: "agent.parallel_tool_calls_configured",
-      metadata: {
-        agentKind: "conversation",
-        requested: true,
-        supported: true,
-        enabled: true,
-        maxParallelToolCalls: 4,
-      },
-    });
-    expect(records[1]).toEqual({
-      event: "agent.model_capabilities_configured",
+      event: "agent.configured",
       metadata: {
         agentKind: "conversation",
         webSearch: false,
         imageInput: false,
+        parallelToolCalls: true,
+        maxParallelToolCalls: 4,
+        toolResultPolicySources: [],
       },
     });
-    expect(records[2]).toEqual({
-      event: "agent.repeated_tool_calls_configured",
-      metadata: {
-        agentKind: "conversation",
-        enabled: false,
-        reminderThresholds: [],
-        excludedToolCount: 0,
-      },
-    });
-    expect(records[3]).toEqual({
-      event: "agent.tool_result_policies_configured",
-      metadata: {
-        agentKind: "conversation",
-        policyCount: 0,
-        policySources: [],
-      },
-    });
-    expect(records[4]).toEqual({
+    expect(records[1]).toEqual({
       event: "agent.run_started",
       metadata: { agentKind: "conversation", promptMessageCount: 1 },
     });
@@ -430,28 +375,6 @@ describe("Agent lifecycle", () => {
       },
     ]);
     expect(JSON.stringify(records)).not.toContain("secret");
-  });
-
-  test("keeps logging failures outside the runtime control flow", async () => {
-    const fail = () => {
-      throw new Error("logger unavailable");
-    };
-    const agent = new Agent({
-      model: new TextModel("hello"),
-      logger: {
-        debug: fail,
-        info: fail,
-        warn: fail,
-        error: fail,
-      },
-    });
-
-    await agent.prompt("hi");
-
-    expect(agent.state.messages.at(-1)).toMatchObject({
-      role: "assistant",
-      stopReason: "stop",
-    });
   });
 
   test("runs prompts and appends loop messages once", async () => {
@@ -534,7 +457,7 @@ describe("Agent lifecycle", () => {
 
     expect(messages.map((message) => message.role)).toEqual(["assistant"]);
     expect(agent.state.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
-    expect(agent.state.messages.slice(1)).toEqual(messages);
+    expect(agent.state.messages.slice(1)).toEqual([...messages]);
     expect(messages[0]).toMatchObject({
       role: "assistant",
       stopReason: "stop",
@@ -556,7 +479,7 @@ describe("Agent lifecycle", () => {
       promptCacheMissTokens: 10,
       reasoningTokens: 5,
     };
-    const commits: Message[][] = [];
+    const commits: (readonly Message[])[] = [];
     const agent = new Agent({
       model: new TextModel("metered", usage),
       onRunCommitted: ({ messages }) => {
@@ -629,10 +552,10 @@ describe("Agent context restoration", () => {
     // The restored estimate must match the provider-anchor-plus-local-delta
     // value of the latest clean response instead of jumping to a full local
     // estimate of the replayable projection.
-    expect(agent.state.estimatedContextTokens).toBe(
+    expect(agent.estimateContextTokens()).toBe(
       12_000 + estimateContextTokens({ messages: messages.slice(3) }) - 8,
     );
-    expect(agent.state.estimatedContextTokens).toBeLessThan(30_000);
+    expect(agent.estimateContextTokens()).toBeLessThan(30_000);
   });
 });
 
@@ -771,12 +694,12 @@ describe("Agent journal integration", () => {
         (message) => message.role === "user" && message.provenance.kind === "runtime_context",
       ),
     ).toEqual(snapshots);
-    expect(model.contexts[1]?.messages.slice(0, model.contexts[0]?.messages.length)).toEqual(
-      model.contexts[0]?.messages,
-    );
-    expect(model.contexts[2]?.messages.slice(0, model.contexts[1]?.messages.length)).toEqual(
-      model.contexts[1]?.messages,
-    );
+    expect(model.contexts[1]?.messages.slice(0, model.contexts[0]?.messages.length)).toEqual([
+      ...(model.contexts[0]?.messages ?? []),
+    ]);
+    expect(model.contexts[2]?.messages.slice(0, model.contexts[1]?.messages.length)).toEqual([
+      ...(model.contexts[1]?.messages ?? []),
+    ]);
   });
 
   test("appends source-defined inactive context and retains it with earlier state", async () => {
@@ -823,12 +746,12 @@ describe("Agent journal integration", () => {
           (message) => message.role === "user" && message.provenance.kind === "runtime_context",
         ),
       ),
-    ).toEqual([[durableSnapshots[0]], durableSnapshots, durableSnapshots]);
+    ).toEqual([[durableSnapshots[0]!], durableSnapshots, durableSnapshots]);
     expect(JSON.stringify(model.contexts[1])).toContain("capability enabled");
     expect(JSON.stringify(model.contexts[1])).toContain("No optional capability is active.");
-    expect(model.contexts[1]?.messages.slice(0, model.contexts[0]?.messages.length)).toEqual(
-      model.contexts[0]?.messages,
-    );
+    expect(model.contexts[1]?.messages.slice(0, model.contexts[0]?.messages.length)).toEqual([
+      ...(model.contexts[0]?.messages ?? []),
+    ]);
   });
 
   test("does not append context for a source that starts inactive", async () => {
@@ -1269,43 +1192,11 @@ describe("Agent context compaction", () => {
 });
 
 describe("Agent state isolation and completion", () => {
-  test("returns state snapshots without exposing mutable message history", async () => {
-    const agent = new Agent({
-      model: new TextModel("hello"),
-    });
-
-    await agent.prompt("hi");
-
-    const state = agent.state;
-    state.messages.length = 0;
-
-    expect(agent.state.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
-  });
-
-  test("deep-clones constructor messages before storing them", () => {
-    const initialMessage = {
-      ...messageIdentityForTest("user"),
-      role: "user" as const,
-      content: "original",
-    };
-    const agent = new Agent({
-      model: new TextModel(),
-      messages: [initialMessage],
-    });
-
-    initialMessage.content = "mutated";
-
-    expect(agent.state.messages).toEqual([{ ...initialMessage, content: "original" }]);
-  });
-
-  test("isolates listener mutations and failures from state and other listeners", async () => {
+  test("isolates listener failures from other listeners", async () => {
     const records: Array<{ event: string; metadata?: Record<string, unknown> }> = [];
-    const logger: Logger = {
-      debug: () => {},
-      info: () => {},
-      warn: (event, metadata) => records.push({ event, metadata }),
-      error: () => {},
-    };
+    const logger = createLogger((level, event, metadata) => {
+      if (level === "warn") records.push({ event, metadata });
+    });
     const agent = new Agent({
       model: new TextModel("committed"),
       logger,
@@ -1314,7 +1205,6 @@ describe("Agent state isolation and completion", () => {
 
     agent.subscribe((event) => {
       if (event.type === "agent_end") {
-        event.messages.length = 0;
         throw new Error("observer failed");
       }
     });
@@ -1451,11 +1341,7 @@ describe("Agent state isolation and completion", () => {
 });
 
 function streamProbeToolCall(stream: AssistantEventStream, callNumber: number): void {
-  const message: AssistantMessage = {
-    ...messageIdentityForTest("assistant"),
-    role: "assistant",
-    content: [],
-  };
+  const message = new AssistantMessageBuilder();
   const toolCall = {
     type: "tool_call" as const,
     id: `probe-${callNumber}`,
@@ -1464,60 +1350,56 @@ function streamProbeToolCall(stream: AssistantEventStream, callNumber: number): 
     rawArgs: '{"path":"same"}',
   };
 
-  stream.push({ type: "start", snapshot: structuredClone(message) });
-  message.content.push(toolCall);
+  stream.push({ type: "start", snapshot: message.snapshot() });
+  message.add(toolCall);
   stream.push({
     type: "toolcall_start",
     contentIndex: 0,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.push({
     type: "toolcall_end",
     contentIndex: 0,
     toolCall,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.end({
     type: "done",
     reason: "toolUse",
-    message: structuredClone(message),
+    message: message.snapshot(),
   });
 }
 
 function streamText(stream: AssistantEventStream, text: string): void {
-  const message: AssistantMessage = {
-    ...messageIdentityForTest("assistant"),
-    role: "assistant",
-    content: [],
-  };
+  const message = new AssistantMessageBuilder();
 
-  stream.push({ type: "start", snapshot: structuredClone(message) });
-  message.content.push({ type: "text", text });
+  stream.push({ type: "start", snapshot: message.snapshot() });
+  message.add({ type: "text", text });
   stream.push({
     type: "text_start",
     contentIndex: 0,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.push({
     type: "text_delta",
     contentIndex: 0,
     delta: text,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.push({
     type: "text_end",
     contentIndex: 0,
     content: text,
-    snapshot: structuredClone(message),
+    snapshot: message.snapshot(),
   });
   stream.end({
     type: "done",
     reason: "stop",
-    message: structuredClone(message),
+    message: message.snapshot(),
   });
 }
 
-function policyMessages(messages: Message[]): Message[] {
+function policyMessages(messages: readonly Message[]): Message[] {
   return messages.filter(
     (message) => message.role === "user" && message.provenance.kind === "tool_result_policy",
   );

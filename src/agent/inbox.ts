@@ -6,42 +6,43 @@ export type AgentInputDelivery =
   | { kind: "steering" }
   | { kind: "queued" }
   | {
-      kind: "scheduled";
-      displayContent: string;
-      dueAt: Date;
-      key?: string;
+      readonly kind: "scheduled";
+      readonly displayContent: string;
+      readonly dueAt: Date;
+      readonly origin: "user" | "agent";
+      readonly key?: string;
     }
   | {
-      kind: "goal";
-      displayContent: string;
-      goalId: string;
-      round: number;
-      maxRounds: number;
+      readonly kind: "goal";
+      readonly displayContent: string;
+      readonly goalId: string;
+      readonly round: number;
+      readonly maxRounds: number;
     }
   | {
-      kind: "job";
-      displayContent: string;
-      jobId: string;
+      readonly kind: "job";
+      readonly displayContent: string;
+      readonly jobId: string;
     }
   | {
-      kind: "subagent";
-      displayContent: string;
-      agentId: string;
+      readonly kind: "subagent";
+      readonly displayContent: string;
+      readonly agentId: string;
     }
   | {
-      kind: "user_task";
-      displayContent: string;
-      taskId: string;
+      readonly kind: "user_task";
+      readonly displayContent: string;
+      readonly taskId: string;
     };
 
 export type AgentInboxItem = {
-  message: UserMessage;
-  delivery: AgentInputDelivery;
+  readonly message: UserMessage;
+  readonly delivery: AgentInputDelivery;
 };
 
 export type AgentInboxSnapshot = {
-  nextStep: AgentInboxItem[];
-  nextTurn: AgentInboxItem[];
+  readonly nextStep: readonly AgentInboxItem[];
+  readonly nextTurn: readonly AgentInboxItem[];
 };
 
 export class AgentInbox {
@@ -60,8 +61,8 @@ export class AgentInbox {
 
   get snapshot(): AgentInboxSnapshot {
     return {
-      nextStep: structuredClone(this.nextStepItems),
-      nextTurn: structuredClone(this.nextTurnItems),
+      nextStep: [...this.nextStepItems],
+      nextTurn: [...this.nextTurnItems],
     };
   }
 
@@ -71,7 +72,7 @@ export class AgentInbox {
     }
 
     this.pendingIds.add(item.message.id);
-    this.itemsFor(lane).push(structuredClone(item));
+    this.itemsFor(lane).push(item);
   }
 
   peekNextStep(): AgentInboxItem | undefined {
@@ -113,7 +114,7 @@ export class AgentInbox {
     // remain the same, and deferred steering joins the existing next-turn tail.
     const deferred = this.nextStepItems.splice(0);
     this.nextTurnItems.push(...deferred);
-    return structuredClone(deferred);
+    return deferred;
   }
 
   remove(id: MessageId): AgentInboxItem | undefined {
@@ -145,7 +146,7 @@ export class AgentInbox {
       }
       items.length = retainedCount;
     }
-    return structuredClone(removed);
+    return removed;
   }
 
   private shift(items: AgentInboxItem[]): AgentInboxItem | undefined {
@@ -154,7 +155,7 @@ export class AgentInbox {
       return undefined;
     }
     this.pendingIds.delete(item.message.id);
-    return structuredClone(item);
+    return item;
   }
 
   private itemsFor(lane: AgentInputLane): AgentInboxItem[] {
@@ -163,5 +164,5 @@ export class AgentInbox {
 }
 
 function cloneItem(item: AgentInboxItem | undefined): AgentInboxItem | undefined {
-  return item === undefined ? undefined : structuredClone(item);
+  return item === undefined ? undefined : item;
 }

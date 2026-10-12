@@ -63,9 +63,9 @@ Every proposed call follows one contained pipeline:
 
 Kana-owned object schemas use `additionalProperties: false`, so an undeclared argument fails with its property name instead of being ignored. Serialized TypeBox schemas that have lost library metadata still receive compatible primitive conversion before the same compiler validates them. Third-party and MCP schemas keep their own declared additional-property behavior. `mcp_call` validates its gateway envelope in this pipeline and validates nested remote arguments inside the gateway before remote invocation.
 
-Validation errors, approval denial, cancellation, deadline expiry, and tool exceptions become `isError: true` results. They do not throw the turn loop. Approval cancellation aborts the run by default and gives later calls from the same assistant message canceled results without invoking them.
+Validation errors, approval denial, cancellation, deadline expiry, and tool exceptions become `isError: true` results. They do not throw the turn loop. Approval cancellation aborts the run by default and gives later calls from the same assistant message cancelled results without invoking them.
 
-A hook's `return` supplies a normal `ToolResult` and skips `execute` and its deadline; `cancel` supplies a canceled error result, even with `abortRun: false`. Both paths still publish `tool_execution_end`, apply result policies, and commit a tool result.
+A hook's `return` supplies a normal `ToolResult` and skips `execute` and its deadline; `cancel` supplies a cancelled error result, even with `abortRun: false`. Both paths still publish `tool_execution_end`, apply result policies, and commit a tool result.
 
 `tool_execution_end` describes completion, cancellation, a hook-supplied result, or an explicit unknown outcome. It does not promise that the result reached the journal. A successful Agent run is the durability boundary; see [Sessions and memory](sessions-and-memory.md) for commit and recovery order.
 
@@ -79,15 +79,15 @@ The effective deadline comes from `tool.execution.deadlineMs`, then the Agent de
 
 Approval precedes an ordinary tool's deadline. For `run_code`, waiting for an inner `beforeToolExecution` hook, including its serial approval queue, pauses the outer deadline, elapsed display, and recorded execution duration. Overlapping approval waits share one pause; the outer deadline resumes its remaining budget after the last wait finishes. Already executing inner tools retain their own deadlines. The runtime publishes `tool_execution_pause` and `tool_execution_resume` for the outer call with `reason: "approval"`; these events do not create history messages.
 
-Run abort, a tool deadline, or an internal scheduler failure immediately stops pool replenishment and aborts active sibling signals. Calls not yet started receive canceled results. Started calls receive a finite cancellation grace period. Settlement within it becomes `canceled` or `timed_out`; a later return cannot replace that outcome.
+Run abort, a tool deadline, or an internal scheduler failure immediately stops pool replenishment and aborts active sibling signals. Calls not yet started receive cancelled results. Started calls receive a finite cancellation grace period. Settlement within it becomes `cancelled` or `timed_out`; a later return cannot replace that outcome.
 
 If a call ignores cancellation past the grace period, ToolRuntime stops accepting updates, fixes its result as `status: "unknown"`, and ends the Agent run. The result forbids automatic retry because the detached operation may still have side effects. Late settlement produces only safe lifecycle diagnostics without arguments or output.
 
 ## Tool-result policies and artifacts
 
-After normalization, ToolRuntime applies each `ToolResultPolicy` in order to success, failure, denial, cancellation, timeout, and unknown outcomes. A policy receives a cloned read-only call, current model-visible content and error state, structured-result byte size when measurable, and the active content limit. Arbitrary structured host data itself does not cross this advisory boundary.
+After normalization, ToolRuntime applies each `ToolResultPolicy` in order to success, failure, denial, cancellation, timeout, and unknown outcomes. A policy receives the readonly call, current model-visible content and error state, structured-result byte size when measurable, and the active content limit. Arbitrary structured host data itself does not cross this advisory boundary.
 
-A policy may replace model-visible content, append source-attributed internal context, disable durable structured-result retention, or attach one validated artifact reference. It cannot change tool identity, arguments, canonical live result, or error state. Invalid policy output or an exception produces safe diagnostics and preserves the preceding pipeline state. Accepted output is copied into a plain detached snapshot so getters, proxies, sparse arrays, or later mutation cannot escape containment.
+A policy may replace model-visible content, append source-attributed internal context, disable durable structured-result retention, or attach one validated artifact reference. It cannot change tool identity, arguments, canonical live result, or error state. Policies are trusted product code typed against `ToolResultPolicyResult`; an exception produces safe diagnostics and preserves the preceding pipeline state.
 
 All sibling results from one assistant message commit in model order before any `tool_result_policy` context. Each Agent owns its policy instances and mutable policy state. Accepted human input and Agent reset clear that state.
 

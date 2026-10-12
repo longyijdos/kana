@@ -1,5 +1,5 @@
 import type { KanaUsageSummary } from "@/kana";
-import { color, truncateToWidth, visibleWidth } from "../render";
+import { color, formatInteger, truncateToWidth, visibleWidth } from "../render";
 import type { Component } from "../runtime";
 import { tuiTheme } from "../theme";
 
@@ -132,7 +132,4 @@ function modelLine(
 function bar(value: number, total: number, width: number): string {
   const filled = Math.round((value / total) * width);
   return `${"█".repeat(filled)}${"░".repeat(width - filled)}`;
-}
-function formatInteger(value: number): string {
-  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value);
 }

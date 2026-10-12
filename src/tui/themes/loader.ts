@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { getKanaConfigPaths, isKanaTuiThemeName } from "@/kana";
+import { formatError } from "@/utils";
 import { getBuiltInTuiTheme } from "./builtins";
 import { parseUserTuiTheme } from "./parser";
 import type { ResolvedTuiTheme } from "./types";
@@ -36,11 +37,8 @@ export function loadTuiTheme(name: string, env: NodeJS.ProcessEnv = process.env)
       source: "user",
     };
   } catch (error) {
-    throw new Error(
-      `Invalid TUI theme ${name} at ${themePath}: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-      { cause: error },
-    );
+    throw new Error(`Invalid TUI theme ${name} at ${themePath}: ${formatError(error)}`, {
+      cause: error,
+    });
   }
 }

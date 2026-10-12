@@ -214,7 +214,7 @@ describe("BackgroundJobManager", () => {
     await jobs.close();
   });
 
-  test("Agent tool kill observes the canceled completion", async () => {
+  test("Agent tool kill observes the cancelled completion", async () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
     const job = jobs.start({
@@ -222,7 +222,7 @@ describe("BackgroundJobManager", () => {
       label: "tool cancellation",
       run: ({ signal }) =>
         new Promise((resolve) => {
-          signal.addEventListener("abort", () => resolve({ status: "canceled", exitCode: null }), {
+          signal.addEventListener("abort", () => resolve({ status: "cancelled", exitCode: null }), {
             once: true,
           });
         }),
@@ -230,7 +230,7 @@ describe("BackgroundJobManager", () => {
 
     const result = await jobs.kill(job.id, { source: "tool" });
 
-    expect(result).toMatchObject({ id: job.id, status: "canceled" });
+    expect(result).toMatchObject({ id: job.id, status: "cancelled" });
     expect(jobs.context()).toEqual([]);
     await manager.close();
   });
@@ -259,7 +259,7 @@ describe("BackgroundJobManager", () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
     const events: string[] = [];
-    jobs.subscribe((event) => events.push(`${event.type}:${event.job.status}`));
+    jobs.subscribe((event) => events.push(`${event.type}:${event.task.status}`));
     const completion = deferred<ProducerResult>();
 
     const job = jobs.start({ kind: "test", label: "lifecycle", run: () => completion.promise });
@@ -268,18 +268,18 @@ describe("BackgroundJobManager", () => {
     const cancellation = jobs.kill(job.id, { source: "tui" });
     expect(events).toEqual(["started:running", "stopping:stopping"]);
 
-    completion.resolve({ status: "canceled", exitCode: null });
+    completion.resolve({ status: "cancelled", exitCode: null });
     await cancellation;
-    await waitFor(() => events.includes("settled:canceled"));
-    expect(events).toEqual(["started:running", "stopping:stopping", "settled:canceled"]);
+    await waitFor(() => events.includes("settled:cancelled"));
+    expect(events).toEqual(["started:running", "stopping:stopping", "settled:cancelled"]);
 
     jobs.observe(job.id);
     jobs.observe(job.id);
     expect(events).toEqual([
       "started:running",
       "stopping:stopping",
-      "settled:canceled",
-      "observed:canceled",
+      "settled:cancelled",
+      "observed:cancelled",
     ]);
     await manager.close();
   });
@@ -288,7 +288,7 @@ describe("BackgroundJobManager", () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 2 });
     const events: string[] = [];
-    jobs.subscribe((event) => events.push(`${event.type}:${event.job.status}`));
+    jobs.subscribe((event) => events.push(`${event.type}:${event.task.status}`));
     const completion = deferred<ProducerResult>();
     const completed = jobs.start({
       kind: "test",
@@ -300,7 +300,7 @@ describe("BackgroundJobManager", () => {
       label: "active",
       run: ({ signal }) =>
         new Promise((resolve) => {
-          signal.addEventListener("abort", () => resolve({ status: "canceled", exitCode: null }), {
+          signal.addEventListener("abort", () => resolve({ status: "cancelled", exitCode: null }), {
             once: true,
           });
         }),

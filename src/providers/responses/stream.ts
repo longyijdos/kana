@@ -1,6 +1,6 @@
 import type {
   AssistantEventStream,
-  AssistantMessage,
+  AssistantMessageBuilder,
   HostedToolAction,
   HostedToolContent,
   ModelUsage,
@@ -8,9 +8,10 @@ import type {
   ThinkingContent,
   ToolCallContent,
 } from "@/core";
+import { isRecord } from "@/utils";
+import { parseToolArguments } from "../tool-arguments";
 
 export type ResponsesStreamState = {
-  terminalSeen: boolean;
   stopReason?: "stop" | "length" | "toolUse";
   usage?: ModelUsage;
 };
@@ -43,33 +44,22 @@ export type ResponsesStreamProcessorOptions = {
     action: HostedToolAction,
     item: Readonly<Record<string, unknown>>,
   ) => HostedToolAction;
+  // Event types the provider sends but that carry no semantic content.
+  ignoredEventTypes?: readonly string[];
 };
 
-type PendingItem =
-  | {
-      kind: "reasoning";
-      contentIndex: number;
-      content: ThinkingContent;
-      item: Record<string, unknown>;
-    }
-  | {
-      kind: "message";
-      contentIndex: number;
-      content: TextContent;
-      item: Record<string, unknown>;
-    }
-  | {
-      kind: "function_call";
-      contentIndex: number;
-      content: ToolCallContent;
-      item: Record<string, unknown>;
-    }
-  | {
-      kind: "web_search_call";
-      contentIndex: number;
-      content: HostedToolContent;
-      item: Record<string, unknown>;
-    };
+type PendingItem = {
+  kind: "reasoning" | "message" | "function_call" | "web_search_call";
+  contentIndex: number;
+  item: Record<string, unknown>;
+};
+
+const START_EVENT = {
+  reasoning: "thinking_start",
+  message: "text_start",
+  function_call: "toolcall_start",
+  web_search_call: "hosted_tool_start",
+} as const;
 
 // Responses providers share semantic item events, while each adapter keeps
 // ownership of request construction, transport, authentication, and replay.
@@ -82,7 +72,7 @@ export class ResponsesStreamProcessor {
 
   constructor(
     private readonly stream: AssistantEventStream,
-    private readonly message: AssistantMessage,
+    private readonly message: AssistantMessageBuilder,
     private readonly state: ResponsesStreamState,
     private readonly options: ResponsesStreamProcessorOptions,
   ) {}
@@ -93,6 +83,9 @@ export class ResponsesStreamProcessor {
 
   apply(event: Record<string, unknown>): void {
     const type = readString(event.type);
+    if (type !== undefined && this.options.ignoredEventTypes?.includes(type)) {
+      return;
+    }
     switch (type) {
       case "response.output_item.added":
         this.addItem(event);
@@ -150,7 +143,6 @@ export class ResponsesStreamProcessor {
       return;
     }
 
-    const contentIndex = this.message.content.length;
     const type = readString(item.type);
     if (
       type !== "reasoning" &&
@@ -161,62 +153,47 @@ export class ResponsesStreamProcessor {
       return;
     }
     this.outputStarted = true;
-    let pending: PendingItem;
-    if (type === "reasoning") {
-      const content: ThinkingContent = { type: "thinking", text: "" };
-      this.message.content.push(content);
-      pending = { kind: "reasoning", contentIndex, content, item: structuredClone(item) };
-      this.stream.push({
-        type: "thinking_start",
-        contentIndex,
-        snapshot: structuredClone(this.message),
-      });
-    } else if (type === "message") {
-      const content: TextContent = { type: "text", text: "" };
-      this.message.content.push(content);
-      pending = { kind: "message", contentIndex, content, item: structuredClone(item) };
-      this.stream.push({
-        type: "text_start",
-        contentIndex,
-        snapshot: structuredClone(this.message),
-      });
-    } else if (type === "function_call") {
-      const rawArgs = readString(item.arguments) ?? "";
-      const content: ToolCallContent = {
-        type: "tool_call",
-        id: requireString(item.call_id, `${this.options.providerLabel} function call ID`),
-        name: requireString(item.name, `${this.options.providerLabel} function name`),
-        args: parseToolArguments(rawArgs),
-        rawArgs,
-      };
-      this.message.content.push(content);
-      pending = { kind: "function_call", contentIndex, content, item: structuredClone(item) };
-      this.stream.push({
-        type: "toolcall_start",
-        contentIndex,
-        snapshot: structuredClone(this.message),
-      });
-    } else if (type === "web_search_call") {
-      const content: HostedToolContent = {
-        type: "hosted_tool",
-        id: requireString(item.id, `${this.options.providerLabel} web search call ID`),
-        name: "web_search",
-        status: "in_progress",
-      };
-      this.message.content.push(content);
-      pending = { kind: "web_search_call", contentIndex, content, item: structuredClone(item) };
-      this.stream.push({
-        type: "hosted_tool_start",
-        contentIndex,
-        snapshot: structuredClone(this.message),
-      });
-    } else {
-      return;
-    }
+    const contentIndex = this.message.add(this.createContent(type, item));
+    const pending: PendingItem = { kind: type, contentIndex, item };
+    this.stream.push({
+      type: START_EVENT[type],
+      contentIndex,
+      snapshot: this.message.snapshot(),
+    });
 
     this.pendingByIndex.set(outputIndex, pending);
     if (itemId !== undefined) {
       this.pendingById.set(itemId, pending);
+    }
+  }
+
+  private createContent(
+    type: PendingItem["kind"],
+    item: Record<string, unknown>,
+  ): ThinkingContent | TextContent | ToolCallContent | HostedToolContent {
+    const label = this.options.providerLabel;
+    switch (type) {
+      case "reasoning":
+        return { type: "thinking", text: "" };
+      case "message":
+        return { type: "text", text: "" };
+      case "function_call": {
+        const rawArgs = readString(item.arguments) ?? "";
+        return {
+          type: "tool_call",
+          id: requireString(item.call_id, `${label} function call ID`),
+          name: requireString(item.name, `${label} function name`),
+          args: parseToolArguments(rawArgs),
+          rawArgs,
+        };
+      }
+      case "web_search_call":
+        return {
+          type: "hosted_tool",
+          id: requireString(item.id, `${label} web search call ID`),
+          name: "web_search",
+          status: "in_progress",
+        };
     }
   }
 
@@ -226,27 +203,27 @@ export class ResponsesStreamProcessor {
     if (pending?.kind !== "reasoning" || !delta) {
       return;
     }
-    pending.content.text += delta;
+    this.message.appendText(pending.contentIndex, delta);
     this.stream.push({
       type: "thinking_delta",
       contentIndex: pending.contentIndex,
       delta,
-      snapshot: structuredClone(this.message),
+      snapshot: this.message.snapshot(),
     });
   }
 
   private finishThinkingPart(event: Record<string, unknown>): void {
     const pending = this.findPending(event);
-    if (pending?.kind !== "reasoning" || !pending.content.text) {
+    if (pending?.kind !== "reasoning" || !this.textAt(pending)) {
       return;
     }
     const delta = "\n\n";
-    pending.content.text += delta;
+    this.message.appendText(pending.contentIndex, delta);
     this.stream.push({
       type: "thinking_delta",
       contentIndex: pending.contentIndex,
       delta,
-      snapshot: structuredClone(this.message),
+      snapshot: this.message.snapshot(),
     });
   }
 
@@ -256,12 +233,12 @@ export class ResponsesStreamProcessor {
     if (pending?.kind !== "message" || !delta) {
       return;
     }
-    pending.content.text += delta;
+    this.message.appendText(pending.contentIndex, delta);
     this.stream.push({
       type: "text_delta",
       contentIndex: pending.contentIndex,
       delta,
-      snapshot: structuredClone(this.message),
+      snapshot: this.message.snapshot(),
     });
   }
 
@@ -271,13 +248,16 @@ export class ResponsesStreamProcessor {
     if (pending?.kind !== "function_call" || !delta) {
       return;
     }
-    pending.content.rawArgs = (pending.content.rawArgs ?? "") + delta;
-    pending.content.args = parseToolArguments(pending.content.rawArgs);
+    // Arguments are parsed once the item completes; partial JSON never parses.
+    this.message.update<ToolCallContent>(pending.contentIndex, (call) => ({
+      ...call,
+      rawArgs: (call.rawArgs ?? "") + delta,
+    }));
     this.stream.push({
       type: "toolcall_delta",
       contentIndex: pending.contentIndex,
       delta,
-      snapshot: structuredClone(this.message),
+      snapshot: this.message.snapshot(),
     });
   }
 
@@ -287,16 +267,18 @@ export class ResponsesStreamProcessor {
     if (pending?.kind !== "function_call" || rawArgs === undefined) {
       return;
     }
-    const previous = pending.content.rawArgs ?? "";
-    pending.content.rawArgs = rawArgs;
-    pending.content.args = parseToolArguments(rawArgs);
+    let previous = "";
+    this.message.update<ToolCallContent>(pending.contentIndex, (call) => {
+      previous = call.rawArgs ?? "";
+      return { ...call, rawArgs, args: parseToolArguments(rawArgs) };
+    });
     if (rawArgs.startsWith(previous) && rawArgs.length > previous.length) {
       const delta = rawArgs.slice(previous.length);
       this.stream.push({
         type: "toolcall_delta",
         contentIndex: pending.contentIndex,
         delta,
-        snapshot: structuredClone(this.message),
+        snapshot: this.message.snapshot(),
       });
     }
   }
@@ -316,51 +298,67 @@ export class ResponsesStreamProcessor {
 
   private finishPending(pending: PendingItem, item: Record<string, unknown>): void {
     const itemId = readString(item.id);
-    pending.content.providerState = {
-      provider: this.options.provider,
-      value: structuredClone(item),
-    };
+    const providerState = { provider: this.options.provider, value: item };
+    const { contentIndex } = pending;
 
     if (pending.kind === "reasoning") {
-      pending.content.text = readReasoningText(item) || pending.content.text.replace(/\n\n$/, "");
+      const content = this.message.update<ThinkingContent>(contentIndex, (block) => ({
+        ...block,
+        text: readReasoningText(item) || block.text.replace(/\n\n$/, ""),
+        providerState,
+      }));
       this.stream.push({
         type: "thinking_end",
-        contentIndex: pending.contentIndex,
-        content: pending.content.text,
-        snapshot: structuredClone(this.message),
+        contentIndex,
+        content: content.text,
+        snapshot: this.message.snapshot(),
       });
     } else if (pending.kind === "message") {
-      pending.content.text = readMessageText(item) ?? pending.content.text;
+      const content = this.message.update<TextContent>(contentIndex, (block) => ({
+        ...block,
+        text: readMessageText(item) ?? block.text,
+        providerState,
+      }));
       this.stream.push({
         type: "text_end",
-        contentIndex: pending.contentIndex,
-        content: pending.content.text,
-        snapshot: structuredClone(this.message),
+        contentIndex,
+        content: content.text,
+        snapshot: this.message.snapshot(),
       });
     } else if (pending.kind === "function_call") {
-      const rawArgs = readString(item.arguments) ?? pending.content.rawArgs ?? "";
-      pending.content.id = readString(item.call_id) ?? pending.content.id;
-      pending.content.name = readString(item.name) ?? pending.content.name;
-      pending.content.rawArgs = rawArgs;
-      pending.content.args = parseToolArguments(rawArgs);
+      const toolCall = this.message.update<ToolCallContent>(contentIndex, (call) => {
+        const rawArgs = readString(item.arguments) ?? call.rawArgs ?? "";
+        return {
+          ...call,
+          id: readString(item.call_id) ?? call.id,
+          name: readString(item.name) ?? call.name,
+          rawArgs,
+          args: parseToolArguments(rawArgs),
+          providerState,
+        };
+      });
       this.stream.push({
         type: "toolcall_end",
-        contentIndex: pending.contentIndex,
-        toolCall: structuredClone(pending.content),
-        snapshot: structuredClone(this.message),
+        contentIndex,
+        toolCall,
+        snapshot: this.message.snapshot(),
       });
     } else {
-      pending.content.status = "completed";
       const action = readHostedToolAction(item.action);
-      pending.content.action =
-        action === undefined
-          ? undefined
-          : (this.options.normalizeHostedToolAction?.(action, item) ?? action);
+      const hostedTool = this.message.update<HostedToolContent>(contentIndex, (tool) => ({
+        ...tool,
+        status: "completed",
+        action:
+          action === undefined
+            ? undefined
+            : (this.options.normalizeHostedToolAction?.(action, item) ?? action),
+        providerState,
+      }));
       this.stream.push({
         type: "hosted_tool_end",
-        contentIndex: pending.contentIndex,
-        hostedTool: structuredClone(pending.content),
-        snapshot: structuredClone(this.message),
+        contentIndex,
+        hostedTool,
+        snapshot: this.message.snapshot(),
       });
     }
 
@@ -425,7 +423,11 @@ export class ResponsesStreamProcessor {
         : this.message.content.some((content) => content.type === "tool_call")
           ? "toolUse"
           : "stop";
-    this.state.terminalSeen = true;
+  }
+
+  private textAt(pending: PendingItem): string {
+    const block = this.message.content[pending.contentIndex];
+    return block?.type === "thinking" || block?.type === "text" ? block.text : "";
   }
 
   private findPending(event: Record<string, unknown>): PendingItem | undefined {
@@ -439,73 +441,6 @@ export class ResponsesStreamProcessor {
     const itemId = readString(event.item_id);
     return itemId === undefined ? undefined : this.pendingById.get(itemId);
   }
-}
-
-export async function readResponsesStream(
-  response: Response,
-  onEvent: (event: Record<string, unknown>) => void,
-  providerLabel: string,
-  onActivity?: () => void,
-): Promise<void> {
-  if (!response.body) {
-    throw new Error(`${providerLabel} response does not contain a body.`);
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let completed = false;
-
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      onActivity?.();
-      buffer += decoder.decode(value, { stream: true });
-      const frames = buffer.split(/\r?\n\r?\n/);
-      buffer = frames.pop() ?? "";
-      for (const frame of frames) {
-        applySseFrame(frame, onEvent, providerLabel);
-      }
-    }
-
-    buffer += decoder.decode();
-    if (buffer) {
-      applySseFrame(buffer, onEvent, providerLabel);
-    }
-    completed = true;
-  } finally {
-    if (!completed) {
-      await reader.cancel().catch(() => undefined);
-    }
-    reader.releaseLock();
-  }
-}
-
-function applySseFrame(
-  frame: string,
-  onEvent: (event: Record<string, unknown>) => void,
-  providerLabel: string,
-): void {
-  const data = frame
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice("data:".length).trimStart())
-    .join("\n")
-    .trim();
-  if (!data || data === "[DONE]") {
-    return;
-  }
-
-  let event: unknown;
-  try {
-    event = JSON.parse(data);
-  } catch (error) {
-    throw new Error(`${providerLabel} stream returned invalid JSON.`, { cause: error });
-  }
-  onEvent(requireRecord(event, `${providerLabel} stream event`));
 }
 
 function readUsage(value: unknown): ModelUsage | undefined {
@@ -652,17 +587,6 @@ function readEventError(event: Record<string, unknown>): string | undefined {
   );
 }
 
-function parseToolArguments(value: string): unknown {
-  if (!value) {
-    return {};
-  }
-  try {
-    return JSON.parse(value);
-  } catch {
-    return {};
-  }
-}
-
 function readHostedToolAction(value: unknown): HostedToolAction | undefined {
   if (!isRecord(value)) {
     return undefined;
@@ -702,10 +626,6 @@ function requireRecord(value: unknown, name: string): Record<string, unknown> {
     throw new Error(`${name} must be an object.`);
   }
   return value;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requireString(value: unknown, name: string): string {

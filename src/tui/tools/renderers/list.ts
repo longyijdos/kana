@@ -1,9 +1,14 @@
-import { getBooleanProperty, getNumberProperty, getStringProperty } from "../properties";
+import {
+  getArrayProperty,
+  getBooleanProperty,
+  getNumberProperty,
+  getStringProperty,
+} from "../properties";
 
 export function formatListOutput(result: object): string {
   const path = getStringProperty(result, "path");
   const totalEntries = getNumberProperty(result, "totalEntries");
-  const entries = readObjectArrayLength(result, "entries");
+  const entries = getArrayProperty(result, "entries")?.length;
   const truncated = getBooleanProperty(result, "truncated");
 
   if (!path || totalEntries === undefined || entries === undefined) {
@@ -11,9 +16,4 @@ export function formatListOutput(result: object): string {
   }
 
   return `${path}: ${entries} of ${totalEntries} entries${truncated ? " (truncated)" : ""}`;
-}
-function readObjectArrayLength(value: object, key: string): number | undefined {
-  const property = (value as Record<string, unknown>)[key];
-
-  return Array.isArray(property) ? property.length : undefined;
 }

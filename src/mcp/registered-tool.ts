@@ -1,13 +1,8 @@
 import type { Static, TSchema } from "typebox";
 import { precompileToolParameters, type ToolContext, type ToolResult } from "@/tools";
+import { isRecord } from "@/utils";
 import { McpResponseError } from "./errors";
-import {
-  isJsonObject,
-  type JsonObject,
-  type McpCallToolResult,
-  type McpProgress,
-  type McpTool,
-} from "./protocol";
+import type { JsonObject, McpCallToolResult, McpProgress, McpTool } from "./protocol";
 import {
   type McpToolSource,
   normalizeMcpResponseError,
@@ -83,7 +78,7 @@ export function createRegisteredMcpTool(options: RegisteredMcpToolOptions): Regi
     parameters,
     ...(options.tool.outputSchema === undefined ? {} : { outputSchema: options.tool.outputSchema }),
     async execute(args, context): Promise<ToolResult> {
-      if (!isJsonObject(args)) {
+      if (!isRecord(args)) {
         throw new Error(
           `MCP tool ${options.serverId}/${options.tool.name} requires object arguments.`,
         );

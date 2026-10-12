@@ -13,7 +13,6 @@ export {
   authorizeKanaOpenAICodex,
   createKanaOAuthTokenStore,
   getKanaOpenAICodexAuthStatus,
-  type KanaOAuthTokenStatus,
   KanaOpenAICodexAuth,
   type KanaOpenAICodexAuthStatus,
   loadKanaOAuthTokenStatuses,
@@ -23,11 +22,12 @@ export {
 export {
   createKanaConfigStore,
   DEFAULT_KANA_CONFIG,
-  type InstallKanaConfigResult,
   installKanaConfig,
   isKanaTuiThemeName,
   KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES,
   type KanaConfig,
+  type KanaConfigDraft,
+  type KanaInstalledFile,
   type KanaModelProvider,
   type KanaNotificationBackend,
   type KanaNotificationConfig,
@@ -39,10 +39,20 @@ export {
   type ResetKanaConfigResult,
   resetKanaConfig,
 } from "./config";
+export {
+  addTrustedShellCommand,
+  createKanaToolApprovalStore,
+  DEFAULT_KANA_TOOL_APPROVALS,
+  getShellCommand,
+  type KanaToolApprovals,
+  loadKanaToolApprovals,
+  shouldRequestToolApproval,
+} from "./config/tool-approval";
 export { formatKanaEnvironmentContext } from "./context";
 export {
   type ConversationAgentIdentity,
   type ConversationInputQueueSnapshot,
+  type ConversationRunSource,
   ConversationRuntime,
   type ConversationRuntimeEvent,
   type ConversationRuntimeOptions,
@@ -52,17 +62,14 @@ export {
   createWakeScheduler,
   type KanaConversationHostSession,
   type KanaGoalSnapshot,
+  type KanaLaunchMode,
   type WakeEvent,
   type WakeEventOrigin,
-  type WakeScheduler,
 } from "./conversation";
 export { loadKanaEnvironment } from "./env";
-export type { KanaLaunchMode } from "./launch-mode";
 export {
   createKanaMcpManager,
   createKanaMcpRuntime,
-  DEFAULT_KANA_MCP_ACTIVATION_STATE,
-  DEFAULT_KANA_MCP_CONFIG,
   type KanaMcpConfig,
   type KanaMcpHttpServerConfig,
   KanaMcpRuntime,
@@ -72,11 +79,9 @@ export {
   type KanaMcpStdioServerConfig,
   loadKanaMcpActivationState,
   loadKanaMcpConfig,
-  loadKanaMcpServerActivations,
   parseKanaMcpActivationState,
   parseKanaMcpConfig,
   resolveKanaMcpOAuth2Client,
-  saveKanaMcpActivationState,
 } from "./mcp";
 export {
   appendKanaMemory,
@@ -96,15 +101,12 @@ export {
   type KanaModelManagement,
 } from "./model-management";
 export { getKanaConfigPaths, getKanaSessionLogPath } from "./path";
-export { buildKanaSystemPrompt } from "./prompt";
 export {
   expandKanaPromptTemplate,
   type KanaPromptTemplate,
   loadKanaPromptTemplates,
 } from "./prompts";
 export {
-  appendKanaSessionMessages,
-  appendKanaSessionRun,
   createKanaSession,
   createKanaSessionJournal,
   deleteKanaSession,
@@ -122,7 +124,6 @@ export {
   type LoadKanaSkillActivationsResult,
   loadKanaSkillActivations,
   loadKanaSkills,
-  loadKanaSkillsFromDir,
   type ReinstallKanaSkillsResult,
   reinstallKanaSkills,
   resyncKanaSkills,
@@ -143,15 +144,6 @@ export {
   type KanaTodoItem,
   type KanaTodoStateChange,
 } from "./todo";
-export {
-  addTrustedShellCommand,
-  createKanaToolApprovalStore,
-  DEFAULT_KANA_TOOL_APPROVALS,
-  getShellCommand,
-  type KanaToolApprovals,
-  loadKanaToolApprovals,
-  shouldRequestToolApproval,
-} from "./tool-approval";
 export {
   createRememberTool,
   createScheduleWakeTool,

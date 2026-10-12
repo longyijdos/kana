@@ -1,6 +1,13 @@
 import { createUserMessage, type UserImage, type UserMessage } from "@/core";
 
-import { padRightAnsi, renderHighlightedLine, visibleWidth, wrapPlainText } from "../../render";
+import {
+  base64ByteLength,
+  formatByteSize,
+  padRightAnsi,
+  renderHighlightedLine,
+  visibleWidth,
+  wrapPlainText,
+} from "../../render";
 import type { Component } from "../../runtime";
 import { tuiTheme } from "../../theme";
 
@@ -74,15 +81,4 @@ function formatImage(image: UserImage, index: number): string {
   return `[Image ${index + 1} · ${format} · ${image.width}×${image.height} · ${formatByteSize(
     base64ByteLength(image.data),
   )}]`;
-}
-
-function base64ByteLength(data: string): number {
-  const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
-  return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
-}
-
-function formatByteSize(bytes: number): string {
-  return bytes >= 1024 * 1024
-    ? `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }

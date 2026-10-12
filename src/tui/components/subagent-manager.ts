@@ -1,24 +1,15 @@
 import type { KanaSubagentInspection, KanaSubagentProfile, KanaSubagentSummary } from "@/kana";
+import { shortId } from "@/utils";
 import {
   color,
   dim,
+  singleLine,
   stripTerminalControlSequences,
   truncateToWidth,
   visibleWidth,
 } from "../render";
 import type { Component } from "../runtime";
-import {
-  isDown,
-  isEnd,
-  isEnter,
-  isEscape,
-  isHome,
-  isLeft,
-  isPageDown,
-  isPageUp,
-  isRight,
-  isUp,
-} from "../runtime";
+import { isEnter, isEscape } from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 import type { ContentView } from "./content-viewer";
@@ -39,8 +30,8 @@ export type SubagentManagerAction =
 
 export class SubagentManager implements Component {
   private readonly viewport = new ListViewport(VISIBLE_LIMIT);
-  private profiles: KanaSubagentProfile[] = [];
-  private subagents: KanaSubagentSummary[] = [];
+  private profiles: readonly KanaSubagentProfile[] = [];
+  private subagents: readonly KanaSubagentSummary[] = [];
   private preview?: { id: string; view: ContentView };
   private notice?: string;
 
@@ -51,7 +42,7 @@ export class SubagentManager implements Component {
 
   get selectedSubagent(): KanaSubagentSummary | undefined {
     const value = this.subagents[this.viewport.selectedIndex];
-    return value ? cloneSummary(value) : undefined;
+    return value ? value : undefined;
   }
 
   replace(
@@ -61,8 +52,8 @@ export class SubagentManager implements Component {
   ): void {
     const selectedId = this.selectedSubagent?.id;
     const previousIndex = this.viewport.selectedIndex;
-    this.profiles = profiles.map((profile) => structuredClone(profile));
-    this.subagents = subagents.map(cloneSummary);
+    this.profiles = profiles;
+    this.subagents = subagents;
     this.notice = notice;
     const selectedIndex = selectedId
       ? this.subagents.findIndex((candidate) => candidate.id === selectedId)
@@ -99,28 +90,8 @@ export class SubagentManager implements Component {
       if (subagent) this.onAction({ type: "inspect", subagent });
       return;
     }
-    if (isUp(data)) {
-      this.moveBy(() => this.viewport.move(-1, this.subagents.length));
+    if (this.moveBy(() => this.viewport.handleNavigationKey(data, this.subagents.length))) {
       return;
-    }
-    if (isDown(data)) {
-      this.moveBy(() => this.viewport.move(1, this.subagents.length));
-      return;
-    }
-    if (isLeft(data) || isPageUp(data)) {
-      this.moveBy(() => this.viewport.movePage(-1, this.subagents.length));
-      return;
-    }
-    if (isRight(data) || isPageDown(data)) {
-      this.moveBy(() => this.viewport.movePage(1, this.subagents.length));
-      return;
-    }
-    if (isHome(data)) {
-      this.moveBy(() => this.viewport.moveTo(0, this.subagents.length));
-      return;
-    }
-    if (isEnd(data)) {
-      this.moveBy(() => this.viewport.moveTo(this.subagents.length - 1, this.subagents.length));
     }
   }
 
@@ -151,13 +122,14 @@ export class SubagentManager implements Component {
     return lines;
   }
 
-  private moveBy(apply: () => void): void {
+  private moveBy(apply: () => boolean): boolean {
     const previous = this.viewport.selectedIndex;
-    apply();
+    const handled = apply();
     if (previous !== this.viewport.selectedIndex) {
       const subagent = this.selectedSubagent;
       if (subagent) this.onAction({ type: "select", subagent });
     }
+    return handled;
   }
 
   private configureViewport(availableHeight: number | undefined) {
@@ -227,21 +199,4 @@ function renderProfileSummary(profiles: readonly KanaSubagentProfile[], width: n
   const prefixWidth = width - visibleWidth(separator) - visibleWidth(hidden);
   if (prefixWidth <= 0) return truncateToWidth(hidden, width);
   return `${truncateToWidth("Profiles", prefixWidth)}${separator}${hidden}`;
-}
-
-function cloneSummary(summary: KanaSubagentSummary): KanaSubagentSummary {
-  return {
-    ...summary,
-    startedAt: new Date(summary.startedAt),
-    ...(summary.finishedAt === undefined ? {} : { finishedAt: new Date(summary.finishedAt) }),
-    ...(summary.model === undefined ? {} : { model: { ...summary.model } }),
-  };
-}
-
-function shortId(id: string): string {
-  return id.startsWith("agent_") ? id.slice(6, 14) : id.slice(0, 8);
-}
-
-function singleLine(value: string): string {
-  return stripTerminalControlSequences(value).trim().replace(/\s+/g, " ");
 }

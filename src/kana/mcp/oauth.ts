@@ -4,9 +4,14 @@ import {
   McpOAuthHttpAuthorizer,
   type McpOAuthHttpDiagnosticEvent,
 } from "@/mcp";
-import type { OAuthFetch, OAuthStoredToken, OAuthTokenStore } from "@/oauth";
+import {
+  getOAuthTokenStatus,
+  type OAuthFetch,
+  type OAuthTokenStatus,
+  type OAuthTokenStore,
+} from "@/oauth";
 import { openKanaOAuthAuthorizationUrl } from "../auth/browser";
-import { createKanaOAuthTokenStore, type KanaOAuthTokenStatus } from "../auth/token-store";
+import { createKanaOAuthTokenStore } from "../auth/token-store";
 import {
   type KanaMcpConfig,
   type KanaMcpHttpServerConfig,
@@ -80,7 +85,7 @@ export function createKanaMcpOAuthAuthorizer(
 export async function authorizeKanaMcpServer(
   serverId: string,
   options: RunKanaMcpOAuthOptions = {},
-): Promise<KanaOAuthTokenStatus> {
+): Promise<OAuthTokenStatus> {
   const context = createOperationContext(options);
   const server = requireOAuthServer(serverId, context.env, options.config);
   const authorizer = createKanaMcpOAuthAuthorizer(serverId, server, {
@@ -100,23 +105,19 @@ export async function authorizeKanaMcpServer(
   if (token === undefined) {
     throw new Error(`MCP server ${serverId} completed OAuth without storing credentials.`);
   }
-  return storedTokenStatus(token);
+  return getOAuthTokenStatus(token);
 }
 
 export async function signOutKanaMcpServer(
   serverId: string,
   options: RunKanaMcpOAuthOptions = {},
-): Promise<KanaOAuthTokenStatus> {
+): Promise<OAuthTokenStatus> {
   const context = createOperationContext(options);
   requireOAuthServer(serverId, context.env, options.config);
   await context.tokenStore.delete(createKanaMcpOAuthStorageKey(serverId));
   await context.clientStore.deleteClient(createKanaMcpOAuthStorageKey(serverId));
-  try {
-    context.getLogger().info("mcp.oauth_signed_out", { serverId });
-  } catch {
-    // Sign-out persistence succeeds independently of diagnostic logging.
-  }
-  return { state: "unauthorized", refreshable: false };
+  context.getLogger().info("mcp.oauth_signed_out", { serverId });
+  return getOAuthTokenStatus(undefined);
 }
 
 function createOperationContext(options: RunKanaMcpOAuthOptions): {
@@ -161,24 +162,11 @@ function createDiagnosticHandler(
 ): (event: McpOAuthHttpDiagnosticEvent) => void {
   return (diagnostic) => {
     const { event, level, ...metadata } = diagnostic;
-    try {
-      options.getLogger()[level](event, { serverId, ...metadata });
-    } catch {
-      // Logging is diagnostic and cannot block authorization.
-    }
+    options.getLogger()[level](event, { serverId, ...metadata });
     try {
       options.onDiagnostic?.(diagnostic);
     } catch {
       // Presentation callbacks cannot change authorization control flow.
     }
-  };
-}
-
-function storedTokenStatus(token: OAuthStoredToken): KanaOAuthTokenStatus {
-  return {
-    state:
-      token.expiresAt !== undefined && token.expiresAt <= Date.now() ? "expired" : "authorized",
-    refreshable: token.refreshToken !== undefined,
-    ...(token.expiresAt === undefined ? {} : { expiresAt: token.expiresAt }),
   };
 }

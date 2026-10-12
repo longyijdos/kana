@@ -140,7 +140,9 @@ function rgbCode(prefix: "38" | "48", value: RgbColor): string {
 }
 
 export function rgbToXterm256(value: RgbColor): number {
-  const [red, green, blue] = value.map(clampRgb);
+  const red = clampRgb(value[0]);
+  const green = clampRgb(value[1]);
+  const blue = clampRgb(value[2]);
   const distance = (targetRed: number, targetGreen: number, targetBlue: number) =>
     (red - targetRed) ** 2 * 0.299 +
     (green - targetGreen) ** 2 * 0.587 +

@@ -10,14 +10,12 @@ import {
   type PromptToolSection,
 } from "@/agent";
 import type { BackgroundJobSummary } from "@/jobs";
-import { loadKanaConfig } from "./config";
 import {
   type CollectKanaEnvironmentContextOptions,
   collectKanaEnvironmentContext,
   formatKanaEnvironmentContext,
 } from "./context";
 import type { KanaGoalSnapshot } from "./conversation/goal-controller";
-import type { KanaLaunchMode } from "./launch-mode";
 import { formatKanaMemoryForPrompt } from "./memory/prompt";
 import { getKanaConfigPaths } from "./path";
 import { formatKanaSkillsForPrompt } from "./skills/prompt";
@@ -32,18 +30,13 @@ const DEFAULT_SYSTEM_PROMPT =
 type LoadKanaSystemPromptOptions = {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  launchMode?: KanaLaunchMode;
 };
 
-export type BuildKanaSystemPromptOptions = CollectKanaEnvironmentContextOptions & {
+export type BuildKanaPromptAssemblyOptions = CollectKanaEnvironmentContextOptions & {
   env?: NodeJS.ProcessEnv;
-  launchMode?: KanaLaunchMode;
   memoryEnabled?: boolean;
   skills?: readonly KanaSkill[];
   instructionSections?: readonly PromptSystemSection[];
-};
-
-export type BuildKanaPromptAssemblyOptions = BuildKanaSystemPromptOptions & {
   resolveBackgroundJobState?: () => readonly BackgroundJobSummary[];
   toolSections?: readonly PromptToolSection[];
   resolveTodoState?: () => readonly KanaTodoItem[];
@@ -56,9 +49,6 @@ export function loadKanaInstructionSections(
   options: LoadKanaSystemPromptOptions = {},
 ): PromptSystemSection[] {
   const cwd = options.cwd ?? process.cwd();
-  if (options.launchMode === "clean") {
-    return [];
-  }
   const { agentsPath } = getKanaConfigPaths(options.env);
   const projectAgentsPath = path.join(cwd, "AGENTS.md");
   const sections: PromptSystemSection[] = [];
@@ -85,25 +75,12 @@ export function loadKanaInstructionSections(
   return sections;
 }
 
-export function buildKanaSystemPrompt(options: BuildKanaSystemPromptOptions = {}): string {
-  return buildKanaPromptAssembly(options).initialSystem ?? "";
-}
-
 export function buildKanaPromptAssembly(
   options: BuildKanaPromptAssemblyOptions = {},
 ): PromptAssembly {
-  const customizationsEnabled = options.launchMode !== "clean";
-  const memoryEnabled =
-    customizationsEnabled && (options.memoryEnabled ?? loadKanaConfig(options.env).memory.enabled);
-  const memoryPrompt = memoryEnabled ? formatKanaMemoryForPrompt(options) : undefined;
-  const instructionSections = customizationsEnabled
-    ? (options.instructionSections ??
-      loadKanaInstructionSections({
-        cwd: options.cwd,
-        env: options.env,
-      }))
-    : [];
-  const skillsPrompt = customizationsEnabled ? formatKanaSkillsForPrompt(options.skills ?? []) : "";
+  const memoryPrompt = options.memoryEnabled ? formatKanaMemoryForPrompt(options) : undefined;
+  const instructionSections = options.instructionSections ?? [];
+  const skillsPrompt = formatKanaSkillsForPrompt(options.skills ?? []);
   const resolveBackgroundJobState = options.resolveBackgroundJobState;
   const resolveSubagentState = options.resolveSubagentState;
   const contextSections: PromptContextSection[] = [

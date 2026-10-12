@@ -29,11 +29,9 @@ import type { KanaAgentConfig, KanaProviderConfig } from "./config";
 import type { KanaGoalSnapshot, KanaGoalUpdate } from "./conversation/goal-controller";
 import type { WakeScheduler } from "./conversation/wake-scheduler";
 import type { KanaCustomProviderSnapshot } from "./custom-provider";
-import type { KanaLaunchMode } from "./launch-mode";
 import type { KanaMemoryEntry } from "./memory";
 import { createKanaAgentModelRuntime } from "./model";
 import { buildKanaPromptAssembly } from "./prompt";
-import { loadKanaSkillActivations } from "./skills/loader";
 import type { KanaSkill } from "./skills/types";
 import type {
   KanaSubagentClient,
@@ -42,7 +40,6 @@ import type {
   KanaSubagentRunResult,
 } from "./subagents";
 import type { KanaTodoItem, KanaTodoStateChange } from "./todo";
-import { KANA_WORKSPACE_TOOL_NAMES } from "./tool-names";
 import {
   createCancelSubagentTool,
   createDelegateUserTaskTool,
@@ -54,9 +51,10 @@ import {
   createUpdateGoalTool,
   createWaitSubagentTool,
 } from "./tools";
+import { KANA_WORKSPACE_TOOL_NAMES } from "./tools/names";
 import type { KanaUserTaskManager } from "./user-tasks";
 
-export { KANA_BUILT_IN_TOOL_NAMES } from "./tool-names";
+export { KANA_BUILT_IN_TOOL_NAMES } from "./tools/names";
 
 export type KanaAgentOptions = Pick<
   AgentConfig,
@@ -70,7 +68,7 @@ export type KanaAgentOptions = Pick<
 > & {
   resolveMcp?: () => McpToolRegistry | undefined;
   env?: NodeJS.ProcessEnv;
-  launchMode?: KanaLaunchMode;
+  memoryEnabled?: boolean;
   wakeScheduler?: WakeScheduler;
   sessionId?: string;
   contextCheckpoint?: ContextCheckpoint;
@@ -93,7 +91,6 @@ export type KanaAgentOptions = Pick<
 
 export type KanaAgentDependencies = {
   providers: KanaProviderConfig;
-  memoryEnabled: boolean;
 };
 
 export function createKanaAgent(
@@ -105,12 +102,7 @@ export function createKanaAgent(
   const backgroundJobs = options.backgroundJobs;
   const subagentProfile = options.subagentProfile;
   const subagents = options.subagents;
-  const customizationsEnabled = options.launchMode !== "clean";
-  const skills =
-    customizationsEnabled && !subagentProfile
-      ? (options.skills ??
-        loadKanaSkillActivations({ cwd, env: options.env }).skills.filter((skill) => skill.enabled))
-      : [];
+  const skills = subagentProfile ? [] : (options.skills ?? []);
   const runtime = createKanaAgentModelRuntime(config, dependencies.providers, {
     env: options.env,
     logger: options.logger,
@@ -127,7 +119,7 @@ export function createKanaAgent(
         (subagentProfile === undefined || subagentProfile.tools.includes(tool.name)),
     );
   const resolveMcpTools = (): Tool[] => {
-    const registry = customizationsEnabled ? options.resolveMcp?.() : undefined;
+    const registry = options.resolveMcp?.();
     return registry?.catalog.length ? selectEnabledTools(createMcpTools(registry)) : [];
   };
   const workspaceTools: Tool[] = selectEnabledTools([
@@ -260,7 +252,7 @@ export function createKanaAgent(
       resolve: resolveGoalTools,
     });
   }
-  if (!subagentProfile && customizationsEnabled && dependencies.memoryEnabled) {
+  if (!subagentProfile && options.memoryEnabled) {
     toolSections.push({
       name: "memory",
       tools: selectEnabledTools([
@@ -283,7 +275,7 @@ export function createKanaAgent(
       ]),
     });
   }
-  if (customizationsEnabled && options.resolveMcp) {
+  if (options.resolveMcp) {
     toolSections.push({
       name: "mcp",
       tools: resolveMcpTools(),
@@ -303,8 +295,7 @@ export function createKanaAgent(
     : buildKanaPromptAssembly({
         cwd,
         env: options.env,
-        launchMode: options.launchMode,
-        memoryEnabled: dependencies.memoryEnabled,
+        memoryEnabled: options.memoryEnabled ?? false,
         skills,
         instructionSections: options.instructionSections,
         resolveBackgroundJobState: backgroundJobs ? () => backgroundJobs.context() : undefined,
@@ -340,8 +331,7 @@ export function createKanaAgent(
     onRunCommitted: options.onRunCommitted,
     onCompactionCommitted: options.onCompactionCommitted,
     journal: options.journal,
-    logger: options.logger,
-    loggerMetadata: { agentKind: subagentProfile ? "subagent" : "conversation" },
+    logger: options.logger?.child({ agentKind: subagentProfile ? "subagent" : "conversation" }),
     context: {
       contextLimit: runtime.contextLimit,
       maxOutputTokens: runtime.maxOutputTokens,

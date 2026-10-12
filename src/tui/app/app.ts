@@ -4,7 +4,13 @@ import type {
   BeforeToolExecutionResult,
   ContextCheckpoint,
 } from "@/agent";
-import { createUserMessage, type Message, type ToolCallContent, type UserImage } from "@/core";
+import {
+  createUserMessage,
+  type Message,
+  type ToolCallContent,
+  type UserImage,
+  type UserMessage,
+} from "@/core";
 import type { ConversationAgentIdentity, KanaToolApprovalMode } from "@/kana";
 import { ConversationRuntime, type ConversationRuntimeEvent } from "@/kana";
 import { createNoopLogger, type Logger } from "@/logging";
@@ -15,7 +21,6 @@ import {
   Editor,
   TextBlock,
   Transcript,
-  UserMessageBlock,
 } from "../components";
 import type { Terminal } from "../runtime";
 import { isCtrlC, isCtrlO, isEscape, Tui } from "../runtime";
@@ -26,37 +31,37 @@ import { AgentEventRenderer } from "./agent-event-renderer";
 import { AppLayout } from "./app-layout";
 import type { KanaTuiAppOptions } from "./app-options";
 import { BackgroundActivityController } from "./background-activity-controller";
-import { BackgroundJobManagerController } from "./background-job-manager-controller";
 import { BottomAreaController } from "./bottom-area-controller";
 import { BtwController } from "./btw-controller";
-import { ContentViewerController } from "./content-viewer-controller";
 import { ContextCompactController } from "./context-compact-controller";
-import { formatUserMessage } from "./history";
 import { ImageAttachmentController } from "./image-attachment-controller";
-import { InformationViewerController } from "./information-viewer-controller";
 import { InteractionErrorReporter } from "./interaction-error-reporter";
 import { LocalShellController } from "./local-shell-controller";
 import { McpLifecycleController } from "./mcp-lifecycle-controller";
 import { McpOAuthStatusController } from "./mcp-oauth-status-controller";
-import { McpServerManagerController } from "./mcp-server-manager-controller";
 import { MemoryActivityController } from "./memory-activity-controller";
 import { MemoryCompactController } from "./memory-compact-controller";
 import type { TuiModelSelection } from "./model-selection";
 import { formatStatusModel, ModelSelectionController } from "./model-selection-controller";
 import { NotificationController } from "./notification-controller";
+import { BackgroundJobManagerController } from "./overlays/background-job-manager-controller";
+import { ContentViewerController } from "./overlays/content-viewer-controller";
+import { InformationViewerController } from "./overlays/information-viewer-controller";
+import { McpServerManagerController } from "./overlays/mcp-server-manager-controller";
+import { ScheduledMessageManagerController } from "./overlays/scheduled-message-manager-controller";
+import { SkillManagerController } from "./overlays/skill-manager-controller";
+import { SubagentManagerController } from "./overlays/subagent-manager-controller";
+import { ToolHistoryController } from "./overlays/tool-history-controller";
 import { QueuedInputController } from "./queued-input-controller";
-import { ScheduledMessageManagerController } from "./scheduled-message-manager-controller";
+import { createRunInputView } from "./run-input-view";
 import { SessionLifecycleController } from "./session-lifecycle-controller";
-import { SkillManagerController } from "./skill-manager-controller";
 import { type SlashCommand, SlashCommandController } from "./slash-command-controller";
 import {
   formatToolApprovalMode,
   SlashCommandOptionsController,
 } from "./slash-command-options-controller";
 import { StatusProjectionController } from "./status-projection-controller";
-import { SubagentManagerController } from "./subagent-manager-controller";
 import { ToolApprovalController } from "./tool-approval-controller";
-import { ToolHistoryController } from "./tool-history-controller";
 
 export type { KanaTuiAppOptions } from "./app-options";
 
@@ -95,9 +100,12 @@ export class KanaTuiApp {
   private readonly modelSelection: ModelSelectionController;
   private readonly mcpOAuthStatus: McpOAuthStatusController;
   private readonly mcpLifecycle: McpLifecycleController;
-  private readonly hyperlinks: boolean;
-  private readonly renderLatex: boolean;
-  private readonly renderMermaid: boolean;
+  // Markdown rendering features shared by every transcript and viewer block.
+  private readonly richText: {
+    readonly hyperlinks: boolean;
+    readonly renderLatex: boolean;
+    readonly renderMermaid: boolean;
+  };
   private readonly getLogger: () => Logger;
   private readonly unsubscribeConversationEvents: () => void;
   private stopping = false;
@@ -112,7 +120,7 @@ export class KanaTuiApp {
     createAgent: (options: {
       beforeToolExecution: BeforeToolExecutionHook;
       bindBeforeToolExecution: (agent: ConversationAgentIdentity) => BeforeToolExecutionHook;
-      messages?: Message[];
+      messages?: readonly Message[];
       sessionId?: string;
       contextCheckpoint?: ContextCheckpoint;
       modelSelection?: TuiModelSelection;
@@ -120,41 +128,29 @@ export class KanaTuiApp {
     terminal: Terminal,
     private readonly options: KanaTuiAppOptions,
   ) {
-    const initialSession = options.conversation.initialSession;
     const cleanMode = options.launch.mode === "clean";
     this.getLogger = options.diagnostics?.getLogger ?? createNoopLogger;
     // The config enables the feature but never forces OSC 8 through a terminal
     // that the runtime could not positively identify as hyperlink-capable.
-    this.hyperlinks =
-      (options.ui.config?.hyperlinks ?? true) && terminal.supportsHyperlinks === true;
-    this.renderLatex = options.ui.config?.renderLatex ?? true;
-    this.renderMermaid = options.ui.config?.renderMermaid ?? true;
+    this.richText = {
+      hyperlinks: options.ui.config.hyperlinks && terminal.supportsHyperlinks === true,
+      renderLatex: options.ui.config.renderLatex,
+      renderMermaid: options.ui.config.renderMermaid,
+    };
     this.conversation = new ConversationRuntime<TuiModelSelection>({
-      initialSession,
-      getSessionTimeline: options.conversation.getSessionTimeline,
+      ...options.conversation,
       createAgent: ({ configuration, ...agentOptions }) =>
         createAgent({
           ...agentOptions,
           modelSelection: configuration,
         }),
-      createNewSession: options.conversation.createNewSession,
-      forkSession: options.conversation.forkSession,
-      loadSession: options.conversation.loadSession,
-      listSessions: options.conversation.listSessions,
-      deleteSession: options.conversation.deleteSession,
-      wakeScheduler: options.conversation.wakeScheduler,
-      goalMaxRounds: options.conversation.goalMaxRounds,
-      getBackgroundJobs: options.conversation.getBackgroundJobs,
-      getSubagents: options.conversation.getSubagents,
-      getUserTasks: options.conversation.getUserTasks,
-      disposeSession: options.conversation.disposeSession,
       canStartQueuedRun: () =>
         !this.status.running &&
         !this.mcpLifecycle.loading &&
         !this.mcpServerManager?.active &&
-        !this.scheduledMessageManager?.active &&
-        !this.backgroundJobManager?.active &&
-        !this.subagentManager?.active &&
+        !this.scheduledMessageManager.active &&
+        !this.backgroundJobManager.active &&
+        !this.subagentManager.active &&
         !this.quitConfirmation &&
         !this.stopping,
       getLogger: this.getLogger,
@@ -163,7 +159,7 @@ export class KanaTuiApp {
     this.notifications = new NotificationController(options.ui.notification, terminal);
     this.editor = new Editor({
       cleanMode,
-      collapseLongPastes: options.ui.config?.collapseLongPastes ?? true,
+      collapseLongPastes: options.ui.config.collapseLongPastes,
       promptTemplates: options.ui.promptTemplates,
       skills: cleanMode ? [] : options.skills.load().skills,
       model: formatStatusModel(
@@ -189,6 +185,7 @@ export class KanaTuiApp {
     this.status = new StatusProjectionController({
       editor: this.editor,
       getAgentState: () => this.conversation.state,
+      estimateContextTokens: () => this.conversation.estimateContextTokens(),
     });
     this.errors = new InteractionErrorReporter({
       transcript: this.transcript,
@@ -197,10 +194,8 @@ export class KanaTuiApp {
     this.agentEvents = new AgentEventRenderer({
       transcript: this.transcript,
       tui: this.tui,
-      hyperlinks: this.hyperlinks,
-      renderLatex: this.renderLatex,
-      renderMermaid: this.renderMermaid,
-      smoothTextStreaming: options.ui.config?.smoothTextStreaming ?? true,
+      ...this.richText,
+      smoothTextStreaming: options.ui.config.smoothTextStreaming,
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
     this.mcpLifecycle = new McpLifecycleController({
@@ -262,18 +257,14 @@ export class KanaTuiApp {
       requestRender: () => this.tui.requestRender(),
       showError: (error) => this.showInteractionError(error),
       getLogger: this.getLogger,
-      hyperlinks: this.hyperlinks,
-      renderLatex: this.renderLatex,
-      renderMermaid: this.renderMermaid,
+      ...this.richText,
     });
     this.informationViewer = new InformationViewerController({
       editor: this.editor,
       contentViewer: this.contentViewer,
       status: this.status,
       cleanMode,
-      hyperlinks: this.hyperlinks,
-      renderLatex: this.renderLatex,
-      renderMermaid: this.renderMermaid,
+      ...this.richText,
       loadMemory: this.options.memory.load,
       loadUsage: this.options.usage.load,
       renderTodos: (width) => renderTodoState(this.conversation.todoState, width),
@@ -293,17 +284,14 @@ export class KanaTuiApp {
       schedule: (afterMinutes, message) => this.conversation.scheduleInput(afterMinutes, message),
       cancel: (id) => this.conversation.cancelScheduledInput(id),
       showError: (error) => this.showInteractionError(error),
-      collapseLongPastes: options.ui.config?.collapseLongPastes ?? true,
+      collapseLongPastes: options.ui.config.collapseLongPastes,
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
     });
     this.backgroundJobManager = new BackgroundJobManagerController({
       editor: this.editor,
       bottomArea: this.bottomArea,
       tui: this.tui,
-      getJobs: () => {
-        const sessionId = this.conversation.sessionId;
-        return sessionId ? this.options.conversation.getBackgroundJobs?.(sessionId) : undefined;
-      },
+      getJobs: this.forActiveSession(this.options.conversation.getBackgroundJobs),
       showError: (error) => this.showInteractionError(error),
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
     });
@@ -311,48 +299,25 @@ export class KanaTuiApp {
       editor: this.editor,
       bottomArea: this.bottomArea,
       tui: this.tui,
-      getSubagents: () => {
-        const sessionId = this.conversation.sessionId;
-        return sessionId ? this.options.conversation.getSubagents?.(sessionId) : undefined;
-      },
+      getSubagents: this.forActiveSession(this.options.conversation.getSubagents),
       loadProfiles: () =>
         this.options.conversation.loadSubagentProfiles?.() ?? {
           profiles: [],
           diagnostics: [],
         },
       inspect: (inspection, onBack) => {
-        this.contentViewer.open(
-          createSubagentInspectionView(inspection, {
-            hyperlinks: this.hyperlinks,
-            renderLatex: this.renderLatex,
-            renderMermaid: this.renderMermaid,
-          }),
-          onBack,
-        );
+        this.contentViewer.open(createSubagentInspectionView(inspection, this.richText), onBack);
       },
-      renderOptions: {
-        hyperlinks: this.hyperlinks,
-        renderLatex: this.renderLatex,
-        renderMermaid: this.renderMermaid,
-      },
+      renderOptions: this.richText,
       showError: (error) => this.showInteractionError(error),
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
     });
     this.backgroundActivity = new BackgroundActivityController({
       editor: this.editor,
       tui: this.tui,
-      getJobs: () => {
-        const sessionId = this.conversation.sessionId;
-        return sessionId ? this.options.conversation.getBackgroundJobs?.(sessionId) : undefined;
-      },
-      getSubagents: () => {
-        const sessionId = this.conversation.sessionId;
-        return sessionId ? this.options.conversation.getSubagents?.(sessionId) : undefined;
-      },
-      getUserTasks: () => {
-        const sessionId = this.conversation.sessionId;
-        return sessionId ? this.options.conversation.getUserTasks?.(sessionId) : undefined;
-      },
+      getJobs: this.forActiveSession(this.options.conversation.getBackgroundJobs),
+      getSubagents: this.forActiveSession(this.options.conversation.getSubagents),
+      getUserTasks: this.forActiveSession(this.options.conversation.getUserTasks),
     });
     this.backgroundActivity.bind();
     this.memoryActivity = new MemoryActivityController({
@@ -382,15 +347,12 @@ export class KanaTuiApp {
         void this.memoryCompact.compact(scope, request);
       },
       getApprovalMode: () => this.toolApproval.mode,
-      getUserTasks: () => {
-        const sessionId = this.conversation.sessionId;
-        return sessionId ? this.options.conversation.getUserTasks?.(sessionId) : undefined;
-      },
+      getUserTasks: this.forActiveSession(this.options.conversation.getUserTasks),
       onApprovalModeSelect: (mode) => {
         this.bottomArea.showFallback();
         this.setToolApprovalMode(mode);
       },
-      collapseLongPastes: options.ui.config?.collapseLongPastes ?? true,
+      collapseLongPastes: options.ui.config.collapseLongPastes,
       getModelSettings: this.options.models?.getSettings,
       onModelSelect: (selection) => {
         this.modelSelection.switch(selection);
@@ -460,17 +422,9 @@ export class KanaTuiApp {
       bottomArea: this.bottomArea,
       transcript: this.transcript,
       tui: this.tui,
-      hyperlinks: this.hyperlinks,
-      renderLatex: this.renderLatex,
-      renderMermaid: this.renderMermaid,
+      ...this.richText,
       isRunning: () => this.status.running,
-      closeOtherOverlays: () => {
-        this.skillManager.close();
-        this.scheduledMessageManager.close();
-        this.backgroundJobManager.close();
-        this.subagentManager.close();
-        this.toolHistory.close();
-      },
+      closeOtherOverlays: () => this.closeOverlays(this.sessions),
       closeContentViewer: () => this.contentViewer.close(),
       resetAgentEvents: () => this.agentEvents.resetRun(),
       clearMcpOAuthBlocks: () => this.mcpOAuthStatus.clear(),
@@ -514,26 +468,15 @@ export class KanaTuiApp {
       },
       forkSession: (prompt) => {
         this.editor.clear();
-        if (cleanMode) {
-          this.showForkingUnavailable();
-          return;
-        }
-        void this.forkSession(prompt);
+        if (!this.unavailableInCleanMode("Forking sessions is")) void this.forkSession(prompt);
       },
       resumeSession: (sessionId) => {
-        if (cleanMode) {
-          this.showSavedSessionsUnavailable();
-          return;
-        }
-        void this.sessions.resume(sessionId);
+        if (!this.unavailableInCleanMode("Saved sessions are"))
+          void this.sessions.resume(sessionId);
       },
       openResumePicker: () => {
         this.editor.clear();
-        if (cleanMode) {
-          this.showSavedSessionsUnavailable();
-          return;
-        }
-        this.sessions.openResume();
+        if (!this.unavailableInCleanMode("Saved sessions are")) this.sessions.openResume();
       },
       openSkillManager: () => {
         this.editor.clear();
@@ -545,11 +488,11 @@ export class KanaTuiApp {
       },
       openScheduledMessageManager: () => {
         this.editor.clear();
-        this.openScheduledMessageManager();
+        this.openOverlay(this.scheduledMessageManager, () => this.scheduledMessageManager.open());
       },
       openBackgroundJobManager: () => {
         this.editor.clear();
-        this.openBackgroundJobManager();
+        this.openOverlay(this.backgroundJobManager, () => this.backgroundJobManager.open());
       },
       openSubagentManager: () => {
         this.editor.clear();
@@ -561,12 +504,12 @@ export class KanaTuiApp {
       },
       openTodo: () => {
         this.editor.clear();
-        this.openTodoViewer();
+        this.openOverlay(this.contentViewer, () => this.informationViewer.openTodos());
       },
       openTask: () => this.slashCommandOptions.openTask(),
       openToolHistory: () => {
         this.editor.clear();
-        this.openToolHistoryPicker();
+        this.openOverlay(this.toolHistory, () => this.toolHistory.open());
       },
       attachImageFile: (path) => {
         void this.imageAttachments.attachFile(path);
@@ -870,165 +813,79 @@ export class KanaTuiApp {
   }
 
   private openSkillManager(): void {
-    if (this.options.launch.mode === "clean") {
-      this.showInteractionError(new Error("Skills are unavailable in clean mode."));
-      return;
-    }
-    if (this.status.running) {
-      return;
-    }
-
-    this.sessions.close();
-    this.contentViewer.close();
-    this.scheduledMessageManager.close();
-    this.backgroundJobManager.close();
-    this.subagentManager.close();
-    this.toolHistory.close();
-    this.skillManager.open();
+    if (this.unavailableInCleanMode("Skills are")) return;
+    this.openOverlay(this.skillManager, () => this.skillManager.open(), { idleOnly: true });
   }
 
   private openMcpServerManager(): void {
-    if (this.options.launch.mode === "clean") {
-      this.showInteractionError(new Error("MCP management is unavailable in clean mode."));
-      return;
-    }
-    if (this.status.running) {
-      return;
-    }
-    if (!this.mcpServerManager) {
+    if (this.unavailableInCleanMode("MCP management is")) return;
+    const manager = this.mcpServerManager;
+    if (!manager) {
       this.showInteractionError(new Error("MCP management is unavailable."));
       return;
     }
-
-    this.sessions.close();
-    this.contentViewer.close();
-    this.skillManager.close();
-    this.scheduledMessageManager.close();
-    this.backgroundJobManager.close();
-    this.subagentManager.close();
-    this.toolHistory.close();
-    this.mcpServerManager.open();
-  }
-
-  private openScheduledMessageManager(): void {
-    this.sessions.close();
-    this.contentViewer.close();
-    this.skillManager.close();
-    this.mcpServerManager?.close();
-    this.backgroundJobManager.close();
-    this.subagentManager.close();
-    this.toolHistory.close();
-    this.scheduledMessageManager.open();
-  }
-
-  private openBackgroundJobManager(): void {
-    this.sessions.close();
-    this.contentViewer.close();
-    this.skillManager.close();
-    this.mcpServerManager?.close();
-    this.scheduledMessageManager.close();
-    this.backgroundJobManager.close();
-    this.subagentManager.close();
-    this.toolHistory.close();
-    this.backgroundJobManager.open();
+    this.openOverlay(manager, () => manager.open(), { idleOnly: true });
   }
 
   private openSubagentManager(): void {
-    if (this.options.launch.mode === "clean") {
-      this.showInteractionError(new Error("Subagents are unavailable in clean mode."));
+    if (this.unavailableInCleanMode("Subagents are")) return;
+    this.openOverlay(this.subagentManager, () => this.subagentManager.open());
+  }
+
+  // Bottom-area overlays are mutually exclusive. Overlays that reconfigure the
+  // Agent (Skills, MCP) cannot open while a run is active.
+  private openOverlay(
+    target: BottomOverlay,
+    open: () => void,
+    options: { idleOnly?: boolean } = {},
+  ): void {
+    if (options.idleOnly && this.status.running) {
       return;
     }
-    this.sessions.close();
-    this.contentViewer.close();
-    this.skillManager.close();
-    this.mcpServerManager?.close();
-    this.scheduledMessageManager.close();
-    this.backgroundJobManager.close();
-    this.toolHistory.close();
-    this.subagentManager.open();
+    this.closeOverlays(target);
+    open();
   }
 
-  private openToolHistoryPicker(): void {
-    this.sessions.close();
-    this.contentViewer.close();
-    this.skillManager.close();
-    this.mcpServerManager?.close();
-    this.scheduledMessageManager.close();
-    this.backgroundJobManager.close();
-    this.subagentManager.close();
-    this.toolHistory.open();
-  }
-
-  private openTodoViewer(): void {
-    this.sessions.close();
-    this.skillManager.close();
-    this.mcpServerManager?.close();
-    this.scheduledMessageManager.close();
-    this.backgroundJobManager.close();
-    this.subagentManager.close();
-    this.toolHistory.close();
-    this.informationViewer.openTodos();
+  private closeOverlays(except?: BottomOverlay): void {
+    const overlays: (BottomOverlay | undefined)[] = [
+      this.sessions,
+      this.contentViewer,
+      this.skillManager,
+      this.mcpServerManager,
+      this.scheduledMessageManager,
+      this.backgroundJobManager,
+      this.subagentManager,
+      this.toolHistory,
+    ];
+    for (const overlay of overlays) {
+      if (overlay !== except) overlay?.close();
+    }
   }
 
   private openMemory(): void {
-    if (this.options.launch.mode === "clean") {
-      this.editor.clear();
-      this.showInteractionError(new Error("Memory is unavailable in clean mode."));
-      return;
-    }
-
-    this.slashCommandOptions.openMemory();
+    this.editor.clear();
+    if (!this.unavailableInCleanMode("Memory is")) this.slashCommandOptions.openMemory();
   }
 
-  private showSavedSessionsUnavailable(): void {
-    this.showInteractionError(new Error("Saved sessions are unavailable in clean mode."));
-  }
-
-  private showForkingUnavailable(): void {
-    this.showInteractionError(new Error("Forking sessions is unavailable in clean mode."));
+  // Reports features that need persistence or customizations, which a clean
+  // launch does not load. Returns true when the feature is unavailable.
+  private unavailableInCleanMode(subject: `${string} ${"is" | "are"}`): boolean {
+    if (this.options.launch.mode !== "clean") return false;
+    this.showInteractionError(new Error(`${subject} unavailable in clean mode.`));
+    return true;
   }
 
   private handleConversationEvent(event: ConversationRuntimeEvent): void {
     switch (event.type) {
-      case "run_start":
+      case "run_start": {
         this.status.startRun();
         this.agentEvents.resetRun();
-        if (event.source === "user" && event.input) {
-          this.transcript.addChild(new UserMessageBlock(event.input));
-        } else if (event.source === "goal" && event.input) {
-          this.transcript.addChild(
-            event.input.provenance.kind === "goal_continuation"
-              ? new TextBlock(`Goal continuation · round ${event.input.provenance.round}`, {
-                  color: tuiTheme.muted,
-                })
-              : new UserMessageBlock(event.input),
-          );
-        } else if (event.source === "scheduled" && event.input) {
-          this.transcript.addChild(
-            new TextBlock(`Scheduled wake: ${formatScheduledWakeContent(event.input.content)}`, {
-              color: tuiTheme.muted,
-            }),
-          );
-        } else if (event.source === "job" && event.input) {
-          this.transcript.addChild(
-            new TextBlock(formatBackgroundJobWakeContent(event.input.content), {
-              color: tuiTheme.muted,
-            }),
-          );
-        } else if (event.source === "subagent" && event.input) {
-          this.transcript.addChild(
-            new TextBlock(formatSubagentWakeContent(event.input.content), {
-              color: tuiTheme.muted,
-            }),
-          );
-        } else if (event.source === "user_task" && event.input) {
-          this.transcript.addChild(
-            new TextBlock(formatUserMessage(event.input), { color: tuiTheme.muted }),
-          );
-        }
+        const inputView = createRunInputView(event.source, event.input);
+        if (inputView) this.transcript.addChild(inputView);
         this.updateStatus(event.source === "compaction" ? "compacting" : "starting");
         this.tui.requestRender();
         break;
+      }
 
       case "agent_event":
         if (event.event.type === "context_compacted") {
@@ -1136,26 +993,14 @@ export class KanaTuiApp {
     images: UserImage[] = [],
     historyValue = value,
   ): Promise<void> {
-    const prompt = value.trim();
-    const historyPrompt = historyValue.trim();
-
-    if (!prompt && images.length === 0) {
+    const input = this.createPromptInput(value, images);
+    if (!input || (!this.conversation.canSteer && this.status.running)) {
       return;
     }
-    const imageInputError = this.imageAttachments.getInputError(images);
-    if (imageInputError) {
-      this.showInteractionError(imageInputError);
-      return;
-    }
-    const input = createUserMessage({
-      content: prompt,
-      provenance: { kind: "user_input" },
-      ...(images.length > 0 ? { images } : {}),
-    });
+    this.editor.addToHistory(historyValue.trim());
+    this.editor.clear();
 
     if (this.conversation.canSteer) {
-      this.editor.addToHistory(historyPrompt);
-      this.editor.clear();
       const queuedInputId = this.queuedInputs.addTurn(input);
       const disposition = await this.conversation.steer(input);
       if (disposition !== "queued") {
@@ -1163,38 +1008,42 @@ export class KanaTuiApp {
       }
       return;
     }
-    if (this.status.running) {
-      return;
-    }
-
-    this.editor.addToHistory(historyPrompt);
-    this.editor.clear();
     await this.submitAgentInput(input);
   }
 
   private queuePrompt(value: string, images: UserImage[] = [], historyValue = value): void {
-    const prompt = value.trim();
-    const historyPrompt = historyValue.trim();
-    if ((!prompt && images.length === 0) || !this.conversation.canSteer) {
+    if (!this.conversation.canSteer) {
       return;
     }
-    const imageInputError = this.imageAttachments.getInputError(images);
-    if (imageInputError) {
-      this.showInteractionError(imageInputError);
+    const input = this.createPromptInput(value, images);
+    if (!input) {
       return;
     }
-    const input = createUserMessage({
-      content: prompt,
-      provenance: { kind: "user_input" },
-      ...(images.length > 0 ? { images } : {}),
-    });
-
-    this.editor.addToHistory(historyPrompt);
+    this.editor.addToHistory(historyValue.trim());
     this.editor.clear();
     this.conversation.queueInput(input);
   }
 
-  private async submitAgentInput(input: Extract<Message, { role: "user" }>): Promise<void> {
+  // Returns undefined for an empty prompt, or after reporting images the
+  // current model cannot accept.
+  private createPromptInput(value: string, images: UserImage[]): UserMessage | undefined {
+    const content = value.trim();
+    if (!content && images.length === 0) {
+      return undefined;
+    }
+    const imageInputError = this.imageAttachments.getInputError(images);
+    if (imageInputError) {
+      this.showInteractionError(imageInputError);
+      return undefined;
+    }
+    return createUserMessage({
+      content,
+      provenance: { kind: "user_input" },
+      ...(images.length > 0 ? { images } : {}),
+    });
+  }
+
+  private async submitAgentInput(input: UserMessage): Promise<void> {
     if (this.stopping || this.mcpLifecycle.loading) {
       return;
     }
@@ -1245,6 +1094,15 @@ export class KanaTuiApp {
     return this.toolApproval.request(toolCall, signal, agent);
   }
 
+  private forActiveSession<T>(
+    get: ((sessionId: string) => T | undefined) | undefined,
+  ): () => T | undefined {
+    return () => {
+      const sessionId = this.conversation.sessionId;
+      return sessionId ? get?.(sessionId) : undefined;
+    };
+  }
+
   private updateStatus(...args: Parameters<StatusProjectionController["update"]>): void {
     this.status.update(...args);
   }
@@ -1254,18 +1112,8 @@ export class KanaTuiApp {
   }
 }
 
-function formatScheduledWakeContent(content: string): string {
-  return content.replace(/^\[Scheduled wake event\]\n/, "");
-}
-
-function formatBackgroundJobWakeContent(content: string): string {
-  return content.replace(/^\[Background Job completion\]\n?/, "");
-}
-
-function formatSubagentWakeContent(content: string): string {
-  return content.replace(/^\[Subagent completion\]\n?/, "");
-}
-
 function formatExitLine(label: string, value: string): string {
   return `${`${label}:`.padEnd(13)}${value}`;
 }
+
+type BottomOverlay = { close(): void };

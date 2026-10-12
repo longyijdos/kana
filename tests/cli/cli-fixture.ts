@@ -47,36 +47,22 @@ export function defaultCliOptions(): CreateCliOptions {
 }
 
 export function defaultInstallResult(): ReturnType<CreateCliOptions["installKanaConfig"]> {
-  return {
-    configPath: "/tmp/config.toml",
-    configStatus: "defaults",
-    configExamplePath: "/tmp/config.example.toml",
-    configExampleStatus: "created",
-    mcpConfigPath: "/tmp/mcp.json",
-    mcpConfigStatus: "created",
-    mcpEnabledPath: "/tmp/mcp-enabled.json",
-    mcpEnabledStatus: "created",
-    approvalsPath: "/tmp/approvals.json",
-    approvalsStatus: "created",
-    skillsConfigPath: "/tmp/skills.toml",
-    skillsConfigStatus: "created",
-    subagentProfileExamplePath: "/tmp/agents/profile.md.example",
-    subagentProfileExampleStatus: "created",
-    promptTemplateExamplePath: "/tmp/prompts/template.md.example",
-    promptTemplateExampleStatus: "created",
-    customProviderExamplePath: "/tmp/providers/custom.example.toml",
-    customProviderExampleStatus: "created",
-  };
+  return [
+    { name: "config example", path: "/tmp/config.example.toml", status: "created" },
+    { name: "MCP config", path: "/tmp/mcp.json", status: "created" },
+  ];
 }
 
 export function defaultResetResult(): ReturnType<CreateCliOptions["resetKanaConfig"]> {
   return {
     configPath: "/tmp/config.toml",
     configRemoved: true,
-    configExamplePath: "/tmp/config.example.toml",
-    mcpConfigPath: "/tmp/mcp.json",
-    mcpEnabledPath: "/tmp/mcp-enabled.json",
-    approvalsPath: "/tmp/approvals.json",
-    skillsConfigPath: "/tmp/skills.toml",
+    resetFiles: [
+      { name: "config example", path: "/tmp/config.example.toml" },
+      { name: "MCP config", path: "/tmp/mcp.json" },
+      { name: "MCP activation state", path: "/tmp/mcp-enabled.json" },
+      { name: "approvals", path: "/tmp/approvals.json" },
+      { name: "skills config", path: "/tmp/skills.toml" },
+    ],
   };
 }

@@ -1,5 +1,6 @@
 import { createUserMessage, type Message, type UserMessage } from "@/core";
 import type { Tool } from "@/tools";
+import { escapeXml } from "@/utils";
 
 type MaybePromise<T> = Promise<T> | T;
 type RuntimeContextMessage = UserMessage & {
@@ -43,8 +44,8 @@ export type PromptContextSnapshot = PromptContextState & { source: string };
 export type AssembledPrompt = {
   system?: string;
   context: PromptContextSnapshot[];
-  tools: Tool[];
-  callableTools?: Tool[];
+  tools: readonly Tool[];
+  callableTools?: readonly Tool[];
 };
 
 const RUNTIME_CONTEXT_INSTRUCTIONS = [
@@ -62,38 +63,28 @@ export class PromptAssembly {
   readonly initialTools: readonly Tool[];
 
   constructor(options: PromptAssemblyOptions = {}) {
-    this.systemSections = Object.freeze(
-      (options.system ?? []).map((section) => Object.freeze({ ...section })),
-    );
-    this.contextSections = Object.freeze(
-      (options.context ?? []).map((section) => Object.freeze({ ...section })),
-    );
-    this.toolSections = Object.freeze(
-      (options.tools ?? []).map((section) =>
-        Object.freeze({
-          ...section,
-          tools: Object.freeze(section.tools.slice()),
-        }),
-      ),
-    );
+    this.systemSections = options.system ?? [];
+    this.contextSections = options.context ?? [];
+    this.toolSections = options.tools ?? [];
 
     assertUniqueSectionNames(this.systemSections, "system");
     assertUniqueSectionNames(this.contextSections, "context");
     assertUniqueSectionNames(this.toolSections, "tool");
     this.initialSystem = formatSystemSections(this.systemSections, this.contextSections.length > 0);
-    this.initialTools = Object.freeze(this.toolSections.flatMap((section) => section.tools));
+    this.initialTools = this.toolSections.flatMap((section) => section.tools);
     assertUniqueToolNames(this.initialTools);
-    Object.freeze(this);
   }
 
   async assemble(context: PromptAssemblyContext): Promise<AssembledPrompt> {
-    throwIfAborted(context.signal);
+    context.signal.throwIfAborted();
 
     const snapshots: PromptContextSnapshot[] = [];
     for (const section of this.contextSections) {
       const state = await section.render(context);
-      throwIfAborted(context.signal);
-      assertPromptContextState(section.name, state);
+      context.signal.throwIfAborted();
+      if (!state.content.trim()) {
+        throw new Error(`Prompt context section ${section.name} must return non-empty content.`);
+      }
       snapshots.push({
         source: section.name,
         status: state.status,
@@ -104,7 +95,7 @@ export class PromptAssembly {
     const tools: Tool[] = [];
     for (const section of this.toolSections) {
       const resolved = section.resolve ? await section.resolve(context) : section.tools;
-      throwIfAborted(context.signal);
+      context.signal.throwIfAborted();
       tools.push(...resolved);
     }
     assertUniqueToolNames(tools);
@@ -163,18 +154,18 @@ function formatSystemSections(
 function formatRuntimeContextMessageContent(snapshot: PromptContextSnapshot): string {
   const status = snapshot.status === "inactive" ? ' status="inactive"' : "";
   return [
-    `<runtime_context source="${escapeXmlAttribute(snapshot.source)}"${status}>`,
+    `<runtime_context source="${escapeXml(snapshot.source)}"${status}>`,
     snapshot.content,
     "</runtime_context>",
   ].join("\n");
 }
 
 function isInactiveRuntimeContextMessage(message: RuntimeContextMessage): boolean {
-  const prefix = `<runtime_context source="${escapeXmlAttribute(message.provenance.source)}" status="inactive"`;
+  const prefix = `<runtime_context source="${escapeXml(message.provenance.source)}" status="inactive"`;
   return message.content.startsWith(`${prefix}>\n`);
 }
 
-function isRuntimeContextMessage(message: Message): message is RuntimeContextMessage {
+export function isRuntimeContextMessage(message: Message): message is RuntimeContextMessage {
   return message.role === "user" && message.provenance.kind === "runtime_context";
 }
 
@@ -202,34 +193,4 @@ function assertUniqueToolNames(tools: readonly Tool[]): void {
     }
     names.add(tool.name);
   }
-}
-
-function assertPromptContextState(
-  source: string,
-  state: unknown,
-): asserts state is PromptContextState {
-  const candidate =
-    typeof state === "object" && state !== null ? (state as Record<string, unknown>) : undefined;
-  if (
-    !candidate ||
-    (candidate.status !== "active" && candidate.status !== "inactive") ||
-    typeof candidate.content !== "string" ||
-    !candidate.content.trim()
-  ) {
-    throw new Error(`Prompt context section ${source} must return an explicit non-empty state.`);
-  }
-}
-
-function throwIfAborted(signal: AbortSignal): void {
-  if (signal.aborted) {
-    throw signal.reason ?? new Error("Prompt assembly aborted.");
-  }
-}
-
-function escapeXmlAttribute(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
 }

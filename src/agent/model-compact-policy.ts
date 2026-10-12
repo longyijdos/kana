@@ -26,8 +26,7 @@ export function createModelCompactPolicy(
   options: ModelCompactPolicyOptions = {},
 ): CompactPolicy {
   return async ({ previousSummary, messages, maxSummaryTokens, maxOutputTokens, signal }) => {
-    const canReadImages =
-      model.metadata.supportsImageInput === true && options.imageInputEnabled !== false;
+    const canReadImages = model.metadata.supportsImageInput && options.imageInputEnabled !== false;
     const request = formatCompactionRequest(
       previousSummary,
       messages,
@@ -81,7 +80,7 @@ export function createModelCompactPolicy(
 
 function formatCompactionRequest(
   previousSummary: string | undefined,
-  messages: Message[],
+  messages: readonly Message[],
   maxSummaryTokens: number,
   includeImages: boolean,
 ): { content: string; images: UserImage[] } {
@@ -155,7 +154,7 @@ function formatImages(
   return images.map((image) => {
     imageState.nextIndex += 1;
     if (includeImages) {
-      imageState.images.push(structuredClone(image));
+      imageState.images.push(image);
     }
     return {
       imageIndex: imageState.nextIndex,

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_KANA_CONFIG } from "@/kana";
 import type { Logger } from "@/logging";
+import { createLogger } from "@/logging";
 import { Agent } from "../../../src/agent";
 import {
   createMemoryConsolidationQueue,
@@ -15,12 +16,7 @@ import { deferred, waitFor } from "../../helpers/async-control";
 describe("memory consolidation scheduler", () => {
   test("does not log or schedule when there are no entries", async () => {
     const events: string[] = [];
-    const logger: Logger = {
-      debug: (event) => events.push(event),
-      info: (event) => events.push(event),
-      warn: (event) => events.push(event),
-      error: (event) => events.push(event),
-    };
+    const logger = createEventLogger(events);
     const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, { logger });
 
     await scheduler.schedule([]);
@@ -57,8 +53,8 @@ describe("memory consolidation scheduler", () => {
     });
     const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
       runIncremental: async (_scope, entries) => {
-        started.push(entries[0].id);
-        if (entries[0].id === "mem_first") {
+        started.push(entries[0]!.id);
+        if (entries[0]!.id === "mem_first") {
           await firstRun;
         } else {
           await secondRun.promise;
@@ -195,8 +191,8 @@ describe("memory consolidation scheduler", () => {
   test("retains the logger supplied when work is scheduled", async () => {
     const scheduledEvents: string[] = [];
     const runEvents: string[] = [];
-    const scheduledLogger = createLogger(scheduledEvents);
-    const laterLogger = createLogger([]);
+    const scheduledLogger = createEventLogger(scheduledEvents);
+    const laterLogger = createEventLogger([]);
     const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
       logger: laterLogger,
       runIncremental: async (_scope, _entries, logger) => {
@@ -244,7 +240,7 @@ describe("memory consolidation scheduler", () => {
   test("aborts and awaits active schedules during shutdown", async () => {
     const events: string[] = [];
     const activityEvents: MemoryConsolidationEvent[] = [];
-    const logger = createLogger(events);
+    const logger = createEventLogger(events);
     let markStarted!: () => void;
     const started = new Promise<void>((resolve) => {
       markStarted = resolve;
@@ -300,13 +296,8 @@ function consolidationResult(
   };
 }
 
-function createLogger(events: string[]): Logger {
-  return {
-    debug: (event) => events.push(event),
-    info: (event) => events.push(event),
-    warn: (event) => events.push(event),
-    error: (event) => events.push(event),
-  };
+function createEventLogger(events: string[]): Logger {
+  return createLogger((_level, event) => events.push(event));
 }
 
 function memoryEntry(scope: "global" | "project", id: string): KanaMemoryEntry {

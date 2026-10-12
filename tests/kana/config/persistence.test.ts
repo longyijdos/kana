@@ -6,6 +6,7 @@ import {
   DEFAULT_KANA_TOOL_APPROVALS,
   getKanaConfigPaths,
   installKanaConfig,
+  type KanaInstalledFile,
   loadKanaConfig,
   loadKanaSubagentProfiles,
   resetKanaConfig,
@@ -44,34 +45,27 @@ describe("Kana config persistence", () => {
   test("installs state files without materializing the default config", () => {
     const env = createTempEnv();
     const firstInstall = installKanaConfig(env);
-    const installedMcpConfig = JSON.parse(readFileSync(firstInstall.mcpConfigPath, "utf8"));
-    const installedMcpEnabled = JSON.parse(readFileSync(firstInstall.mcpEnabledPath, "utf8"));
-    const installedApprovals = JSON.parse(readFileSync(firstInstall.approvalsPath, "utf8"));
-    const installedSkillsConfig = readFileSync(firstInstall.skillsConfigPath, "utf8");
-    const installedConfigExample = readFileSync(firstInstall.configExamplePath, "utf8");
-    const installedCustomProviderExample = readFileSync(
-      firstInstall.customProviderExamplePath,
-      "utf8",
-    );
-    const installedSubagentProfileExample = readFileSync(
-      firstInstall.subagentProfileExamplePath,
-      "utf8",
-    );
-    const installedPromptTemplateExample = readFileSync(
-      firstInstall.promptTemplateExamplePath,
-      "utf8",
-    );
+    const paths = getKanaConfigPaths(env);
+    const installedMcpConfig = JSON.parse(readFileSync(paths.mcpConfigPath, "utf8"));
+    const installedMcpEnabled = JSON.parse(readFileSync(paths.mcpEnabledPath, "utf8"));
+    const installedApprovals = JSON.parse(readFileSync(paths.approvalsPath, "utf8"));
+    const installedSkillsConfig = readFileSync(paths.skillsConfigPath, "utf8");
+    const installedConfigExample = readFileSync(paths.configExamplePath, "utf8");
+    const installedCustomProviderExample = readFileSync(paths.customProviderExamplePath, "utf8");
+    const installedSubagentProfileExample = readFileSync(paths.subagentProfileExamplePath, "utf8");
+    const installedPromptTemplateExample = readFileSync(paths.promptTemplateExamplePath, "utf8");
 
-    expect(firstInstall.configStatus).toBe("defaults");
-    expect(firstInstall.configExampleStatus).toBe("created");
-    expect(firstInstall.mcpConfigStatus).toBe("created");
-    expect(firstInstall.mcpEnabledStatus).toBe("created");
-    expect(firstInstall.approvalsStatus).toBe("created");
-    expect(firstInstall.skillsConfigStatus).toBe("created");
-    expect(firstInstall.subagentProfileExampleStatus).toBe("created");
-    expect(firstInstall.promptTemplateExampleStatus).toBe("created");
-    expect(firstInstall.customProviderExampleStatus).toBe("created");
-    expect(existsSync(firstInstall.configPath)).toBe(false);
+    expect(installStatuses(firstInstall)).toEqual({
+      "config example": "created",
+      "MCP config": "created",
+      "MCP activation state": "created",
+      approvals: "created",
+      "skills config": "created",
+      "subagent profile example": "created",
+      "prompt template example": "created",
+      "Custom provider example": "created",
+    });
+    expect(existsSync(paths.configPath)).toBe(false);
     expect(installedConfigExample).toContain("[provider.deepseek]");
     expect(installedConfigExample).toContain("[provider.openai-codex]");
     expect(installedConfigExample).toContain("[agent.model]");
@@ -107,16 +101,16 @@ describe("Kana config persistence", () => {
     expect(loadKanaSubagentProfiles({ env }).profiles).toEqual([]);
     expect(installedMcpConfig).toEqual({ mcpServers: {} });
     expect(installedMcpEnabled).toEqual({ enabledServers: [] });
-    expect(statSync(firstInstall.mcpEnabledPath).mode & 0o777).toBe(0o600);
+    expect(statSync(paths.mcpEnabledPath).mode & 0o777).toBe(0o600);
     expect(installedApprovals).toEqual(DEFAULT_KANA_TOOL_APPROVALS);
     expect(installedSkillsConfig).toBe(["[model_invocation]", "enabled = []", ""].join("\n"));
     expect(existsSync(getKanaConfigPaths(env).agentsPath)).toBe(false);
 
-    writeFileSync(firstInstall.configPath, "custom = true\n");
-    writeFileSync(firstInstall.mcpConfigPath, '{"custom":true}\n');
-    writeFileSync(firstInstall.mcpEnabledPath, '{"enabledServers":["custom"]}\n');
-    writeFileSync(firstInstall.approvalsPath, '{"custom":true}\n');
-    writeFileSync(firstInstall.skillsConfigPath, "custom = true\n");
+    writeFileSync(paths.configPath, "custom = true\n");
+    writeFileSync(paths.mcpConfigPath, '{"custom":true}\n');
+    writeFileSync(paths.mcpEnabledPath, '{"enabledServers":["custom"]}\n');
+    writeFileSync(paths.approvalsPath, '{"custom":true}\n');
+    writeFileSync(paths.skillsConfigPath, "custom = true\n");
     const userProfilePath = path.join(
       getKanaConfigPaths(env).agentsDirectory,
       "database-reviewer.md",
@@ -124,33 +118,22 @@ describe("Kana config persistence", () => {
     writeFileSync(userProfilePath, "user profile\n");
     const secondInstall = installKanaConfig(env);
 
-    expect(secondInstall).toEqual({
-      configPath: firstInstall.configPath,
-      configStatus: "exists",
-      configExamplePath: firstInstall.configExamplePath,
-      configExampleStatus: "exists",
-      mcpConfigPath: firstInstall.mcpConfigPath,
-      mcpConfigStatus: "exists",
-      mcpEnabledPath: firstInstall.mcpEnabledPath,
-      mcpEnabledStatus: "exists",
-      approvalsPath: firstInstall.approvalsPath,
-      approvalsStatus: "exists",
-      skillsConfigPath: firstInstall.skillsConfigPath,
-      skillsConfigStatus: "exists",
-      subagentProfileExamplePath: firstInstall.subagentProfileExamplePath,
-      subagentProfileExampleStatus: "exists",
-      promptTemplateExamplePath: firstInstall.promptTemplateExamplePath,
-      promptTemplateExampleStatus: "exists",
-      customProviderExamplePath: firstInstall.customProviderExamplePath,
-      customProviderExampleStatus: "exists",
+    expect(installStatuses(secondInstall)).toEqual({
+      config: "exists",
+      "config example": "exists",
+      "MCP config": "exists",
+      "MCP activation state": "exists",
+      approvals: "exists",
+      "skills config": "exists",
+      "subagent profile example": "exists",
+      "prompt template example": "exists",
+      "Custom provider example": "exists",
     });
-    expect(readFileSync(firstInstall.configPath, "utf8")).toBe("custom = true\n");
-    expect(readFileSync(firstInstall.mcpConfigPath, "utf8")).toBe('{"custom":true}\n');
-    expect(readFileSync(firstInstall.mcpEnabledPath, "utf8")).toBe(
-      '{"enabledServers":["custom"]}\n',
-    );
-    expect(readFileSync(firstInstall.approvalsPath, "utf8")).toBe('{"custom":true}\n');
-    expect(readFileSync(firstInstall.skillsConfigPath, "utf8")).toBe("custom = true\n");
+    expect(readFileSync(paths.configPath, "utf8")).toBe("custom = true\n");
+    expect(readFileSync(paths.mcpConfigPath, "utf8")).toBe('{"custom":true}\n');
+    expect(readFileSync(paths.mcpEnabledPath, "utf8")).toBe('{"enabledServers":["custom"]}\n');
+    expect(readFileSync(paths.approvalsPath, "utf8")).toBe('{"custom":true}\n');
+    expect(readFileSync(paths.skillsConfigPath, "utf8")).toBe("custom = true\n");
     expect(readFileSync(userProfilePath, "utf8")).toBe("user profile\n");
   });
 
@@ -189,11 +172,13 @@ describe("Kana config persistence", () => {
     expect(result).toEqual({
       configPath: paths.configPath,
       configRemoved: true,
-      configExamplePath: paths.configExamplePath,
-      mcpConfigPath: paths.mcpConfigPath,
-      mcpEnabledPath: paths.mcpEnabledPath,
-      approvalsPath: paths.approvalsPath,
-      skillsConfigPath: paths.skillsConfigPath,
+      resetFiles: [
+        { name: "config example", path: paths.configExamplePath },
+        { name: "MCP config", path: paths.mcpConfigPath },
+        { name: "MCP activation state", path: paths.mcpEnabledPath },
+        { name: "approvals", path: paths.approvalsPath },
+        { name: "skills config", path: paths.skillsConfigPath },
+      ],
     });
     expect(existsSync(paths.configPath)).toBe(false);
     expect(readFileSync(paths.configExamplePath, "utf8")).not.toBe("stale template\n");
@@ -216,25 +201,26 @@ describe("Kana config persistence", () => {
 
   test("refreshes generated examples without creating config.toml", () => {
     const env = createTempEnv();
-    const firstInstall = installKanaConfig(env);
-    writeFileSync(firstInstall.configExamplePath, "custom example\n");
-    writeFileSync(firstInstall.subagentProfileExamplePath, "stale profile example\n");
-    writeFileSync(firstInstall.promptTemplateExamplePath, "stale prompt example\n");
+    const paths = getKanaConfigPaths(env);
+    installKanaConfig(env);
+    writeFileSync(paths.configExamplePath, "custom example\n");
+    writeFileSync(paths.subagentProfileExamplePath, "stale profile example\n");
+    writeFileSync(paths.promptTemplateExamplePath, "stale prompt example\n");
 
     const secondInstall = installKanaConfig(env);
 
-    expect(secondInstall.configStatus).toBe("defaults");
-    expect(secondInstall.configExampleStatus).toBe("updated");
-    expect(secondInstall.subagentProfileExampleStatus).toBe("updated");
-    expect(secondInstall.promptTemplateExampleStatus).toBe("updated");
-    expect(existsSync(secondInstall.configPath)).toBe(false);
-    expect(readFileSync(secondInstall.configExamplePath, "utf8")).toContain(
-      "[provider.openai-codex]",
-    );
-    expect(readFileSync(secondInstall.subagentProfileExamplePath, "utf8")).toContain(
+    expect(installStatuses(secondInstall)).toMatchObject({
+      "config example": "updated",
+      "subagent profile example": "updated",
+      "prompt template example": "updated",
+    });
+    expect(installStatuses(secondInstall)).not.toHaveProperty("config");
+    expect(existsSync(paths.configPath)).toBe(false);
+    expect(readFileSync(paths.configExamplePath, "utf8")).toContain("[provider.openai-codex]");
+    expect(readFileSync(paths.subagentProfileExamplePath, "utf8")).toContain(
       "description: Review database migrations",
     );
-    expect(readFileSync(secondInstall.promptTemplateExamplePath, "utf8")).toContain(
+    expect(readFileSync(paths.promptTemplateExamplePath, "utf8")).toContain(
       "{{branch=the merged branch}}",
     );
   });
@@ -243,3 +229,7 @@ describe("Kana config persistence", () => {
     expect(loadKanaConfig(createTempEnv())).toEqual(DEFAULT_KANA_CONFIG);
   });
 });
+
+function installStatuses(files: readonly KanaInstalledFile[]): Record<string, string> {
+  return Object.fromEntries(files.map((file) => [file.name, file.status]));
+}

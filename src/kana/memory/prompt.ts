@@ -1,4 +1,4 @@
-import { escapeXml } from "../format";
+import { escapeXml } from "@/utils";
 import { loadKanaMemory } from "./storage";
 
 export type FormatKanaMemoryPromptOptions = {

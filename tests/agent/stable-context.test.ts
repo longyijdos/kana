@@ -89,14 +89,11 @@ describe("stable Agent context", () => {
       expect(boundaries[1]?.snapshot.system).toBe("Main instructions");
       model.requests[1]!.update("Partial answer");
       await waitFor(() => agent.state.streamingMessage?.content.length === 1);
-      expect(agent.getStableContext().messages).toEqual(boundaries[1]?.snapshot.messages);
+      expect(agent.getStableContext().messages).toEqual(boundaries[1]!.snapshot.messages);
       model.requests[1]!.complete("Final answer");
       await run.result();
       await agent.waitForIdle();
       expect(agent.getStableContext().messages).toEqual(agent.state.messages);
-      const detached = agent.getStableContext();
-      detached.messages.length = 0;
-      expect(agent.getStableContext().messages).toHaveLength(6);
       agent.reset();
       expect(agent.getStableContext().messages).toEqual([]);
       unsubscribe();
@@ -140,8 +137,6 @@ describe("stable Agent context", () => {
     expect(snapshot.contextCheckpoint).toEqual(agent.state.contextCheckpoint);
     expect(snapshot.contextLimit).toBe(2_048);
     expect(snapshot.maxOutputTokens).toBe(256);
-    snapshot.contextCheckpoint!.summary = "Mutated";
-    expect(agent.getStableContext().contextCheckpoint?.summary).toBe("Previous conversation.");
   });
 
   test("retains safe partial text when the model is aborted", async () => {

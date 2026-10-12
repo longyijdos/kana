@@ -15,6 +15,7 @@ import path from "node:path";
 
 import type { ContextCheckpoint } from "@/agent";
 import type { Message, ToolResultArtifact } from "@/core";
+import { errorCode, errorFields } from "@/utils";
 import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
 import { getKanaSessionArtifactDirectory, getKanaWorkspaceArtifactDirectory } from "./store";
 
@@ -24,7 +25,7 @@ import { getKanaSessionArtifactDirectory, getKanaWorkspaceArtifactDirectory } fr
 const ORPHAN_CLEANUP_GRACE_MS = 24 * 60 * 60 * 1_000;
 
 export type ForkKanaSessionArtifactsResult = {
-  messages: Message[];
+  messages: readonly Message[];
   contextCheckpoint?: ContextCheckpoint;
   copiedArtifactCount: number;
 };
@@ -66,7 +67,7 @@ export function auditKanaSessionArtifacts(options: {
     assertManagedDirectory(path.dirname(directory), "workspace artifact path");
     assertManagedDirectory(directory, "session artifact path");
   } catch (error) {
-    if (getErrorCode(error) === "ENOENT") {
+    if (errorCode(error) === "ENOENT") {
       result.missingCount = result.artifactCount;
     } else {
       result.invalidCount = result.artifactCount;
@@ -94,7 +95,7 @@ export function auditKanaSessionArtifacts(options: {
         result.invalidCount += 1;
       }
     } catch (error) {
-      if (getErrorCode(error) === "ENOENT") {
+      if (errorCode(error) === "ENOENT") {
         result.missingCount += 1;
       } else {
         result.invalidCount += 1;
@@ -112,11 +113,7 @@ export function forkKanaSessionArtifacts(options: {
   cwd: string;
   env?: NodeJS.ProcessEnv;
 }): ForkKanaSessionArtifactsResult {
-  const messages: Message[] = [...structuredClone(options.messages)];
-  const contextCheckpoint =
-    options.contextCheckpoint === undefined
-      ? undefined
-      : structuredClone(options.contextCheckpoint);
+  const { messages, contextCheckpoint } = options;
   const artifacts = collectArtifactReferences(messages);
   if (artifacts.size === 0) {
     return { messages, contextCheckpoint, copiedArtifactCount: 0 };
@@ -149,10 +146,8 @@ export function forkKanaSessionArtifacts(options: {
       locatorMap.set(artifact.locator, targetPath);
     }
 
-    rewriteArtifactLocators(messages, contextCheckpoint, locatorMap);
     return {
-      messages,
-      contextCheckpoint,
+      ...rewriteArtifactLocators(messages, contextCheckpoint, locatorMap),
       copiedArtifactCount: artifacts.size,
     };
   } catch (error) {
@@ -180,7 +175,7 @@ export function deleteKanaSessionArtifacts(options: {
     return {
       removedDirectoryCount: 0,
       removedFileCount: 0,
-      failures: [errorDiagnostic(error)],
+      failures: [errorFields(error)],
     };
   }
   if (!existsSync(directory)) {
@@ -193,7 +188,7 @@ export function deleteKanaSessionArtifacts(options: {
     return {
       removedDirectoryCount: 0,
       removedFileCount: 0,
-      failures: [errorDiagnostic(error)],
+      failures: [errorFields(error)],
     };
   }
   return removeArtifactDirectory(directory);
@@ -239,7 +234,7 @@ export function cleanupOrphanedKanaSessionArtifacts(options: {
     return {
       removedDirectoryCount: 0,
       removedFileCount: 0,
-      failures: [errorDiagnostic(error)],
+      failures: [errorFields(error)],
     };
   }
 
@@ -267,7 +262,7 @@ export function cleanupOrphanedKanaSessionArtifacts(options: {
         continue;
       }
     } catch (error) {
-      result.failures.push(errorDiagnostic(error));
+      result.failures.push(errorFields(error));
       continue;
     }
 
@@ -288,7 +283,7 @@ function collectArtifactReferences(messages: readonly Message[]): Map<string, To
     if (!message.content.includes(message.artifact.locator)) {
       throw new Error("Tool result artifact notice does not contain its retained locator.");
     }
-    artifacts.set(message.artifact.locator, structuredClone(message.artifact));
+    artifacts.set(message.artifact.locator, message.artifact);
   }
   return artifacts;
 }
@@ -320,30 +315,33 @@ function validateSourceArtifacts(
 }
 
 function rewriteArtifactLocators(
-  messages: Message[],
+  messages: readonly Message[],
   contextCheckpoint: ContextCheckpoint | undefined,
   locatorMap: ReadonlyMap<string, string>,
-): void {
-  for (const message of messages) {
+): Pick<ForkKanaSessionArtifactsResult, "messages" | "contextCheckpoint"> {
+  const rewritten = messages.map((message) => {
     if (message.role !== "tool" || !message.artifact) {
-      continue;
+      return message;
     }
-    const targetLocator = locatorMap.get(message.artifact.locator);
+    const sourceLocator = message.artifact.locator;
+    const targetLocator = locatorMap.get(sourceLocator);
     if (!targetLocator) {
       throw new Error("Forked artifact locator has no copied target.");
     }
-    message.content = message.content.replaceAll(message.artifact.locator, targetLocator);
-    message.artifact.locator = targetLocator;
+    return {
+      ...message,
+      content: message.content.replaceAll(sourceLocator, targetLocator),
+      artifact: { ...message.artifact, locator: targetLocator },
+    };
+  });
+  if (!contextCheckpoint) {
+    return { messages: rewritten, contextCheckpoint };
   }
-
-  if (contextCheckpoint) {
-    for (const [sourceLocator, targetLocator] of locatorMap) {
-      contextCheckpoint.summary = contextCheckpoint.summary.replaceAll(
-        sourceLocator,
-        targetLocator,
-      );
-    }
+  let summary = contextCheckpoint.summary;
+  for (const [sourceLocator, targetLocator] of locatorMap) {
+    summary = summary.replaceAll(sourceLocator, targetLocator);
   }
+  return { messages: rewritten, contextCheckpoint: { ...contextCheckpoint, summary } };
 }
 
 function ensurePrivateDirectorySync(directory: string): void {
@@ -377,7 +375,7 @@ function removeArtifactDirectory(directory: string): KanaArtifactCleanupResult {
     return {
       removedDirectoryCount: 0,
       removedFileCount: 0,
-      failures: [errorDiagnostic(error)],
+      failures: [errorFields(error)],
     };
   }
 }
@@ -414,26 +412,6 @@ function cleanupUnreferencedArtifactFiles(
       result.removedFileCount += 1;
     }
   } catch (error) {
-    result.failures.push(errorDiagnostic(error));
+    result.failures.push(errorFields(error));
   }
-}
-
-function errorDiagnostic(error: unknown): { errorType: string; errorCode?: string } {
-  const errorCode = getErrorCode(error);
-  return {
-    errorType: getErrorType(error),
-    ...(errorCode === undefined ? {} : { errorCode }),
-  };
-}
-
-function getErrorType(error: unknown): string {
-  return error instanceof Error ? error.name : typeof error;
-}
-
-function getErrorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return undefined;
-  }
-  const code = (error as { code?: unknown }).code;
-  return typeof code === "string" ? code : undefined;
 }

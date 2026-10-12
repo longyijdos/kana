@@ -1,9 +1,10 @@
 import { lstat, readdir } from "node:fs/promises";
 import path from "node:path";
 import { Type } from "typebox";
+import { clampLimit } from "./limit";
 import { strictObject } from "./strict-object";
 import type { Tool } from "./tool";
-import { resolveExistingWorkspaceDirectory } from "./workspace-path";
+import { joinWorkspacePath, resolveExistingWorkspaceDirectory } from "./workspace-path";
 
 export const DEFAULT_LIST_LIMIT = 200;
 const MAX_LIST_LIMIT = 2000;
@@ -137,14 +138,6 @@ function readEntryType(stats: Awaited<ReturnType<typeof lstat>>): ListEntryType 
 
 function compareEntries(left: ListToolEntry, right: ListToolEntry): number {
   return left.name.localeCompare(right.name, "en");
-}
-
-function clampLimit(limit: number, max: number): number {
-  return Math.min(Math.max(Math.trunc(limit), 1), max);
-}
-
-function joinWorkspacePath(basePath: string, childPath: string): string {
-  return basePath === "." ? childPath : path.join(basePath, childPath);
 }
 
 function formatListContent(result: ListToolResult): string {

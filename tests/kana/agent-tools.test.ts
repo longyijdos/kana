@@ -148,11 +148,9 @@ describe("Kana Agent tools", () => {
           ...config.agent,
           tools: ["read", "spawn_subagent", "wait_subagent", "cancel_subagent", "mcp_call"],
         },
+        { providers: config.provider },
         {
-          providers: config.provider,
           memoryEnabled: config.memory.enabled,
-        },
-        {
           resolveMcp: () => createMcpRegistry(),
           subagents,
           subagentProfiles: [profile],
@@ -183,10 +181,7 @@ describe("Kana Agent tools", () => {
           ...config.agent,
           tools: ["read", "spawn_subagent", "wait_subagent", "cancel_subagent"],
         },
-        {
-          providers: config.provider,
-          memoryEnabled: config.memory.enabled,
-        },
+        { providers: config.provider },
         {
           subagents,
           subagentProfiles: [],
@@ -214,10 +209,7 @@ describe("Kana Agent tools", () => {
             ...config.agent,
             tools: ["read"],
           },
-          {
-            providers: config.provider,
-            memoryEnabled: config.memory.enabled,
-          },
+          { providers: config.provider },
           {
             resolveMcp: () => createMcpRegistry(),
             backgroundJobs,
@@ -286,8 +278,7 @@ describe("Kana Agent tools", () => {
     try {
       const agent = withKanaAgentEnvironment(() =>
         createAgentForTest(testConfig(), {
-          resolveMcp: () => createMcpRegistry(),
-          launchMode: "clean",
+          memoryEnabled: false,
           wakeScheduler,
           sessionId: "session-1",
         }),
@@ -430,11 +421,8 @@ function createAgentForTest(
 ) {
   return createKanaAgent(
     config.agent,
-    {
-      providers: config.provider,
-      memoryEnabled: config.memory.enabled,
-    },
-    options,
+    { providers: config.provider },
+    { memoryEnabled: config.memory.enabled, ...options },
   );
 }
 

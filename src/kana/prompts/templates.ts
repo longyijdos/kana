@@ -1,36 +1,35 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-
-import { formatError } from "../format";
+import { formatError } from "@/utils";
+import { isKanaResourceName, readFrontmatter } from "../frontmatter";
 import { getKanaConfigPaths } from "../path";
 
 const MAX_TEMPLATE_BYTES = 64 * 1024;
-const MAX_NAME_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 const PLACEHOLDER_PATTERN = /\{\{\s*([a-z][a-z0-9_-]{0,63})\s*(?:=([^}\r\n]*))?\}\}/g;
 
 type KanaPromptTemplateArgument = {
-  name: string;
-  defaultValue?: string;
+  readonly name: string;
+  readonly defaultValue?: string;
 };
 
 export type KanaPromptTemplate = {
-  name: string;
-  description: string;
-  body: string;
-  arguments: KanaPromptTemplateArgument[];
-  sourcePath: string;
+  readonly name: string;
+  readonly description: string;
+  readonly body: string;
+  readonly arguments: readonly KanaPromptTemplateArgument[];
+  readonly sourcePath: string;
 };
 
 type KanaPromptTemplateDiagnostic = {
-  code: "read_failed" | "invalid_template";
-  message: string;
-  path: string;
+  readonly code: "read_failed" | "invalid_template";
+  readonly message: string;
+  readonly path: string;
 };
 
 type LoadKanaPromptTemplatesResult = {
-  templates: KanaPromptTemplate[];
-  diagnostics: KanaPromptTemplateDiagnostic[];
+  readonly templates: readonly KanaPromptTemplate[];
+  readonly diagnostics: readonly KanaPromptTemplateDiagnostic[];
 };
 
 export function loadKanaPromptTemplates(
@@ -109,20 +108,26 @@ export function expandKanaPromptTemplate(template: KanaPromptTemplate, input: st
 }
 
 function parsePromptTemplate(name: string, content: string, filePath: string): KanaPromptTemplate {
-  validateName(name);
-  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  if (!normalized.startsWith("---\n")) {
+  if (!isKanaResourceName(name)) {
+    throw new Error("template filename must be a lowercase hyphenated name up to 64 characters");
+  }
+  const frontmatter = readFrontmatter(content);
+  if (frontmatter === undefined) {
     throw new Error("template requires frontmatter");
   }
-  const delimitedEnd = normalized.indexOf("\n---\n", 4);
-  const end =
-    delimitedEnd >= 0 ? delimitedEnd : normalized.endsWith("\n---") ? normalized.length - 4 : -1;
-  if (end < 0) {
-    throw new Error("frontmatter is missing a closing --- marker");
+  const unknownField = Object.keys(frontmatter.fields).find((key) => key !== "description");
+  if (unknownField !== undefined) {
+    throw new Error(`unknown frontmatter field: ${unknownField}`);
   }
-
-  const description = parseDescription(normalized.slice(4, end));
-  const body = normalized.slice(end + 4).trim();
+  const rawDescription = frontmatter.fields.description;
+  const description = typeof rawDescription === "string" ? rawDescription.trim() : undefined;
+  if (!description) {
+    throw new Error("description is required");
+  }
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
+    throw new Error(`description exceeds ${MAX_DESCRIPTION_LENGTH} characters`);
+  }
+  const body = frontmatter.body.trim();
   if (!body) {
     throw new Error("template body is required");
   }
@@ -134,34 +139,6 @@ function parsePromptTemplate(name: string, content: string, filePath: string): K
     arguments: parsePlaceholders(body),
     sourcePath: filePath,
   };
-}
-
-function parseDescription(frontmatter: string): string {
-  let description: string | undefined;
-  for (const line of frontmatter.split("\n")) {
-    if (!line.trim() || line.trimStart().startsWith("#")) {
-      continue;
-    }
-    const match = /^([A-Za-z0-9_-]+):(?:\s*(.*))?$/.exec(line);
-    if (!match) {
-      throw new Error(`invalid frontmatter line: ${line}`);
-    }
-    if (match[1] !== "description") {
-      throw new Error(`unknown frontmatter field: ${match[1]}`);
-    }
-    if (description !== undefined) {
-      throw new Error("description is declared more than once");
-    }
-    description = unquote((match[2] ?? "").trim()).trim();
-  }
-
-  if (!description) {
-    throw new Error("description is required");
-  }
-  if (description.length > MAX_DESCRIPTION_LENGTH) {
-    throw new Error(`description exceeds ${MAX_DESCRIPTION_LENGTH} characters`);
-  }
-  return description;
 }
 
 function parsePlaceholders(body: string): KanaPromptTemplateArgument[] {
@@ -247,19 +224,4 @@ function invalidArgumentsError(templateName: string, input: string, offset: numb
   return new Error(
     `Prompt template :${templateName} expects name=value arguments${near ? ` near "${near}"` : ""}.`,
   );
-}
-
-function validateName(name: string): void {
-  if (
-    name.length === 0 ||
-    name.length > MAX_NAME_LENGTH ||
-    !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)
-  ) {
-    throw new Error("template filename must be a lowercase hyphenated name up to 64 characters");
-  }
-}
-
-function unquote(value: string): string {
-  const match = /^(?:"(.*)"|'(.*)')$/.exec(value);
-  return match ? (match[1] ?? match[2] ?? "") : value;
 }

@@ -32,7 +32,7 @@ export class HostedToolBlock implements Component {
   }
 
   update(content: HostedToolContent): void {
-    this.content = structuredClone(content);
+    this.content = content;
     if (content.status !== "in_progress") {
       this.timer.stop();
     } else if (!this.timer.active && !this.options.summaryOnly) {
@@ -73,7 +73,7 @@ export class HostedToolBlock implements Component {
 
     const title = formatHostedToolTitle(this.content);
     const titleColor =
-      this.content.status === "canceled"
+      this.content.status === "cancelled"
         ? tuiTheme.muted
         : inProgress
           ? tuiTheme.toolActive
@@ -106,7 +106,7 @@ function formatHostedToolTitle(content: HostedToolContent): {
   if (content.name !== "web_search") {
     return {
       activity:
-        content.status === "canceled"
+        content.status === "cancelled"
           ? "Provider tool stopped"
           : content.status === "in_progress"
             ? "Using provider tool"
@@ -114,7 +114,7 @@ function formatHostedToolTitle(content: HostedToolContent): {
       target: safeText(content.name),
     };
   }
-  if (content.status === "canceled") {
+  if (content.status === "cancelled") {
     return { activity: "Web search stopped" };
   }
   if (content.status === "in_progress") {
@@ -143,7 +143,7 @@ function formatHostedToolTitle(content: HostedToolContent): {
 }
 
 function formatSearchQueries(
-  queries: string[] | undefined,
+  queries: readonly string[] | undefined,
   query: string | undefined,
 ): string | undefined {
   const values = queries?.length ? queries : query ? [query] : [];

@@ -178,7 +178,7 @@ function createTranscript(pairCount: number): Transcript {
 
 export function createSessionTranscript(
   sessionId: string,
-  timeline: KanaSessionTimelineEntry[],
+  timeline: readonly KanaSessionTimelineEntry[],
 ): Transcript {
   const transcript = new Transcript();
 

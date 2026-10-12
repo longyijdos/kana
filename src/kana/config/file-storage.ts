@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import lockfile from "proper-lockfile";
@@ -20,21 +19,6 @@ export function withLockedConfigFile<T>(filePath: string, update: () => T): T {
 
 export function readOptionalConfigFile(filePath: string): string | undefined {
   return existsSync(filePath) ? readFileSync(filePath, "utf8") : undefined;
-}
-
-export function writeConfigFileAtomically(filePath: string, content: string): void {
-  mkdirSync(path.dirname(filePath), { recursive: true });
-  const temporaryPath = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.${process.pid}.${randomUUID()}.tmp`,
-  );
-  try {
-    writeFileSync(temporaryPath, content, { encoding: "utf8", mode: 0o600 });
-    renameSync(temporaryPath, filePath);
-  } catch (error) {
-    rmSync(temporaryPath, { force: true });
-    throw error;
-  }
 }
 
 export function mergeConfigStringSet(

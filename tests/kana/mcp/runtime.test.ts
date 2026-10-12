@@ -8,7 +8,6 @@ import {
   getKanaConfigPaths,
   type KanaMcpRuntime,
   type KanaMcpRuntimeProgressEvent,
-  saveKanaMcpActivationState,
 } from "@/kana";
 import { McpRequestCancelledError } from "@/mcp";
 import {
@@ -33,7 +32,7 @@ describe("Kana MCP runtime", () => {
   test("replaces the manager from the latest activation state", async () => {
     const env = createTempEnv();
     writeMcpConfig(env, ["alpha", "beta"]);
-    saveKanaMcpActivationState({ enabledServers: ["alpha"] }, env);
+    createKanaMcpConfigurationStore(env).saveActivationState({ enabledServers: ["alpha"] });
     const events: KanaMcpRuntimeProgressEvent[] = [];
     const configuration = createKanaMcpConfigurationStore(env);
     const runtime = createRuntime(env, events, configuration);
@@ -61,7 +60,7 @@ describe("Kana MCP runtime", () => {
   test("reloads from the startup configuration snapshot", async () => {
     const env = createTempEnv();
     writeMcpConfig(env, ["alpha"]);
-    saveKanaMcpActivationState({ enabledServers: ["alpha"] }, env);
+    createKanaMcpConfigurationStore(env).saveActivationState({ enabledServers: ["alpha"] });
     const runtime = createRuntime(env);
     await runtime.start();
 
@@ -76,7 +75,7 @@ describe("Kana MCP runtime", () => {
   test("serializes concurrent reloads and labels manager progress by runtime operation", async () => {
     const env = createTempEnv();
     writeMcpConfig(env, ["alpha"]);
-    saveKanaMcpActivationState({ enabledServers: ["alpha"] }, env);
+    createKanaMcpConfigurationStore(env).saveActivationState({ enabledServers: ["alpha"] });
     const events: KanaMcpRuntimeProgressEvent[] = [];
     const configuration = createKanaMcpConfigurationStore(env);
     const runtime = createRuntime(env, events, configuration);
@@ -100,7 +99,7 @@ describe("Kana MCP runtime", () => {
   test("cancels startup, closes its manager, and permits a later reload", async () => {
     const env = createTempEnv();
     writeMcpConfig(env, ["alpha"], "hang-initialize");
-    saveKanaMcpActivationState({ enabledServers: ["alpha"] }, env);
+    createKanaMcpConfigurationStore(env).saveActivationState({ enabledServers: ["alpha"] });
     const events: KanaMcpRuntimeProgressEvent[] = [];
     const configuration = createKanaMcpConfigurationStore(env);
     const runtime = createRuntime(env, events, configuration);

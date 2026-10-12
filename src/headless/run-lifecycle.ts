@@ -25,7 +25,6 @@ type HeadlessRunLifecycleOptions = {
 
 export class HeadlessRunLifecycle {
   private abortRequested = false;
-  private listening = false;
   private timeout?: ReturnType<typeof setTimeout>;
   private runTermination?: HeadlessRunTermination;
 
@@ -36,10 +35,6 @@ export class HeadlessRunLifecycle {
   }
 
   connect(): void {
-    if (this.listening) {
-      return;
-    }
-    this.listening = true;
     this.options.signal?.addEventListener("abort", this.onAbort, { once: true });
   }
 
@@ -52,14 +47,10 @@ export class HeadlessRunLifecycle {
       if (!this.requestAbort({ reason: "timeout", timeoutMs })) {
         return;
       }
-      try {
-        this.options.logger?.warn("headless.timeout_elapsed", {
-          phase: "run",
-          timeoutMs,
-        });
-      } catch {
-        // Diagnostics must not change cancellation or cleanup behavior.
-      }
+      this.options.logger?.warn("headless.timeout_elapsed", {
+        phase: "run",
+        timeoutMs,
+      });
     }, timeoutMs);
   }
 
@@ -70,14 +61,8 @@ export class HeadlessRunLifecycle {
   }
 
   dispose(): void {
-    if (this.timeout !== undefined) {
-      clearTimeout(this.timeout);
-      this.timeout = undefined;
-    }
-    if (this.listening) {
-      this.options.signal?.removeEventListener("abort", this.onAbort);
-      this.listening = false;
-    }
+    clearTimeout(this.timeout);
+    this.options.signal?.removeEventListener("abort", this.onAbort);
   }
 
   private readonly onAbort = (): void => {
@@ -102,6 +87,9 @@ export function createHeadlessSignalReason(
   // The hidden brand keeps arbitrary caller aborts distinct from process SIGINT.
   return { [HEADLESS_SIGNAL_REASON]: termination };
 }
+
+// Shell convention for a process interrupted by SIGINT (128 + 2).
+export const SIGINT_EXIT_CODE = 130;
 
 export function readHeadlessSignalReason(
   signal: AbortSignal | undefined,

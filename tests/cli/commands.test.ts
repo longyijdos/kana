@@ -12,26 +12,11 @@ describe("CLI installation", () => {
     const logs: string[] = [];
 
     await parse(["node", "kana", "install"], {
-      installKanaConfig: () => ({
-        configPath: "/tmp/config.toml",
-        configStatus: "defaults",
-        configExamplePath: "/tmp/config.example.toml",
-        configExampleStatus: "created",
-        mcpConfigPath: "/tmp/mcp.json",
-        mcpConfigStatus: "created",
-        mcpEnabledPath: "/tmp/mcp-enabled.json",
-        mcpEnabledStatus: "created",
-        approvalsPath: "/tmp/approvals.json",
-        approvalsStatus: "exists",
-        skillsConfigPath: "/tmp/skills.toml",
-        skillsConfigStatus: "created",
-        subagentProfileExamplePath: "/tmp/agents/profile.md.example",
-        subagentProfileExampleStatus: "created",
-        promptTemplateExamplePath: "/tmp/prompts/template.md.example",
-        promptTemplateExampleStatus: "created",
-        customProviderExamplePath: "/tmp/providers/custom.example.toml",
-        customProviderExampleStatus: "created",
-      }),
+      installKanaConfig: () => [
+        { name: "config example", path: "/tmp/config.example.toml", status: "created" },
+        { name: "MCP config", path: "/tmp/mcp.json", status: "updated" },
+        { name: "approvals", path: "/tmp/approvals.json", status: "exists" },
+      ],
       log: (message) => {
         logs.push(message);
       },
@@ -39,13 +24,8 @@ describe("CLI installation", () => {
 
     expect(logs).toEqual([
       "Created config example: /tmp/config.example.toml",
-      "Created MCP config: /tmp/mcp.json",
-      "Created MCP activation state: /tmp/mcp-enabled.json",
+      "Updated MCP config: /tmp/mcp.json",
       "Approvals already exists: /tmp/approvals.json",
-      "Created skills config: /tmp/skills.toml",
-      "Created subagent profile example: /tmp/agents/profile.md.example",
-      "Created prompt template example: /tmp/prompts/template.md.example",
-      "Created Custom provider example: /tmp/providers/custom.example.toml",
     ]);
   });
 

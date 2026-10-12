@@ -1,4 +1,4 @@
-import { escapeXml } from "../format";
+import { escapeXml } from "@/utils";
 import type { KanaSkill } from "./types";
 
 export function formatKanaSkillsForPrompt(skills: readonly KanaSkill[]): string {

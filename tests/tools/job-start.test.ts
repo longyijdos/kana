@@ -40,7 +40,7 @@ describe("job_start tool", () => {
     await manager.close();
   });
 
-  test("rejects empty commands and canceled launches without creating jobs", async () => {
+  test("rejects empty commands and cancelled launches without creating jobs", async () => {
     const manager = new BackgroundJobManager();
     const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
     const start = createJobStartTool(jobs);

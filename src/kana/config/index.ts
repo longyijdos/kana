@@ -1,10 +1,11 @@
-export { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tool-names";
+export { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tools/names";
 export {
   isKanaTuiThemeName,
   KANA_MODEL_PROVIDERS,
   type KanaAgentConfig,
   type KanaAgentRuntimeConfig,
   type KanaConfig,
+  type KanaConfigDraft,
   type KanaDeepSeekProviderConfig,
   type KanaModelConfig,
   type KanaModelProvider,
@@ -18,10 +19,10 @@ export {
   type KanaTuiConfig,
 } from "./contracts";
 export { DEFAULT_KANA_CONFIG } from "./defaults";
-export { validateKanaConfig } from "./parser";
+export { reviseKanaConfig } from "./parser";
 export {
-  type InstallKanaConfigResult,
   installKanaConfig,
+  type KanaInstalledFile,
   loadKanaConfig,
   type ResetKanaConfigResult,
   resetKanaConfig,

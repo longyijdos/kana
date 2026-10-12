@@ -83,11 +83,8 @@ describe("buildDeepSeekRequest", () => {
       {
         provider: "deepseek",
         model: "deepseek-flash",
+        apiKey: "test-key",
         reasoningEffort: "max",
-        maxOutputTokens: 32_768,
-        responseFormat: { type: "json_object" },
-        userId: "kana-user",
-        strictTools: true,
       },
     );
 
@@ -97,8 +94,6 @@ describe("buildDeepSeekRequest", () => {
       stream: true,
       max_output_tokens: 12_345,
       reasoning: { effort: "max" },
-      text: { format: { type: "json_object" } },
-      user: "kana-user",
       tool_choice: "auto",
       tools: [
         {
@@ -110,7 +105,6 @@ describe("buildDeepSeekRequest", () => {
             properties: { path: { type: "string" } },
             required: ["path"],
           },
-          strict: true,
         },
         { type: "web_search" },
       ],
@@ -139,7 +133,8 @@ describe("buildDeepSeekRequest", () => {
       {
         type: "message",
         role: "assistant",
-        content: [{ type: "output_text", text: "answer" }],
+        status: "completed",
+        content: [{ type: "output_text", text: "answer", annotations: [] }],
       },
       {
         type: "function_call",
@@ -177,13 +172,13 @@ describe("buildDeepSeekRequest", () => {
       {
         provider: "deepseek",
         model: "deepseek-flash",
+        apiKey: "test-key",
         reasoningEffort: "none",
-        toolChoice: { type: "function", function: { name: "read" } },
       },
     );
 
     expect(request.reasoning).toEqual({ effort: "none" });
-    expect(request.tool_choice).toEqual({ type: "function", name: "read" });
+    expect(request.tool_choice).toBe("auto");
     expect(request.tools).toEqual([
       {
         type: "function",
@@ -199,53 +194,12 @@ describe("buildDeepSeekRequest", () => {
       },
     ]);
   });
-
-  test("never sends images for text-only models even when image input is enabled", () => {
-    const request = buildDeepSeekRequest(
-      {
-        messages: [
-          {
-            ...messageIdentityForTest("user"),
-            role: "user",
-            content: "question",
-            images: [
-              {
-                mimeType: "image/png",
-                data: "private-image-bytes",
-                width: 32,
-                height: 16,
-              },
-            ],
-          },
-        ],
-        imageInput: true,
-      },
-      {
-        provider: "deepseek",
-        model: "deepseek-v4-pro",
-      },
-    );
-
-    expect(request.input).toEqual([
-      {
-        type: "message",
-        role: "user",
-        content: [
-          { type: "input_text", text: "question" },
-          {
-            type: "input_text",
-            text: "[1 image attachment(s) omitted because image input is disabled.]",
-          },
-        ],
-      },
-    ]);
-    expect(JSON.stringify(request)).not.toContain("private-image-bytes");
-  });
 });
 
 responsesRequestContract("DeepSeek Responses shared input contract", (context) =>
   buildDeepSeekRequest(context, {
     provider: "deepseek",
     model: "deepseek-flash",
+    apiKey: "test-key",
   }),
 );

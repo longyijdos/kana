@@ -11,10 +11,8 @@ import path from "node:path";
 
 import type { ContextCheckpoint } from "@/agent";
 import type { Message } from "@/core";
-import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
+import { encodeKanaWorkspacePath, fileNameTimestamp, getKanaConfigPaths } from "../path";
 import {
-  type AppendKanaSessionMessagesOptions,
-  type AppendKanaSessionRunOptions,
   type CreateKanaSessionOptions,
   entryToContextCheckpoint,
   type FindKanaSessionOptions,
@@ -35,7 +33,7 @@ export function createKanaSession(options: CreateKanaSessionOptions = {}): KanaS
   const createdAt = new Date().toISOString();
   const cwd = options.cwd ?? process.cwd();
   const sessionDir = getKanaSessionDir(cwd, options.env);
-  const filePath = path.join(sessionDir, `${safeTimestamp(createdAt)}_${id}.jsonl`);
+  const filePath = path.join(sessionDir, `${fileNameTimestamp(createdAt)}_${id}.jsonl`);
   const header: KanaSessionHeader = {
     type: "session",
     version: SESSION_VERSION,
@@ -110,28 +108,6 @@ export function deleteKanaSession(
   return true;
 }
 
-export function appendKanaSessionMessages(
-  session: KanaSessionMetadata,
-  messages: Message[],
-  options: AppendKanaSessionMessagesOptions = {},
-): void {
-  appendKanaSessionRun(session, messages, options);
-}
-
-export function appendKanaSessionRun(
-  session: KanaSessionMetadata,
-  messages: Message[],
-  options: AppendKanaSessionRunOptions = {},
-): KanaSessionTimelineEntry[] {
-  if (messages.length === 0 && (options.compactions?.length ?? 0) === 0) {
-    return [];
-  }
-
-  const timeline = existsSync(session.path) ? readKanaSessionFile(session.path).timeline : [];
-  const journal = createKanaSessionJournal(session, timeline);
-  return journal.appendSnapshot(messages, options);
-}
-
 function findKanaSession(
   sessionId: string,
   options: FindKanaSessionOptions,
@@ -174,12 +150,12 @@ function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
 
   for (const entry of parsed.timeline) {
     if (entry.type === "message") {
-      messages.push(structuredClone(entry.message));
+      messages.push(entry.message);
       messageIds.set(entry.id, messages.length);
       continue;
     }
     if (entry.type === "todo_state") {
-      todoState = structuredClone(entry.items);
+      todoState = entry.items;
       continue;
     }
     if (entry.type !== "context_compaction") {
@@ -205,7 +181,7 @@ function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
   return {
     metadata,
     messages,
-    timeline: structuredClone(parsed.timeline),
+    timeline: parsed.timeline,
     todoState,
     contextCheckpoint,
     recoveredInterruptedTurn,
@@ -214,9 +190,13 @@ function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
 }
 
 function loadKanaSessionMetadata(filePath: string): KanaSessionMetadata {
-  const { lines } = readSessionLines(filePath);
-  const header = parseHeader(lines[0], filePath);
-  return headerToMetadata(header, filePath, readLastEntryTimestamp(lines) ?? header.createdAt);
+  const { headerLine, recordLines } = readSessionLines(filePath);
+  const header = parseHeader(headerLine, filePath);
+  return headerToMetadata(
+    header,
+    filePath,
+    readLastEntryTimestamp(recordLines) ?? header.createdAt,
+  );
 }
 
 function deriveUpdatedAt(timeline: readonly KanaSessionTimelineEntry[], createdAt: string): string {
@@ -225,15 +205,13 @@ function deriveUpdatedAt(timeline: readonly KanaSessionTimelineEntry[], createdA
 
 // Only complete records count as activity: an unterminated or malformed tail
 // must not reorder sessions in the picker.
-function readLastEntryTimestamp(lines: readonly string[]): string | undefined {
-  for (let index = lines.length - 1; index >= 1; index -= 1) {
-    const timestamp = readRecordTimestamp(lines[index]);
-
+function readLastEntryTimestamp(recordLines: readonly string[]): string | undefined {
+  for (const line of [...recordLines].reverse()) {
+    const timestamp = readRecordTimestamp(line);
     if (timestamp !== undefined) {
       return timestamp;
     }
   }
-
   return undefined;
 }
 
@@ -254,33 +232,27 @@ function readRecordTimestamp(line: string): string | undefined {
 
 function readKanaSessionFile(filePath: string): {
   header: KanaSessionHeader;
-  timeline: KanaSessionTimelineEntry[];
+  timeline: readonly KanaSessionTimelineEntry[];
   recoveredIncompleteTail: boolean;
 } {
-  const { lines, recoveredIncompleteTail } = readSessionLines(filePath, true);
-  const header = parseHeader(lines[0], filePath);
-  const timeline: KanaSessionTimelineEntry[] = [];
-
-  for (let index = 1; index < lines.length; index += 1) {
-    timeline.push(parseTimelineEntry(lines[index], filePath, index + 1));
-  }
-
-  return { header, timeline, recoveredIncompleteTail };
+  const { headerLine, recordLines, recoveredIncompleteTail } = readSessionLines(filePath, true);
+  return {
+    header: parseHeader(headerLine, filePath),
+    timeline: recordLines.map((line, index) => parseTimelineEntry(line, filePath, index + 2)),
+    recoveredIncompleteTail,
+  };
 }
 
 function getKanaSessionDir(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
   return path.join(getKanaConfigPaths(env).sessionsPath, encodeKanaWorkspacePath(cwd));
 }
 
-function safeTimestamp(timestamp: string): string {
-  return timestamp.replace(/[:.]/g, "-");
-}
-
 function readSessionLines(
   filePath: string,
   repairIncompleteTail = false,
 ): {
-  lines: string[];
+  headerLine: string;
+  recordLines: string[];
   recoveredIncompleteTail: boolean;
 } {
   if (!existsSync(filePath)) {
@@ -312,16 +284,11 @@ function readSessionLines(
     }
   }
 
-  const lines = content.split("\n").filter((line) => line.trim().length > 0);
-
-  if (lines.length === 0) {
+  const [headerLine, ...recordLines] = content.split("\n").filter((line) => line.trim());
+  if (headerLine === undefined) {
     throw new Error(`Kana session file is empty: ${filePath}`);
   }
-
-  return {
-    lines,
-    recoveredIncompleteTail,
-  };
+  return { headerLine, recordLines, recoveredIncompleteTail };
 }
 
 function listDirectories(directory: string): string[] {

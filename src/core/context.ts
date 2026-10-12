@@ -1,12 +1,12 @@
 import type { Message } from "./messages";
 import type { ToolSpec } from "./tool";
 
-// Provider-facing invocation context. Static transport settings live in
-// ModelConfig; per-Agent policy and signal belong to each invocation.
+// Provider-facing invocation context. Static transport settings live in each
+// adapter's config; per-Agent policy and signal belong to each invocation.
 export type ModelContext = {
   system?: string;
-  messages: Message[];
-  tools?: ToolSpec[];
+  messages: readonly Message[];
+  tools?: readonly ToolSpec[];
   webSearch?: boolean;
   imageInput?: boolean;
   parallelToolCalls?: boolean;

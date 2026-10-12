@@ -89,15 +89,12 @@ export function moveInputCursorVertically({
   const layoutColumns = Math.max(columns, 1);
   const wrappedLines = wrapInputValue(value, layoutColumns);
   const cursorLine = findCursorLine(wrappedLines, cursorOffset);
-  const targetLine = cursorLine + direction;
-
-  if (targetLine < 0 || targetLine >= wrappedLines.length) {
+  const current = wrappedLines[cursorLine];
+  const target = wrappedLines[cursorLine + direction];
+  if (!current || !target) {
     return undefined;
   }
-
-  const targetColumn = cursorColumn(wrappedLines[cursorLine], cursorOffset);
-
-  return cursorOffsetForColumn(wrappedLines[targetLine], targetColumn);
+  return cursorOffsetForColumn(target, cursorColumn(current, cursorOffset));
 }
 
 export function findInputCursorLine({

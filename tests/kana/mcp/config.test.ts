@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
-  DEFAULT_KANA_MCP_CONFIG,
   getKanaConfigPaths,
   loadKanaMcpConfig,
   parseKanaMcpConfig,
@@ -20,7 +19,7 @@ afterEach(() => {
 
 describe("Kana MCP config", () => {
   test("loads an empty default when mcp.json is missing", () => {
-    expect(loadKanaMcpConfig(createTempEnv())).toEqual(DEFAULT_KANA_MCP_CONFIG);
+    expect(loadKanaMcpConfig(createTempEnv())).toEqual({ mcpServers: {} });
   });
 
   test("loads Claude-style stdio server entries", () => {
@@ -188,7 +187,7 @@ describe("Kana MCP config", () => {
         deepwiki: { type: "http", url: "https://mcp.deepwiki.com/mcp" },
       },
     });
-    const server = config.mcpServers.cloudflare;
+    const server = config.mcpServers.cloudflare!;
     if (server.type !== "http" || server.auth === undefined)
       throw new Error("Expected OAuth config.");
     expect(server.auth).toEqual({
@@ -213,64 +212,6 @@ describe("Kana MCP config", () => {
 
   test("defaults an omitted mcpServers object to empty", () => {
     expect(parseKanaMcpConfig({})).toEqual({ mcpServers: {} });
-  });
-
-  test("snapshots mutable values supplied by callers", () => {
-    const raw = {
-      mcpServers: {
-        mutable: {
-          command: "mcp-server",
-          args: ["before"],
-          env: { TOKEN: "before" },
-          includeTools: ["before"],
-        },
-      },
-    };
-    const parsed = parseKanaMcpConfig(raw);
-
-    raw.mcpServers.mutable.args[0] = "after";
-    raw.mcpServers.mutable.env.TOKEN = "after";
-    raw.mcpServers.mutable.includeTools[0] = "after";
-
-    expect(parsed.mcpServers.mutable).toMatchObject({
-      args: ["before"],
-      env: { TOKEN: "before" },
-      includeTools: ["before"],
-    });
-
-    const httpHeaders = { Authorization: "before" };
-    const http = parseKanaMcpConfig({
-      mcpServers: {
-        remote: { type: "http", url: "https://example.com/mcp", headers: httpHeaders },
-      },
-    });
-    httpHeaders.Authorization = "after";
-    expect(http.mcpServers.remote).toMatchObject({ headers: { Authorization: "before" } });
-
-    const scopes = ["scope:before"];
-    const authorizationParameters = { prompt: "before" };
-    const oauth = parseKanaMcpConfig({
-      mcpServers: {
-        remote: {
-          type: "http",
-          url: "https://example.com/mcp",
-          auth: {
-            type: "oauth2",
-            clientId: "client",
-            scopes,
-            authorizationParameters,
-          },
-        },
-      },
-    });
-    scopes[0] = "scope:after";
-    authorizationParameters.prompt = "after";
-    expect(oauth.mcpServers.remote).toMatchObject({
-      auth: {
-        scopes: ["scope:before"],
-        authorizationParameters: { prompt: "before" },
-      },
-    });
   });
 
   test("rejects unsupported server types and unknown fields", () => {
@@ -420,7 +361,7 @@ describe("Kana MCP config", () => {
           remote: { type: "http", url: "https://example.com/mcp", proxy: true },
         },
       }),
-    ).toThrow("mcpServers.remote.proxy must be a non-empty string.");
+    ).toThrow("mcpServers.remote.proxy must be false or a non-empty string.");
   });
 
   test("rejects invalid timeouts and tool filters", () => {
@@ -437,7 +378,7 @@ describe("Kana MCP config", () => {
           filters: { command: "mcp-server", includeTools: [""] },
         },
       }),
-    ).toThrow("mcpServers.filters.includeTools values must be non-empty strings.");
+    ).toThrow("mcpServers.filters.includeTools[0] must be a non-empty string.");
   });
 
   test("wraps invalid JSON with the MCP config path", () => {

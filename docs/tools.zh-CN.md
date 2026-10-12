@@ -63,9 +63,9 @@ Runtime 从进入工具的 `execute()` 开始计算 `durationMs`，在执行结�
 
 Kana 自有对象 schema 使用 `additionalProperties: false`，未声明参数会带属性名失败，而不是被忽略。序列化后失去库 metadata 的 TypeBox schema 仍会先补充兼容基础类型转换，再交给同一 compiler 校验。第三方和 MCP schema 保留自身声明的额外属性行为。`mcp_call` 在这条管线中校验入口 envelope，再在入口内部、远端调用前校验嵌套远端参数。
 
-校验错误、审批拒绝、取消、deadline 到期与工具异常都会成为 `isError: true` 结果，不会抛出 turn loop。审批取消默认中止 run，并为同一 assistant 消息中后续调用补充 canceled 结果，而不执行它们。
+校验错误、审批拒绝、取消、deadline 到期与工具异常都会成为 `isError: true` 结果，不会抛出 turn loop。审批取消默认中止 run，并为同一 assistant 消息中后续调用补充 cancelled 结果，而不执行它们。
 
-hook 返回 `return` 时提供正常 `ToolResult`，跳过 `execute` 及其 deadline；返回 `cancel` 时生成 canceled 错误结果，即使设置 `abortRun: false` 也是如此。两条路径仍会发布 `tool_execution_end`、应用结果策略并提交工具结果。
+hook 返回 `return` 时提供正常 `ToolResult`，跳过 `execute` 及其 deadline；返回 `cancel` 时生成 cancelled 错误结果，即使设置 `abortRun: false` 也是如此。两条路径仍会发布 `tool_execution_end`、应用结果策略并提交工具结果。
 
 `tool_execution_end` 描述完成、取消、hook 提供的结果或明确 unknown 终态，不保证结果已进入 journal。成功的 Agent run 才是持久边界；提交和恢复顺序见[会话与记忆](sessions-and-memory.zh-CN.md)。
 
@@ -79,15 +79,15 @@ hook 返回 `return` 时提供正常 `ToolResult`，跳过 `execute` 及其 dead
 
 普通工具在审批结束后才启动 deadline。对于 `run_code`，等待内部 `beforeToolExecution` hook（包括串行审批队列）时，暂停外层 deadline、显示计时和记录的执行耗时。多个审批等待重叠时共用一次暂停；最后一个等待结束后，外层 deadline 按剩余额度恢复。已经执行的内部工具仍使用各自的 deadline。Runtime 为外层调用发布 `tool_execution_pause` 和 `tool_execution_resume`，并标记 `reason: "approval"`；这些事件不创建历史消息。
 
-Run abort、工具 deadline 或内部 scheduler 失败会立即停止 pool 补充并中止活动 sibling signal。尚未启动的调用获得 canceled 结果；已启动调用获得有限取消宽限期。宽限期内结束会成为 `canceled` 或 `timed_out`，之后迟到的 return 不能覆盖该结果。
+Run abort、工具 deadline 或内部 scheduler 失败会立即停止 pool 补充并中止活动 sibling signal。尚未启动的调用获得 cancelled 结果；已启动调用获得有限取消宽限期。宽限期内结束会成为 `cancelled` 或 `timed_out`，之后迟到的 return 不能覆盖该结果。
 
 调用在宽限期后仍忽略取消时，ToolRuntime 停止接收 update，把结果固定为 `status: "unknown"` 并结束 Agent run。结果禁止自动重试，因为脱离 runtime 的操作仍可能产生副作用；迟到结算只产生不含参数或输出的安全生命周期诊断。
 
 ## 工具结果策略与 artifact
 
-结果规范化后，ToolRuntime 会依次对成功、失败、拒绝、取消、timeout 与 unknown 结果应用每个 `ToolResultPolicy`。策略收到已克隆的只读调用、当前模型可见 content 与错误状态、可测量时的结构化结果字节数，以及当前 content limit；任意结构化 host 数据本身不穿过该建议边界。
+结果规范化后，ToolRuntime 会依次对成功、失败、拒绝、取消、timeout 与 unknown 结果应用每个 `ToolResultPolicy`。策略收到只读的调用、当前模型可见 content 与错误状态、可测量时的结构化结果字节数，以及当前 content limit；任意结构化 host 数据本身不穿过该建议边界。
 
-策略可以替换模型可见 content、追加带 source 的内部上下文、关闭持久结构化结果，或附加一个经过校验的 artifact 引用。它不能改变工具身份、参数、canonical 实时 result 或错误状态。策略返回非法值或抛错时会产生安全诊断，并保留此前 pipeline 状态。接受的输出会复制为普通分离快照，使 getter、Proxy、稀疏数组或后续修改无法逃逸 containment。
+策略可以替换模型可见 content、追加带 source 的内部上下文、关闭持久结构化结果，或附加一个经过校验的 artifact 引用。它不能改变工具身份、参数、canonical 实时 result 或错误状态。策略是按 `ToolResultPolicyResult` 类型编写的受信产品代码；抛错时会产生安全诊断，并保留此前 pipeline 状态。
 
 同一 assistant 消息的全部 sibling result 会先按模型顺序提交，之后才提交 `tool_result_policy` context。每个 Agent 持有自己的策略实例和可变策略状态；接受人类输入或 Agent reset 会清空该状态。
 

@@ -4,7 +4,6 @@ import type { Tool } from "@/tools";
 import { strictObject } from "@/tools";
 import {
   formatKanaTodoWriteAcknowledgement,
-  type KanaTodoItem,
   type KanaTodoStateChange,
   normalizeKanaTodoItems,
 } from "../todo";
@@ -51,13 +50,13 @@ export function createTodoWriteTool(
       concurrency: "exclusive",
     },
     execute: async (args, context) => {
-      const items: KanaTodoItem[] = normalizeKanaTodoItems(args.items);
+      const items = normalizeKanaTodoItems(args.items);
       await options.commit?.({
         toolCallId: context.toolCallId,
         ...(context.parentToolCallId === undefined
           ? {}
           : { parentToolCallId: context.parentToolCallId }),
-        items: structuredClone(items),
+        items: items,
       });
 
       return {

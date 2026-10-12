@@ -1,12 +1,12 @@
 import type { KanaConfig } from "./contracts";
-import { parseKanaConfig, toRawKanaConfig } from "./parser";
+import { parseKanaConfig, toKanaConfigFile } from "./parser";
 
 export function applyKanaConfigOverrides(
   config: KanaConfig,
   overrides: readonly string[],
 ): KanaConfig {
   if (overrides.length === 0) return config;
-  const raw = toRawKanaConfig(config);
+  const raw = toKanaConfigFile(config);
   for (const override of overrides) {
     const separator = override.indexOf("=");
     const path = override.slice(0, separator).trim();

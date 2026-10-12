@@ -1,12 +1,14 @@
 import type { Agent } from "@/agent";
 import { addModelUsage, type ModelUsage } from "@/core";
 import type { Editor, StatusLineState } from "../components";
+import { formatInteger } from "../render";
 import { calculateContextUsedPercent } from "../utils/context-usage";
 import type { RunPhase } from "./status-phase";
 
 export type StatusProjectionControllerOptions = {
   editor: Editor;
   getAgentState: () => Agent["state"];
+  estimateContextTokens: () => number | undefined;
 };
 
 export class StatusProjectionController {
@@ -56,7 +58,7 @@ export class StatusProjectionController {
     const state = this.options.getAgentState();
     this.options.editor.updateStatus({
       contextUsedPercent: calculateContextUsedPercent(
-        estimatedTokens ?? state.estimatedContextTokens,
+        estimatedTokens ?? this.options.estimateContextTokens(),
         state.contextLimit ?? state.model.metadata.contextWindow,
       ),
     });
@@ -78,10 +80,4 @@ function formatModelUsage(usage: ModelUsage): string {
   ]
     .filter((part): part is string => Boolean(part))
     .join(" ");
-}
-
-function formatInteger(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 0,
-  }).format(value);
 }

@@ -4,13 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import {
-  DEFAULT_KANA_MCP_ACTIVATION_STATE,
   getKanaConfigPaths,
   loadKanaMcpActivationState,
-  loadKanaMcpServerActivations,
+  loadKanaMcpConfig,
   parseKanaMcpActivationState,
-  saveKanaMcpActivationState,
 } from "@/kana";
+import { resolveKanaMcpServerActivations } from "../../../src/kana/mcp/activation";
 import { createKanaMcpConfigurationStore } from "../../../src/kana/mcp/configuration-store";
 
 const tempDirs: string[] = [];
@@ -23,19 +22,15 @@ afterEach(() => {
 
 describe("Kana MCP activation state", () => {
   test("defaults to no enabled servers when mcp-enabled.json is missing", () => {
-    expect(loadKanaMcpActivationState(createTempEnv())).toEqual(DEFAULT_KANA_MCP_ACTIVATION_STATE);
+    expect(loadKanaMcpActivationState(createTempEnv())).toEqual({ enabledServers: [] });
   });
 
-  test("loads and snapshots enabled server IDs", () => {
+  test("loads enabled server IDs", () => {
     const env = createTempEnv();
     const state = { enabledServers: ["filesystem", "github"] };
     writeFileSync(getKanaConfigPaths(env).mcpEnabledPath, `${JSON.stringify(state)}\n`);
 
     expect(loadKanaMcpActivationState(env)).toEqual(state);
-
-    const parsed = parseKanaMcpActivationState(state);
-    state.enabledServers[0] = "changed";
-    expect(parsed).toEqual({ enabledServers: ["filesystem", "github"] });
   });
 
   test("combines configured servers with activation state for management", () => {
@@ -59,9 +54,13 @@ describe("Kana MCP activation state", () => {
         },
       })}\n`,
     );
-    saveKanaMcpActivationState({ enabledServers: ["github", "remote", "removed"] }, env);
+    createKanaMcpConfigurationStore(env).saveActivationState({
+      enabledServers: ["github", "remote", "removed"],
+    });
 
-    expect(loadKanaMcpServerActivations(env)).toEqual([
+    expect(
+      resolveKanaMcpServerActivations(loadKanaMcpConfig(env), loadKanaMcpActivationState(env), env),
+    ).toEqual([
       {
         id: "filesystem",
         type: "stdio",
@@ -89,7 +88,9 @@ describe("Kana MCP activation state", () => {
     const env = createTempEnv();
     const { mcpEnabledPath } = getKanaConfigPaths(env);
 
-    saveKanaMcpActivationState({ enabledServers: ["github", "filesystem"] }, env);
+    createKanaMcpConfigurationStore(env).saveActivationState({
+      enabledServers: ["github", "filesystem"],
+    });
 
     expect(readFileSync(mcpEnabledPath, "utf8")).toBe(
       ["{", '  "enabledServers": [', '    "github",', '    "filesystem"', "  ]", "}", ""].join(
@@ -112,7 +113,7 @@ describe("Kana MCP activation state", () => {
         },
       })}\n`,
     );
-    saveKanaMcpActivationState({ enabledServers: ["alpha"] }, env);
+    createKanaMcpConfigurationStore(env).saveActivationState({ enabledServers: ["alpha"] });
     const store = createKanaMcpConfigurationStore(env);
 
     writeFileSync(mcpConfigPath, `${JSON.stringify({ mcpServers: {} })}\n`);
@@ -131,17 +132,17 @@ describe("Kana MCP activation state", () => {
 
   test("rejects invalid activation state", () => {
     expect(() => parseKanaMcpActivationState([])).toThrow(
-      "MCP activation state must be a JSON object.",
+      "MCP activation state must be an object.",
     );
     expect(() => parseKanaMcpActivationState({ enabledServers: "filesystem" })).toThrow(
-      "MCP activation state.enabledServers must be an array of server IDs.",
+      "MCP activation state.enabledServers must be an array.",
     );
     expect(() => parseKanaMcpActivationState({ enabledServers: [""] })).toThrow(
       "MCP activation state.enabledServers[0] must be a non-empty string.",
     );
     expect(() =>
       parseKanaMcpActivationState({ enabledServers: ["filesystem", "filesystem"] }),
-    ).toThrow("MCP activation state.enabledServers cannot contain duplicate server IDs.");
+    ).toThrow("MCP activation state.enabledServers must not contain duplicate values.");
     expect(() => parseKanaMcpActivationState({ enabledServers: [], typo: true })).toThrow(
       "MCP activation state contains unknown field typo.",
     );

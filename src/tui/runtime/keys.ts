@@ -215,15 +215,16 @@ function parseModifiedKey(data: string): ModifiedKey | undefined {
   const csiU = /^\x1b\[(\d+(?::\d*)*)(?:;(\d*)(?::(\d+))?)?(?:;[\d:]*)?u$/.exec(data);
 
   if (csiU) {
-    const [code, ...alternateCodes] = csiU[1]
+    const [, codes = "", modifiers, eventType] = csiU;
+    const [code, ...alternateCodes] = codes
       .split(":")
       .map((value) => (value ? Number(value) : undefined));
 
     return {
       code: code ?? 0,
       alternateCodes: alternateCodes.filter((value): value is number => value !== undefined),
-      modifierBits: Number(csiU[2] || "1") - 1,
-      eventType: csiU[3] === undefined ? undefined : Number(csiU[3]),
+      modifierBits: Number(modifiers || "1") - 1,
+      eventType: eventType === undefined ? undefined : Number(eventType),
     };
   }
 

@@ -4,18 +4,6 @@ import type { ReadableAssistantEventStream } from "./stream";
 
 export type { ModelUsage } from "./usage";
 
-export type ModelConfig = {
-  provider: string;
-  model: string;
-  apiKey?: string;
-  baseUrl?: string;
-  temperature?: number;
-  maxOutputTokens?: number;
-  headers?: Record<string, string>;
-  timeoutMs?: number;
-  maxRetries?: number;
-};
-
 type ModelProtocol = "chat-completions" | "responses";
 
 export type ModelReasoningMetadata = {
@@ -37,9 +25,7 @@ export type ModelMetadata = {
   // Provider/model capability only; Agent policy may still disable it.
   supportsHostedWebSearch: boolean;
   // Input modality capability only; Agent policy may still disable it.
-  // Omitted capabilities are treated as unsupported for compatibility with
-  // in-process models that predate image inputs.
-  supportsImageInput?: boolean;
+  supportsImageInput: boolean;
   // Extra streamed assistant fields that the owning Chat Completions adapter
   // may preserve and replay for the same endpoint and model.
   assistantReplayFields?: readonly string[];
