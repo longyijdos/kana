@@ -116,7 +116,7 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 | 2 | 不可变数据模型，去掉防御性拷贝 | 已完成 |
 | 3 | Agent 运行时重构 | 已完成 |
 | 4 | Provider 重构 | 已完成 |
-| 5 | 解析与持久化 | 未开始 |
+| 5 | 解析与持久化 | 已完成 |
 | 6 | 产品层：能力、对话运行时、任务注册表、OAuth/MCP | 未开始 |
 | 7 | 前端：headless、server、TUI | 未开始 |
 | 8 | 收尾：文档、约定、删除本文件 | 未开始 |
@@ -384,7 +384,43 @@ L0  core, utils, logging, version    叶子：不依赖任何模块
 
 ---
 
-## 阶段 5：解析与持久化
+## 阶段 5：解析与持久化（已完成）
+
+### 结果
+
+本阶段 src 加 tests 净减少约 1200 行（+1499 / −2703）。
+
+| 文件 | 改造前 | 改造后 |
+| --- | --- | --- |
+| `config/parser.ts` | 666 行 | 178 行 |
+| `config/store.ts` | 268 行 | 172 行 |
+| `mcp/config.ts` | 534 行 | 312 行 |
+| `session/format.ts` | 647 行 | 523 行（大部分是 schema 声明） |
+| `custom-provider.ts` | 332 行 | 230 行 |
+
+### 完成内容
+- `utils` 中新增：
+  - `parseWithSchema`，统一错误格式为 `<文件>.<字段路径> <原因>.`，未知字段统一报 `contains unknown field X`
+  - 公共构造器 `strictObject`、`nonEmptyString`、`positiveInteger`
+  - `writeFileAtomic`
+  - `SerialTaskQueue`（从 agent 移入）
+- config.toml、mcp.json、MCP 激活状态、approvals、skills.toml、custom.toml、oauth-tokens.json、TUI 主题、session JSONL、accounting 记录全部改为 schema 校验，`asRecord` 和 `readX` 系列全部删除
+- core 导出 `USER_IMAGE_SCHEMA`、`TOOL_RESULT_ARTIFACT_SCHEMA`、`MODEL_USAGE_SCHEMA`，原来的守卫函数改为基于 schema；session 和 accounting 直接复用它们
+- `KanaConfig` 改为 readonly：
+  - 修改配置统一用 `KanaConfigDraft`，只有 store 和 host 的 clean 模式各做一次拷贝
+  - host 的配置 getter 和各 store 不再拷贝
+- 三处 frontmatter 解析合并为 `kana/frontmatter.ts` 中的一个读取器，字段规则由各自的调用方决定
+- accounting 读取：其他版本的记录静默跳过；损坏的记录写 `accounting.record_skipped` 日志后跳过
+- 原子写只保留一份，`persistence.ts` 也改用它
+- 串行队列只保留一份：token store、MCP runtime、记忆合并队列、tool approval 共用 `SerialTaskQueue`
+- `structuredClone` 从 37 处降到 8 处，剩下的都在真实边界上：工具参数转换、hook 返回值、MCP 服务端能力、持久化快照，以及两个 config draft
+
+### 与原设计的偏差
+- tool-approval store "与文件不一致"并不是 bug：四个 store 采用同一个语义（内存快照只在启动时读取，写入时与磁盘合并），是有意为之。所以只删除了拷贝，没有引入通用的 store 抽象，每个 store 现在大约 15 行
+- 文件锁保留两种实现：config 是同步锁；token store 需要异步锁，并且要跨越网络操作持有，两者无法合并
+- GitHub release 的解析保持手写：代码很短，而且每个错误都带有更新流程需要的失败码
+- `assertContextCheckpointForAppend` 已删除：checkpoint 由 agent 内部生成，journal 中真正的不变量检查（顺序、引用）仍然保留
+- 用户可见的错误文案有小幅变化（例如 `Unknown config field: x` 改为 `config.x contains unknown field ...`），测试已同步更新
 
 ### 细化设计（开工前写定）
 
