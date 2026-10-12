@@ -29,6 +29,7 @@ const MODEL_METADATA: ModelMetadata = {
   supportsParallelToolCalls: true,
   protocol: null,
   supportsHostedWebSearch: false,
+  supportsImageInput: false,
 };
 
 describe("ContextManager budgets and checkpoints", () => {

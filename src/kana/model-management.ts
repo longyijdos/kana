@@ -50,7 +50,7 @@ export function getKanaModelManagement(
       customProvider.provider?.models.map((model) => ({
         name: model.name,
         reasoning: model.metadata.reasoning,
-        supportsImageInput: model.metadata.supportsImageInput === true,
+        supportsImageInput: model.metadata.supportsImageInput,
       })) ?? [],
   };
 
@@ -90,12 +90,12 @@ function createManagedProvider(
 
 function toManagedModels(
   models: Readonly<
-    Record<string, { reasoning?: ModelReasoningMetadata; supportsImageInput?: boolean }>
+    Record<string, { reasoning?: ModelReasoningMetadata; supportsImageInput: boolean }>
   >,
 ): KanaManagedModel[] {
   return Object.entries(models).map(([name, metadata]) => ({
     name,
     reasoning: metadata.reasoning,
-    supportsImageInput: metadata.supportsImageInput === true,
+    supportsImageInput: metadata.supportsImageInput,
   }));
 }

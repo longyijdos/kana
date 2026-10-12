@@ -35,7 +35,7 @@ export function resolveAgentSettings(options: AgentSettingsOptions): AgentSettin
     maxTurns: options.maxTurns ?? DEFAULT_MAX_TURNS,
     toolDeadlineMs: options.toolDeadlineMs ?? DEFAULT_TOOL_DEADLINE_MS,
     webSearch: (options.webSearch ?? true) && metadata.supportsHostedWebSearch,
-    imageInput: (options.imageInput ?? true) && metadata.supportsImageInput === true,
+    imageInput: (options.imageInput ?? true) && metadata.supportsImageInput,
     parallelToolCalls: (options.parallelToolCalls ?? true) && metadata.supportsParallelToolCalls,
     maxParallelToolCalls: options.maxParallelToolCalls ?? DEFAULT_MAX_PARALLEL_TOOL_CALLS,
   };

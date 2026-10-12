@@ -26,8 +26,7 @@ export function createModelCompactPolicy(
   options: ModelCompactPolicyOptions = {},
 ): CompactPolicy {
   return async ({ previousSummary, messages, maxSummaryTokens, maxOutputTokens, signal }) => {
-    const canReadImages =
-      model.metadata.supportsImageInput === true && options.imageInputEnabled !== false;
+    const canReadImages = model.metadata.supportsImageInput && options.imageInputEnabled !== false;
     const request = formatCompactionRequest(
       previousSummary,
       messages,

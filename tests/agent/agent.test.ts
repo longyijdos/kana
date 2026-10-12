@@ -23,6 +23,7 @@ class TextModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -96,6 +97,7 @@ class AbortAwareModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
 
   stream(context: ModelContext): AssistantEventStream {
@@ -160,6 +162,7 @@ class RepeatedToolModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
   private requestCount = 0;
 

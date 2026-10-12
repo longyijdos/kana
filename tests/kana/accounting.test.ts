@@ -145,6 +145,7 @@ describe("Kana accounting", () => {
           supportsParallelToolCalls: false,
           protocol: null,
           supportsHostedWebSearch: false,
+          supportsImageInput: false,
         },
       });
 

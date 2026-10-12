@@ -1,8 +1,6 @@
 import type { TSchema } from "typebox";
 import { Compile } from "typebox/compile";
 
-const LEGACY_TYPEBOX_KIND = Symbol.for("TypeBox.Kind");
-
 type JsonSchemaObject = TSchema & {
   type?: string | string[];
   properties?: Record<string, JsonSchemaObject>;
@@ -37,11 +35,7 @@ function isJsonSchemaObject(value: unknown): value is JsonSchemaObject {
 }
 
 export function hasTypeBoxMetadata(schema: unknown): boolean {
-  return (
-    isRecord(schema) &&
-    (typeof schema["~kind"] === "string" ||
-      Object.getOwnPropertySymbols(schema).includes(LEGACY_TYPEBOX_KIND))
-  );
+  return isRecord(schema) && typeof schema["~kind"] === "string";
 }
 
 function getSchemaTypes(schema: JsonSchemaObject): string[] {

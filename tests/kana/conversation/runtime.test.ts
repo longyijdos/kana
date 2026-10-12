@@ -839,6 +839,7 @@ class ControlledModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
   readonly contexts: ModelContext[] = [];
   private readonly streams: AssistantEventStream[] = [];

@@ -62,7 +62,7 @@ export function createKanaAgentModelRuntime(
   return {
     model,
     webSearch: config.webSearch && model.metadata.supportsHostedWebSearch,
-    imageInput: config.imageInput && model.metadata.supportsImageInput === true,
+    imageInput: config.imageInput && model.metadata.supportsImageInput,
     parallelToolCalls: config.parallelToolCalls && model.metadata.supportsParallelToolCalls,
     maxOutputTokens: Math.min(
       config.model.maxOutputTokens ?? model.metadata.maxOutputTokens,

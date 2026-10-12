@@ -25,9 +25,7 @@ export type ModelMetadata = {
   // Provider/model capability only; Agent policy may still disable it.
   supportsHostedWebSearch: boolean;
   // Input modality capability only; Agent policy may still disable it.
-  // Omitted capabilities are treated as unsupported for compatibility with
-  // in-process models that predate image inputs.
-  supportsImageInput?: boolean;
+  supportsImageInput: boolean;
   // Extra streamed assistant fields that the owning Chat Completions adapter
   // may preserve and replay for the same endpoint and model.
   assistantReplayFields?: readonly string[];

@@ -22,6 +22,7 @@ class ScriptedToolModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -71,6 +72,7 @@ class MultiToolCallModel implements Model {
     supportsParallelToolCalls: false,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -108,6 +110,7 @@ class ParallelToolCallModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
   readonly contexts: ModelContext[] = [];
 
@@ -148,6 +151,7 @@ class AbortedModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
 
   stream(_context: ModelContext): AssistantEventStream {
@@ -188,6 +192,7 @@ class InterruptedToolCallModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
 
   constructor(
@@ -256,6 +261,7 @@ class AbortedHostedToolModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: true,
+    supportsImageInput: false,
   };
 
   stream(_context: ModelContext): AssistantEventStream {
@@ -308,6 +314,7 @@ class EmptyErrorModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
 
   stream(_context: ModelContext): AssistantEventStream {
@@ -343,6 +350,7 @@ class LengthTruncatedToolModel implements Model {
     supportsParallelToolCalls: true,
     protocol: null,
     supportsHostedWebSearch: false,
+    supportsImageInput: false,
   };
   readonly contexts: ModelContext[] = [];
 
