@@ -1,3 +1,5 @@
+import { isDown, isEnd, isHome, isLeft, isPageDown, isPageUp, isRight, isUp } from "../runtime";
+
 export type ListViewportWindow = {
   start: number;
   end: number;
@@ -45,6 +47,20 @@ export class ListViewport {
       this.selectedIndex + (advanced === 0 ? delta * this.visibleLimit : advanced),
       length,
     );
+  }
+
+  // Applies the shared list keys: arrows move one row, left/right and page
+  // keys move one page, Home/End jump to the ends. Returns false for any other
+  // key so the component can handle it.
+  handleNavigationKey(data: string, length: number): boolean {
+    if (isUp(data)) this.move(-1, length);
+    else if (isDown(data)) this.move(1, length);
+    else if (isLeft(data) || isPageUp(data)) this.movePage(-1, length);
+    else if (isRight(data) || isPageDown(data)) this.movePage(1, length);
+    else if (isHome(data)) this.moveTo(0, length);
+    else if (isEnd(data)) this.moveTo(length - 1, length);
+    else return false;
+    return true;
   }
 
   page(delta: number, length: number): void {

@@ -2,17 +2,7 @@ import type { BackgroundJobPeekSnapshot, BackgroundJobSummary } from "@/jobs";
 import { shortId } from "@/utils";
 import { color, dim, singleLine, stripTerminalControlSequences, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import {
-  isDown,
-  isEnd,
-  isEscape,
-  isHome,
-  isLeft,
-  isPageDown,
-  isPageUp,
-  isRight,
-  isUp,
-} from "../runtime";
+import { isEscape } from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
@@ -76,33 +66,8 @@ export class BackgroundJobManager implements Component {
       }
       return;
     }
-    if (isUp(data)) {
-      this.moveBy(() => this.viewport.move(-1, this.jobs.length));
+    if (this.moveBy(() => this.viewport.handleNavigationKey(data, this.jobs.length))) {
       return;
-    }
-
-    if (isDown(data)) {
-      this.moveBy(() => this.viewport.move(1, this.jobs.length));
-      return;
-    }
-
-    if (isLeft(data) || isPageUp(data)) {
-      this.moveBy(() => this.viewport.movePage(-1, this.jobs.length));
-      return;
-    }
-
-    if (isRight(data) || isPageDown(data)) {
-      this.moveBy(() => this.viewport.movePage(1, this.jobs.length));
-      return;
-    }
-
-    if (isHome(data)) {
-      this.moveBy(() => this.viewport.moveTo(0, this.jobs.length));
-      return;
-    }
-
-    if (isEnd(data)) {
-      this.moveBy(() => this.viewport.moveTo(this.jobs.length - 1, this.jobs.length));
     }
   }
 
@@ -143,15 +108,16 @@ export class BackgroundJobManager implements Component {
     return lines;
   }
 
-  private moveBy(apply: () => void): void {
+  private moveBy(apply: () => boolean): boolean {
     const previous = this.viewport.selectedIndex;
-    apply();
+    const handled = apply();
     if (this.viewport.selectedIndex !== previous) {
       const job = this.selectedJob;
       if (job) {
         this.onAction({ type: "select", job });
       }
     }
+    return handled;
   }
 
   private renderPreview(

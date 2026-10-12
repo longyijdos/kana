@@ -2,18 +2,7 @@ import type { KanaSessionMetadata } from "@/kana";
 import { shortId } from "@/utils";
 import { color, dim, pad2, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import {
-  isDown,
-  isEnd,
-  isEnter,
-  isEscape,
-  isHome,
-  isLeft,
-  isPageDown,
-  isPageUp,
-  isRight,
-  isUp,
-} from "../runtime";
+import { isEnter, isEscape } from "../runtime";
 import { tuiTheme } from "../theme";
 import type { Clock } from "../utils/elapsed-timer";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
@@ -95,33 +84,8 @@ export class SessionPicker implements Component {
       return;
     }
 
-    if (isUp(data)) {
-      this.move(-1);
+    if (this.viewport.handleNavigationKey(data, this.sessions.length)) {
       return;
-    }
-
-    if (isDown(data)) {
-      this.move(1);
-      return;
-    }
-
-    if (isLeft(data) || isPageUp(data)) {
-      this.movePage(-1);
-      return;
-    }
-
-    if (isRight(data) || isPageDown(data)) {
-      this.movePage(1);
-      return;
-    }
-
-    if (isHome(data)) {
-      this.viewport.moveTo(0, this.sessions.length);
-      return;
-    }
-
-    if (isEnd(data)) {
-      this.viewport.moveTo(this.sessions.length - 1, this.sessions.length);
     }
   }
 
@@ -168,14 +132,6 @@ export class SessionPicker implements Component {
 
     lines.push(dim(SESSION_PICKER_HELP));
     return lines;
-  }
-
-  private move(delta: number): void {
-    this.viewport.move(delta, this.sessions.length);
-  }
-
-  private movePage(delta: number): void {
-    this.viewport.movePage(delta, this.sessions.length);
   }
 }
 

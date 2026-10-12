@@ -1,17 +1,6 @@
 import { color, dim, truncateToWidth } from "../render";
 import type { Component } from "../runtime";
-import {
-  isDown,
-  isEnd,
-  isEnter,
-  isEscape,
-  isHome,
-  isLeft,
-  isPageDown,
-  isPageUp,
-  isRight,
-  isUp,
-} from "../runtime";
+import { isEnter, isEscape } from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 
@@ -70,33 +59,8 @@ export class ToolHistoryPicker implements Component {
       return;
     }
 
-    if (isUp(data)) {
-      this.move(-1);
+    if (this.viewport.handleNavigationKey(data, this.entries.length)) {
       return;
-    }
-
-    if (isDown(data)) {
-      this.move(1);
-      return;
-    }
-
-    if (isLeft(data) || isPageUp(data)) {
-      this.movePage(-1);
-      return;
-    }
-
-    if (isRight(data) || isPageDown(data)) {
-      this.movePage(1);
-      return;
-    }
-
-    if (isHome(data)) {
-      this.viewport.moveTo(0, this.entries.length);
-      return;
-    }
-
-    if (isEnd(data)) {
-      this.viewport.moveTo(this.entries.length - 1, this.entries.length);
     }
   }
 
@@ -135,14 +99,6 @@ export class ToolHistoryPicker implements Component {
     }
 
     return lines;
-  }
-
-  private move(delta: number): void {
-    this.viewport.move(delta, this.entries.length);
-  }
-
-  private movePage(delta: number): void {
-    this.viewport.movePage(delta, this.entries.length);
   }
 }
 

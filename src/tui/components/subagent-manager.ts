@@ -9,18 +9,7 @@ import {
   visibleWidth,
 } from "../render";
 import type { Component } from "../runtime";
-import {
-  isDown,
-  isEnd,
-  isEnter,
-  isEscape,
-  isHome,
-  isLeft,
-  isPageDown,
-  isPageUp,
-  isRight,
-  isUp,
-} from "../runtime";
+import { isEnter, isEscape } from "../runtime";
 import { tuiTheme } from "../theme";
 import { ListViewport, visibleLimitForHeight } from "../utils/list-viewport";
 import type { ContentView } from "./content-viewer";
@@ -101,28 +90,8 @@ export class SubagentManager implements Component {
       if (subagent) this.onAction({ type: "inspect", subagent });
       return;
     }
-    if (isUp(data)) {
-      this.moveBy(() => this.viewport.move(-1, this.subagents.length));
+    if (this.moveBy(() => this.viewport.handleNavigationKey(data, this.subagents.length))) {
       return;
-    }
-    if (isDown(data)) {
-      this.moveBy(() => this.viewport.move(1, this.subagents.length));
-      return;
-    }
-    if (isLeft(data) || isPageUp(data)) {
-      this.moveBy(() => this.viewport.movePage(-1, this.subagents.length));
-      return;
-    }
-    if (isRight(data) || isPageDown(data)) {
-      this.moveBy(() => this.viewport.movePage(1, this.subagents.length));
-      return;
-    }
-    if (isHome(data)) {
-      this.moveBy(() => this.viewport.moveTo(0, this.subagents.length));
-      return;
-    }
-    if (isEnd(data)) {
-      this.moveBy(() => this.viewport.moveTo(this.subagents.length - 1, this.subagents.length));
     }
   }
 
@@ -153,13 +122,14 @@ export class SubagentManager implements Component {
     return lines;
   }
 
-  private moveBy(apply: () => void): void {
+  private moveBy(apply: () => boolean): boolean {
     const previous = this.viewport.selectedIndex;
-    apply();
+    const handled = apply();
     if (previous !== this.viewport.selectedIndex) {
       const subagent = this.selectedSubagent;
       if (subagent) this.onAction({ type: "select", subagent });
     }
+    return handled;
   }
 
   private configureViewport(availableHeight: number | undefined) {
