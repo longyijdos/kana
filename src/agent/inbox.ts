@@ -9,6 +9,7 @@ export type AgentInputDelivery =
       readonly kind: "scheduled";
       readonly displayContent: string;
       readonly dueAt: Date;
+      readonly origin: "user" | "agent";
       readonly key?: string;
     }
   | {

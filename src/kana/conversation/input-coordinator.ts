@@ -1,10 +1,4 @@
-import type {
-  Agent,
-  AgentEvent,
-  AgentInboxItem,
-  AgentInboxSnapshot,
-  AgentInputDelivery,
-} from "@/agent";
+import type { Agent, AgentEvent, AgentInboxItem, AgentInputDelivery } from "@/agent";
 import { createUserMessage, type MessageId, readMessageId, type UserMessage } from "@/core";
 import type { BackgroundJobClient, BackgroundJobSummary, OwnedTaskEvent } from "@/jobs";
 import type { Logger } from "@/logging";
@@ -465,6 +459,7 @@ export class ConversationInputCoordinator {
         kind: "scheduled",
         displayContent: event.message,
         dueAt: event.dueAt,
+        origin: event.origin,
         key: event.key,
       },
       "scheduled",
@@ -698,73 +693,20 @@ export class ConversationInputCoordinator {
   }
 
   private toPendingInput(
-    item: AgentInboxSnapshot["nextTurn"][number],
+    { message, delivery }: AgentInboxItem,
     lane: "next-step" | "next-turn",
   ): ConversationPendingInput {
-    if (item.delivery.kind === "job") {
+    if (delivery.kind === "steering" || delivery.kind === "queued") {
       return {
-        id: item.message.id,
-        kind: "job",
-        content: item.delivery.displayContent,
-        jobId: item.delivery.jobId,
+        id: message.id,
+        kind:
+          lane === "next-step" ? "steering" : delivery.kind === "steering" ? "deferred" : "queued",
+        content: message.content,
+        ...(message.images?.length ? { imageCount: message.images.length } : {}),
       };
     }
-    if (item.delivery.kind === "subagent") {
-      return {
-        id: item.message.id,
-        kind: "subagent",
-        content: item.delivery.displayContent,
-        agentId: item.delivery.agentId,
-      };
-    }
-    if (item.delivery.kind === "user_task") {
-      return {
-        id: item.message.id,
-        kind: "user_task",
-        content: item.delivery.displayContent,
-        taskId: item.delivery.taskId,
-      };
-    }
-    if (item.delivery.kind === "scheduled") {
-      const provenance = item.message.provenance;
-      if (provenance.kind !== "scheduled_input") {
-        throw new Error("Scheduled Agent input is missing scheduled provenance.");
-      }
-      return {
-        id: item.message.id,
-        kind: "scheduled",
-        content: item.delivery.displayContent,
-        dueAt: new Date(item.delivery.dueAt.getTime()),
-        origin: provenance.origin,
-        key: item.delivery.key,
-      };
-    }
-    if (item.delivery.kind === "goal") {
-      const provenance = item.message.provenance;
-      if (provenance.kind !== "goal_continuation") {
-        throw new Error("Goal Agent input is missing goal continuation provenance.");
-      }
-      return {
-        id: item.message.id,
-        kind: "goal",
-        content: item.delivery.displayContent,
-        goalId: item.delivery.goalId,
-        round: item.delivery.round,
-        maxRounds: item.delivery.maxRounds,
-      };
-    }
-
-    return {
-      id: item.message.id,
-      kind:
-        lane === "next-step"
-          ? "steering"
-          : item.delivery.kind === "steering"
-            ? "deferred"
-            : "queued",
-      content: item.message.content,
-      ...(item.message.images?.length ? { imageCount: item.message.images.length } : {}),
-    };
+    const { displayContent, ...details } = delivery;
+    return { id: message.id, content: displayContent, ...details };
   }
 }
 
