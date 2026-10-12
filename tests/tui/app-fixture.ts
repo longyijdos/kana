@@ -1,4 +1,5 @@
 import type { Agent } from "../../src/agent";
+import { DEFAULT_KANA_CONFIG } from "../../src/kana";
 import type { KanaTuiAppOptions } from "../../src/tui/app/app";
 import type { Terminal } from "../../src/tui/runtime";
 import { withAgentInboxForTest } from "../helpers/agent-inbox";
@@ -52,6 +53,7 @@ export function createTuiAppOptions(): KanaTuiAppOptions {
       }),
     },
     ui: {
+      config: DEFAULT_KANA_CONFIG.tui,
       notification: {
         backend: "off",
         onAgentCompleted: false,

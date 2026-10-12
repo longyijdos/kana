@@ -129,10 +129,9 @@ export class KanaTuiApp {
     this.getLogger = options.diagnostics?.getLogger ?? createNoopLogger;
     // The config enables the feature but never forces OSC 8 through a terminal
     // that the runtime could not positively identify as hyperlink-capable.
-    this.hyperlinks =
-      (options.ui.config?.hyperlinks ?? true) && terminal.supportsHyperlinks === true;
-    this.renderLatex = options.ui.config?.renderLatex ?? true;
-    this.renderMermaid = options.ui.config?.renderMermaid ?? true;
+    this.hyperlinks = options.ui.config.hyperlinks && terminal.supportsHyperlinks === true;
+    this.renderLatex = options.ui.config.renderLatex;
+    this.renderMermaid = options.ui.config.renderMermaid;
     this.conversation = new ConversationRuntime<TuiModelSelection>({
       ...options.conversation,
       createAgent: ({ configuration, ...agentOptions }) =>
@@ -155,7 +154,7 @@ export class KanaTuiApp {
     this.notifications = new NotificationController(options.ui.notification, terminal);
     this.editor = new Editor({
       cleanMode,
-      collapseLongPastes: options.ui.config?.collapseLongPastes ?? true,
+      collapseLongPastes: options.ui.config.collapseLongPastes,
       promptTemplates: options.ui.promptTemplates,
       skills: cleanMode ? [] : options.skills.load().skills,
       model: formatStatusModel(
@@ -193,7 +192,7 @@ export class KanaTuiApp {
       hyperlinks: this.hyperlinks,
       renderLatex: this.renderLatex,
       renderMermaid: this.renderMermaid,
-      smoothTextStreaming: options.ui.config?.smoothTextStreaming ?? true,
+      smoothTextStreaming: options.ui.config.smoothTextStreaming,
       updateStatus: (phase, extra) => this.updateStatus(phase, extra),
     });
     this.mcpLifecycle = new McpLifecycleController({
@@ -286,7 +285,7 @@ export class KanaTuiApp {
       schedule: (afterMinutes, message) => this.conversation.scheduleInput(afterMinutes, message),
       cancel: (id) => this.conversation.cancelScheduledInput(id),
       showError: (error) => this.showInteractionError(error),
-      collapseLongPastes: options.ui.config?.collapseLongPastes ?? true,
+      collapseLongPastes: options.ui.config.collapseLongPastes,
       onClose: () => this.conversation.notifyCanStartQueuedRun(),
     });
     this.backgroundJobManager = new BackgroundJobManagerController({
@@ -365,7 +364,7 @@ export class KanaTuiApp {
         this.bottomArea.showFallback();
         this.setToolApprovalMode(mode);
       },
-      collapseLongPastes: options.ui.config?.collapseLongPastes ?? true,
+      collapseLongPastes: options.ui.config.collapseLongPastes,
       getModelSettings: this.options.models?.getSettings,
       onModelSelect: (selection) => {
         this.modelSelection.switch(selection);

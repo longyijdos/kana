@@ -90,7 +90,7 @@ export type KanaTuiAppOptions = {
   };
   ui: {
     notification: KanaNotificationConfig;
-    config?: KanaTuiConfig;
+    config: KanaTuiConfig;
     promptTemplates?: readonly KanaPromptTemplate[];
     syntaxTheme?: BundledTheme;
   };

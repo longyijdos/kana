@@ -100,7 +100,7 @@ export type KanaTuiConfig = {
   readonly theme: string;
   readonly hyperlinks: boolean;
   readonly renderLatex: boolean;
-  readonly renderMermaid?: boolean;
+  readonly renderMermaid: boolean;
   readonly smoothTextStreaming: boolean;
   readonly collapseLongPastes: boolean;
 };
