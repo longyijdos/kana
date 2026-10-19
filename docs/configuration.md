@@ -23,8 +23,9 @@ kana skills install
 kana skills reinstall
 kana skills reinstall --yes
 
-# Copy installed Kana Skills to Codex's global Skills directory
+# Copy installed Kana Skills to Codex's or Claude Code's global Skills directory
 kana skills sync codex
+kana skills sync claude
 
 # Copy to a custom agent Skills directory; existing matching Skills are skipped by default
 kana skills sync --target-dir ~/.other-agent/skills
@@ -71,7 +72,7 @@ kana auth logout openai-codex
 
 The default Skills repository is `https://github.com/longyijdos/kana-skills.git`, installed at `<KANA_HOME>/skills/kana-skills`. `kana skills install` clones it when absent and runs `git pull --ff-only` for an existing Git checkout. An existing non-Git directory fails with a prompt to use `kana skills reinstall`. After confirmation, reinstall deletes only the complete default repository directory and clones it again, preserving the sibling `skills.toml` and all other installed Skills. Non-interactive use requires `--yes`.
 
-`kana skills sync` does not clone the repository again. It reads `<KANA_HOME>/skills/kana-skills` and copies every top-level Skill directory containing `SKILL.md` into the target agent's Skills root. The `codex` preset writes to `${CODEX_HOME:-$HOME/.codex}/skills`. Ordinary sync skips matching target directories. After confirmation, `kana skills resync` deletes and recopies matching Skills currently present in the source repository, but does not remove other target Skills or stale Skills no longer present in the source. Non-interactive resync requires `--yes`. If the default Skills repository is absent, run `kana skills install` first.
+`kana skills sync` does not clone the repository again. It reads `<KANA_HOME>/skills/kana-skills` and copies every top-level Skill directory containing `SKILL.md` into the target agent's Skills root. The `codex` preset writes to `${CODEX_HOME:-$HOME/.codex}/skills`, and the `claude` preset writes to `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills`. Ordinary sync skips matching target directories. After confirmation, `kana skills resync` deletes and recopies matching Skills currently present in the source repository, but does not remove other target Skills or stale Skills no longer present in the source. Non-interactive resync requires `--yes`. If the default Skills repository is absent, run `kana skills install` first.
 
 ## Root directory and file layout
 

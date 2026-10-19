@@ -135,6 +135,7 @@ Install curated skills or sync them across other agent environments:
 ```bash
 kana skills install
 kana skills sync codex                               # Sync to Codex
+kana skills sync claude                              # Sync to Claude Code
 kana skills sync --target-dir ~/.other-agent/skills  # Sync to any third-party agent
 ```
 

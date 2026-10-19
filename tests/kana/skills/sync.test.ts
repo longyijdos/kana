@@ -53,6 +53,48 @@ describe("Kana skill sync", () => {
     ).toBe("template");
   });
 
+  test("copies installed skills to the Claude Code skills directory", () => {
+    const env = createTempEnv();
+    writeKanaSkill(env, "web-search", "Search the web.");
+
+    const result = syncKanaSkills(env, {
+      targetAgent: "claude",
+    });
+
+    expect(result.targetName).toBe("claude");
+    expect(result.targetPath).toBe(path.join(env.HOME, ".claude", "skills"));
+    expect(
+      readFileSync(path.join(env.HOME, ".claude", "skills", "web-search", "SKILL.md"), "utf8"),
+    ).toContain("Search the web.");
+  });
+
+  test("honors CLAUDE_CONFIG_DIR for the Claude Code preset", () => {
+    const env = createTempEnv();
+    const claudeHome = path.join(env.HOME, "claude-config");
+    writeKanaSkill(env, "web-search", "Search the web.");
+
+    const result = syncKanaSkills(
+      { ...env, CLAUDE_CONFIG_DIR: claudeHome },
+      {
+        targetAgent: "claude",
+      },
+    );
+
+    expect(result.targetPath).toBe(path.join(claudeHome, "skills"));
+    expect(
+      readFileSync(path.join(claudeHome, "skills", "web-search", "SKILL.md"), "utf8"),
+    ).toContain("Search the web.");
+  });
+
+  test("rejects unknown target agents", () => {
+    const env = createTempEnv();
+    writeKanaSkill(env, "web-search", "Search the web.");
+
+    expect(() => syncKanaSkills(env, { targetAgent: "cursor" })).toThrow(
+      "Unknown skills sync target: cursor. Supported targets: codex, claude.",
+    );
+  });
+
   test("sync skips existing target skills", () => {
     const env = createTempEnv();
     writeKanaSkill(env, "web-search", "Search the web.");

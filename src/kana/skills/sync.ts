@@ -5,7 +5,7 @@ import path from "node:path";
 import { getKanaConfigPaths } from "../path";
 import { DEFAULT_KANA_SKILLS_REPOSITORY_NAME, isDirectory } from "./install";
 
-const KANA_SKILL_SYNC_TARGETS = ["codex"] as const;
+const KANA_SKILL_SYNC_TARGETS = ["codex", "claude"] as const;
 
 type KanaSkillSyncTarget = (typeof KANA_SKILL_SYNC_TARGETS)[number];
 
@@ -130,7 +130,9 @@ function copyKanaSkills(
 
 function readTargetAgent(targetAgent: string | undefined): KanaSkillSyncTarget {
   if (targetAgent === undefined) {
-    throw new Error("Missing target agent. Use `kana skills sync codex` or pass --target-dir.");
+    throw new Error(
+      "Missing target agent. Use `kana skills sync codex`, `kana skills sync claude`, or pass --target-dir.",
+    );
   }
 
   if (isKanaSkillSyncTarget(targetAgent)) {
@@ -151,6 +153,10 @@ function getPresetTargetPath(target: KanaSkillSyncTarget, env: NodeJS.ProcessEnv
     case "codex": {
       const codexHome = env.CODEX_HOME ?? path.join(env.HOME ?? homedir(), ".codex");
       return path.join(codexHome, "skills");
+    }
+    case "claude": {
+      const claudeHome = env.CLAUDE_CONFIG_DIR ?? path.join(env.HOME ?? homedir(), ".claude");
+      return path.join(claudeHome, "skills");
     }
   }
 }

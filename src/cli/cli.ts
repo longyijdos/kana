@@ -310,7 +310,7 @@ export function createCli(options: CreateCliOptions): Command {
   skillsCommand
     .command("sync")
     .description("Copy installed Kana skills to another agent's skills directory")
-    .argument("[target]", "Target agent preset, such as codex")
+    .argument("[target]", "Target agent preset: codex or claude")
     .option("--target-dir <path>", "Copy to a custom skills directory")
     .action((targetAgent: string | undefined, commandOptions: { targetDir?: string }) => {
       const result = syncSkills(process.env, {
@@ -324,7 +324,7 @@ export function createCli(options: CreateCliOptions): Command {
   skillsCommand
     .command("resync")
     .description("Replace matching skills in another agent's skills directory")
-    .argument("[target]", "Target agent preset, such as codex")
+    .argument("[target]", "Target agent preset: codex or claude")
     .option("--target-dir <path>", "Copy to a custom skills directory")
     .option("--yes", "Replace matching target Skills without interactive confirmation")
     .action(

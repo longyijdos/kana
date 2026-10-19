@@ -135,6 +135,7 @@ kana exec --json "分析性能瓶颈"
 ```bash
 kana skills install
 kana skills sync codex                               # 同步至 Codex
+kana skills sync claude                              # 同步至 Claude Code
 kana skills sync --target-dir ~/.other-agent/skills  # 同步至任意第三方 Agent
 ```
 
