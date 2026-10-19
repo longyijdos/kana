@@ -352,46 +352,51 @@ describe("tool approval controller", () => {
     expect(tui.getFocus()).toBe(editor);
   });
 
-  test("uses a persisted local trust decision for later requests", async () => {
-    const editor = new LinesComponent(["editor"]) as unknown as Editor;
-    const layout = new AppLayout({
-      main: new LinesComponent(["transcript"]),
-      bottom: editor,
-    });
-    const tui = createTuiStub();
-    const bottomArea = new BottomAreaController({ layout, tui, fallback: editor });
-    const savedCommands: string[] = [];
-    const controller = new ToolApprovalController({
-      config: { mode: "unless_trusted" },
-      approvals: {
-        version: 3,
-        shell: { exactCommands: [], readOnlyCommands: [] },
-      },
-      addTrustedShellCommand: (command) => {
-        savedCommands.push(command);
-        return {
+  test.each(["shell", "job_start"])(
+    "uses a persisted %s trust decision for later requests",
+    async (name) => {
+      const editor = new LinesComponent(["editor"]) as unknown as Editor;
+      const layout = new AppLayout({
+        main: new LinesComponent(["transcript"]),
+        bottom: editor,
+      });
+      const tui = createTuiStub();
+      const bottomArea = new BottomAreaController({ layout, tui, fallback: editor });
+      const savedCommands: string[] = [];
+      const controller = new ToolApprovalController({
+        config: { mode: "unless_trusted" },
+        approvals: {
           version: 3,
-          shell: { exactCommands: [...savedCommands], readOnlyCommands: [] },
-        };
-      },
-      editor,
-      bottomArea,
-      tui,
-      onApprovalRequired: () => {},
-    });
-    bottomArea.setFallback(() => controller.activePrompt ?? editor);
+          shell: { exactCommands: [], readOnlyCommands: [] },
+        },
+        addTrustedShellCommand: (command) => {
+          savedCommands.push(command);
+          return {
+            version: 3,
+            shell: { exactCommands: [...savedCommands], readOnlyCommands: [] },
+          };
+        },
+        editor,
+        bottomArea,
+        tui,
+        onApprovalRequired: () => {},
+      });
+      bottomArea.setFallback(() => controller.activePrompt ?? editor);
 
-    const first = controller.request(createToolCall(), undefined);
-    controller.activePrompt?.handleInput?.("\x1b[B");
-    controller.activePrompt?.handleInput?.("\r");
+      const first = controller.request({ ...createToolCall(), name }, undefined);
+      controller.activePrompt?.handleInput?.("\x1b[B");
+      controller.activePrompt?.handleInput?.("\r");
 
-    await expect(first).resolves.toEqual({ type: "continue" });
-    expect(savedCommands).toEqual(["rm notes.txt"]);
-    await expect(controller.request(createToolCall("call_2"), undefined)).resolves.toEqual({
-      type: "continue",
-    });
-    expect(controller.activePrompt).toBeUndefined();
-  });
+      await expect(first).resolves.toEqual({ type: "continue" });
+      expect(savedCommands).toEqual(["rm notes.txt"]);
+      for (const toolName of ["shell", "job_start"]) {
+        await expect(
+          controller.request({ ...createToolCall("call_2"), name: toolName }, undefined),
+        ).resolves.toEqual({ type: "continue" });
+      }
+      expect(controller.activePrompt).toBeUndefined();
+    },
+  );
 });
 
 function createTrustedCommandAdder() {

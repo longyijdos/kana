@@ -77,13 +77,23 @@ describe("Kana tool approval", () => {
     }
   });
 
-  test("job_start does not inherit Shell command trust", () => {
+  test("shell and job_start share command trust under the same approval policy", () => {
     const rules = approvals({ exactCommands: ["bun run dev"], readOnlyCommands: ["pwd"] });
-    for (const mode of ["always", "never", "unless_trusted"] as const) {
-      for (const command of ["bun run dev", "pwd", "touch output.txt"]) {
-        const call = toolCall("job_start", { command });
-        expect(shouldRequestToolApproval({ mode }, rules, call)).toBe(mode !== "never");
-        expect(getShellCommand(call)).toBeUndefined();
+    for (const name of ["shell", "job_start"]) {
+      for (const mode of ["always", "never", "unless_trusted"] as const) {
+        for (const [command, trusted] of [
+          ["bun run dev", true],
+          ["  bun run dev  ", true],
+          ["pwd", true],
+          ["touch output.txt", false],
+          ["pwd; touch output.txt", false],
+        ] as const) {
+          const call = toolCall(name, { command });
+          expect(shouldRequestToolApproval({ mode }, rules, call)).toBe(
+            mode === "always" || (mode === "unless_trusted" && !trusted),
+          );
+          expect(getShellCommand(call)).toBe(command.trim());
+        }
       }
     }
   });

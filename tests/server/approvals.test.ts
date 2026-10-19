@@ -72,21 +72,26 @@ describe("server approvals", () => {
     ]);
   });
 
-  test("permanent command trust releases matching pending approvals", async () => {
-    const f = fixture();
-    const first = f.request();
-    const second = f.request();
-    f.approvals.decide(f.approvals.snapshot[0]!.id, "always");
-    expect(await first).toEqual({ type: "continue" });
-    expect(await second).toEqual({ type: "continue" });
-    expect(f.trusted.shell.exactCommands).toEqual(["echo test"]);
-    expect(f.approvals.snapshot).toEqual([]);
-    expect(f.request()).toEqual({ type: "continue" });
-    const file = f.request("write");
-    expect(f.approvals.decide(f.approvals.snapshot[0]!.id, "always")).toBe("invalid");
-    f.approvals.close();
-    expect(await file).toMatchObject({ type: "cancel" });
-  });
+  test.each(["shell", "job_start"])(
+    "%s permanent command trust releases matching pending approvals",
+    async (name) => {
+      const f = fixture();
+      const first = f.request(name);
+      const second = f.request(name === "shell" ? "job_start" : "shell");
+      expect(f.approvals.snapshot.every((entry) => entry.allow_always)).toBe(true);
+      f.approvals.decide(f.approvals.snapshot[0]!.id, "always");
+      expect(await first).toEqual({ type: "continue" });
+      expect(await second).toEqual({ type: "continue" });
+      expect(f.trusted.shell.exactCommands).toEqual(["echo test"]);
+      expect(f.approvals.snapshot).toEqual([]);
+      expect(f.request("shell")).toEqual({ type: "continue" });
+      expect(f.request("job_start")).toEqual({ type: "continue" });
+      const file = f.request("write");
+      expect(f.approvals.decide(f.approvals.snapshot[0]!.id, "always")).toBe("invalid");
+      f.approvals.close();
+      expect(await file).toMatchObject({ type: "cancel" });
+    },
+  );
 
   test("temporary never resets at session boundaries; cancellation and close settle pending requests", async () => {
     const f = fixture();

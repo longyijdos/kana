@@ -215,7 +215,7 @@ Subagent 启动时选择预定义角色卡并返回稳定 child ID；等待和�
 
 `schedule_wake` 校验 1–1440 分钟延迟和有界非空消息，再通过 Host 进程内 wake 边界安排。它与 `update_goal` 只在产品装配提供所需 runtime capability 时可用。投递与 Goal admission 归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal`、`mcp_list_tools` 或 `mcp_get_tool` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Shell 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`job_start` 不使用 Shell allowlist，除非策略为 `never`，否则需要审批。审批是交互授权，不是文件系统或进程隔离。
+Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal`、`mcp_list_tools` 或 `mcp_get_tool` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Shell 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`shell` 与 `job_start` 共用同一份 Shell allowlist，包括精确命令信任、只读命令识别和持久化的“Always allow this command”选项。审批是交互授权，不是文件系统或进程隔离。
 
 ## MCP 与自定义工具
 

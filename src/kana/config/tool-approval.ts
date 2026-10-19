@@ -62,7 +62,7 @@ export function shouldRequestToolApproval(
 }
 
 function isShellToolCall(toolCall: ToolCallContent): boolean {
-  return toolCall.name === "shell";
+  return toolCall.name === "shell" || toolCall.name === "job_start";
 }
 
 export function getShellCommand(toolCall: ToolCallContent): string | undefined {
