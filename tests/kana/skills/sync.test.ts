@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { resyncKanaSkills, syncKanaSkills } from "@/kana";
@@ -139,6 +140,50 @@ describe("Kana skill sync", () => {
     expect(readFileSync(path.join(targetRoot, "personal", "SKILL.md"), "utf8")).toBe("personal");
   });
 
+  test("resync keeps files ignored by the skill's .gitignore", () => {
+    const env = createTempEnv();
+    const sourcePath = writeKanaSkill(env, "notes", "Write notes.");
+    writeFile(path.join(sourcePath, ".gitignore"), "/drafts/*\n!/drafts/.gitkeep\n.env\n");
+    writeFile(path.join(sourcePath, "drafts", ".gitkeep"), "");
+    initGitRepository(env);
+    const targetRoot = path.join(env.HOME, ".codex", "skills");
+    syncKanaSkills(env, { targetAgent: "codex" });
+    writeFile(path.join(targetRoot, "notes", "drafts", "post-1", "card.png"), "draft");
+    writeFile(path.join(targetRoot, "notes", ".env"), "KEY=secret");
+    writeFile(path.join(targetRoot, "notes", "scripts", "stale.py"), "stale");
+    mkdirSync(path.join(targetRoot, "notes", "drafts", "post-1", "source"), { recursive: true });
+
+    const result = resyncKanaSkills(env, { targetAgent: "codex" });
+
+    expect(result.skills[0]?.status).toBe("replaced");
+    expect(
+      readFileSync(path.join(targetRoot, "notes", "drafts", "post-1", "card.png"), "utf8"),
+    ).toBe("draft");
+    expect(readFileSync(path.join(targetRoot, "notes", ".env"), "utf8")).toBe("KEY=secret");
+    expect(existsSync(path.join(targetRoot, "notes", "drafts", ".gitkeep"))).toBe(true);
+    expect(existsSync(path.join(targetRoot, "notes", "scripts"))).toBe(false);
+    expect(existsSync(path.join(targetRoot, "notes", "drafts", "post-1", "source"))).toBe(true);
+  });
+
+  test("does not copy files ignored in the source skill", () => {
+    const env = createTempEnv();
+    const sourcePath = writeKanaSkill(env, "notes", "Write notes.");
+    writeFile(path.join(sourcePath, ".gitignore"), "/drafts/*\n.env\nnode_modules/\n");
+    writeFile(path.join(sourcePath, "drafts", "kana-post", "card.png"), "kana draft");
+    writeFile(path.join(sourcePath, ".env"), "KEY=kana");
+    writeFile(path.join(sourcePath, "node_modules", "dep", "index.js"), "dep");
+    initGitRepository(env);
+    const targetSkill = path.join(env.HOME, ".codex", "skills", "notes");
+
+    syncKanaSkills(env, { targetAgent: "codex" });
+
+    expect(readFileSync(path.join(targetSkill, "SKILL.md"), "utf8")).toContain("Write notes.");
+    expect(readFileSync(path.join(targetSkill, ".gitignore"), "utf8")).toContain(".env");
+    expect(existsSync(path.join(targetSkill, "drafts", "kana-post"))).toBe(false);
+    expect(existsSync(path.join(targetSkill, ".env"))).toBe(false);
+    expect(existsSync(path.join(targetSkill, "node_modules"))).toBe(false);
+  });
+
   test("copies to a custom target directory", () => {
     const env = createTempEnv();
     const targetDir = path.join(env.HOME, "other-agent", "skills");
@@ -177,6 +222,13 @@ function writeKanaSkill(env: TempEnv, name: string, description: string): string
   );
 
   return skillPath;
+}
+
+function initGitRepository(env: TempEnv): void {
+  const result = spawnSync("git", ["init", "--quiet"], {
+    cwd: path.join(env.KANA_HOME, "skills", "kana-skills"),
+  });
+  expect(result.status).toBe(0);
 }
 
 function writeFile(filePath: string, content: string): void {

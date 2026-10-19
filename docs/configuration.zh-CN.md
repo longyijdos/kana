@@ -72,7 +72,7 @@ kana auth logout openai-codex
 
 默认 Skills 仓库是 `https://github.com/longyijdos/kana-skills.git`，安装位置为 `<KANA_HOME>/skills/kana-skills`。`kana skills install` 在目录不存在时 clone，已有 Git 仓库时执行 `git pull --ff-only`；已有目录不是 Git 仓库时失败并提示使用 `kana skills reinstall`。reinstall 会在确认后只删除整个默认仓库目录并重新 clone，保留相邻的 `skills.toml` 和其它实际 Skills；非交互环境同样要求 `--yes`。
 
-`kana skills sync` 不会重新 clone 仓库；它读取 `<KANA_HOME>/skills/kana-skills`，把其中每个顶层、包含 `SKILL.md` 的 Skill 目录复制到目标 agent 的 Skills 根目录。`codex` 预设写入 `${CODEX_HOME:-$HOME/.codex}/skills`，`claude` 预设写入 `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills`。普通 sync 跳过已有同名目录；`kana skills resync` 在确认后删除并重新复制源仓库当前包含的同名 Skill，但不删除目标中其它来源或已从源仓库移除的过期 Skill。resync 在非交互环境要求 `--yes`。若默认 Skills 仓库尚未安装，请先运行 `kana skills install`。
+`kana skills sync` 不会重新 clone 仓库；它读取 `<KANA_HOME>/skills/kana-skills`，把其中每个顶层、包含 `SKILL.md` 的 Skill 目录复制到目标 agent 的 Skills 根目录。`codex` 预设写入 `${CODEX_HOME:-$HOME/.codex}/skills`，`claude` 预设写入 `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills`。被 Skill 自身 `.gitignore` 规则匹配的文件（如草稿、`.env`、`node_modules`）视为用户数据：sync 不会从源目录复制它们，resync 会在目标中保留它们。该判断依赖 `git`；源目录不在 Git 工作区内时不忽略任何文件。普通 sync 跳过已有同名目录；`kana skills resync` 在确认后替换源仓库当前包含的同名 Skill 的其余文件，并删除源中已不存在的文件，但不删除目标中其它来源或已从源仓库移除的过期 Skill。resync 在非交互环境要求 `--yes`。若默认 Skills 仓库尚未安装，请先运行 `kana skills install`。
 
 ## 根目录与文件布局
 
