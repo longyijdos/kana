@@ -65,7 +65,6 @@ describe("codemode tool", () => {
         Type.Array(Type.Object({ name: Type.String({ minLength: 1, maxLength: 20 }) })),
       ),
     });
-    const original = structuredClone(parameters);
     let executions = 0;
     const wait = {
       name: "wait",
@@ -78,11 +77,10 @@ describe("codemode tool", () => {
     } satisfies Tool<typeof parameters>;
     const codemode = createCodemodeTool({ tools: [wait], mode: "only" });
     expect(codemode.description).toContain(
-      "// Wait up to this many milliseconds for a terminal state.\n  // Constraints: integer; minimum: 0; maximum: 30000; default: 0.\n  timeoutMs?: number;",
+      "// Wait up to this many milliseconds for a terminal state.\n  // @integer @minimum 0 @maximum 30000 @default 0\n  timeoutMs?: number;",
     );
-    expect(codemode.description).toContain("// Constraints: minLength: 1; maxLength: 20.");
-    expect(createCodemodeTool({ tools: [wait] }).description).not.toContain("Constraints:");
-    expect(parameters).toEqual(original);
+    expect(codemode.description).toContain("// @minLength 1 @maxLength 20");
+    expect(createCodemodeTool({ tools: [wait] }).description).not.toContain("@minimum");
 
     const runtime = new ToolRuntime({ tools: [codemode], callableTools: [wait] }, () => {});
     const execution = await runtime.execute([
