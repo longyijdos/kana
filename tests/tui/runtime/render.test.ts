@@ -508,6 +508,17 @@ describe("tui main-screen terminal state", () => {
     });
   });
 
+  test("zero-width spaces cannot wrap a full-width row in terminals that advance for them", async () => {
+    const fullWidth = `${"x".repeat(40)}\u200b${"x".repeat(40)}`;
+    const { terminal, lines, tui } = await startVirtualRenderer([fullWidth, "working 1s"], 4);
+
+    lines.lines[1] = "working 2s";
+    tui.requestRender();
+    await waitForScheduledRender();
+
+    expect(terminal.screen).toEqual(["x".repeat(80), "working 2s", "", ""]);
+  });
+
   test("mixed patch and shrink leaves unchanged rows intact and clears the old tail", async () => {
     const { terminal, lines, tui } = await startVirtualRenderer(["A", "B", "C", "D", "E"], 5);
 

@@ -394,7 +394,10 @@ export function extractCursorPosition(
 }
 
 function normalizeLine(line: string, width: number): string {
-  const truncated = visibleWidth(line) > width ? truncateToWidth(line, width) : line;
+  // iTerm2 and Terminal.app advance the cursor for U+200B despite its zero width.
+  // Dropping it keeps a full-width row from wrapping and shifting relative repaints.
+  const visible = line.replaceAll("\u200b", "");
+  const truncated = visibleWidth(visible) > width ? truncateToWidth(visible, width) : visible;
 
   return `${truncated}\x1b[0m`;
 }
