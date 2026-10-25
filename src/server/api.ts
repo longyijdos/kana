@@ -258,6 +258,63 @@ export function createServerApi(options: ServerApiOptions) {
         }
         return json({ message_id: input.id, delivery: disposition }, 202);
       }
+      if (method === "POST" && pathname === "/v1/goal") {
+        const body = await readBody(request);
+        const objective = requiredString(body, "objective").trim();
+        requireSession(body);
+        if (runtime.isRunning) {
+          throw new ApiError(
+            409,
+            "busy",
+            "Wait for the current run to finish before starting a goal.",
+          );
+        }
+        // The goal is admitted synchronously; its rounds then run in the background.
+        background(runtime.startGoal(objective));
+        return json({ goal: runtime.goal ?? null }, 202);
+      }
+      if (method === "POST" && pathname === "/v1/goal/cancel") {
+        requireSession(await readBody(request));
+        if (!runtime.cancelGoal()) throw new ApiError(404, "not_found", "No active goal.");
+        return json({ cancelled: true });
+      }
+      if (method === "POST" && pathname === "/v1/schedules") {
+        const body = await readBody(request);
+        const message = requiredString(body, "message").trim();
+        if (message.length > 4_000) {
+          throw new ApiError(400, "invalid_request", "message must be at most 4000 characters.");
+        }
+        const afterMinutes = body.after_minutes;
+        if (
+          typeof afterMinutes !== "number" ||
+          !Number.isInteger(afterMinutes) ||
+          afterMinutes < 1 ||
+          afterMinutes > 1_440
+        ) {
+          throw new ApiError(
+            400,
+            "invalid_request",
+            "after_minutes must be an integer from 1 to 1440.",
+          );
+        }
+        if (body.repeat !== undefined && typeof body.repeat !== "boolean") {
+          throw new ApiError(400, "invalid_request", "repeat must be a boolean.");
+        }
+        requireSession(body);
+        const scheduled = runtime.scheduleInput(afterMinutes, message, {
+          repeat: body.repeat === true,
+        });
+        return json({ scheduled }, 201);
+      }
+      const schedule = pathname.match(/^\/v1\/schedules\/([^/]+)\/cancel$/);
+      if (method === "POST" && schedule) {
+        requireSession(await readBody(request));
+        const cancelled = runtime.cancelScheduledInput(decodeURIComponent(schedule[1]!));
+        if (cancelled === "not_found") {
+          throw new ApiError(404, "not_found", "Scheduled message not found.");
+        }
+        return json({ cancelled });
+      }
       if (method === "POST" && pathname === "/v1/abort") {
         requireSession(await readBody(request));
         runtime.abort();

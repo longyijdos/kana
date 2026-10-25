@@ -340,4 +340,95 @@ describe("server HTTP API", () => {
       await f.close();
     }
   });
+
+  test("starts and cancels goals", async () => {
+    const model = new ControlledModel();
+    const f = createFixture({ model });
+    try {
+      for (const body of [{}, { objective: " " }]) {
+        expect((await f.request("/v1/goal", "POST", body)).status).toBe(400);
+      }
+      expect(
+        (await f.request("/v1/goal", "POST", { session_id: "old", objective: "Ship" })).status,
+      ).toBe(409);
+      const started = await f.request("/v1/goal", "POST", {
+        session_id: "session-a",
+        objective: " Ship the release ",
+      });
+      expect(started.status).toBe(202);
+      expect((await started.json()).data.goal).toMatchObject({
+        objective: "Ship the release",
+        status: "active",
+        maxRounds: 8,
+      });
+      await waitFor(() => model.requests.length === 1);
+      expect(
+        (await f.request("/v1/goal", "POST", { session_id: "session-a", objective: "Again" }))
+          .status,
+      ).toBe(409);
+      const cancelled = await f.request("/v1/goal/cancel", "POST", { session_id: "session-a" });
+      expect((await cancelled.json()).data).toEqual({ cancelled: true });
+      model.requests[0]!.complete("Working on it.");
+      await waitFor(() => !f.runtime.isRunning);
+      expect(model.requests).toHaveLength(1);
+      const state = await (await f.request("/v1/state")).json();
+      expect(state.data.goal.status).toBe("cancelled");
+      expect((await f.request("/v1/goal/cancel", "POST", { session_id: "session-a" })).status).toBe(
+        404,
+      );
+    } finally {
+      await f.close();
+    }
+  });
+
+  test("schedules one-shot and repeating messages and cancels them", async () => {
+    const f = createFixture();
+    try {
+      for (const body of [
+        { message: "hi" },
+        { message: "hi", after_minutes: 0 },
+        { message: "hi", after_minutes: 1.5 },
+        { message: "hi", after_minutes: 1_441 },
+        { message: " ", after_minutes: 5 },
+        { message: "x".repeat(4_001), after_minutes: 5 },
+        { message: "hi", after_minutes: 5, repeat: "yes" },
+      ]) {
+        expect(
+          (await f.request("/v1/schedules", "POST", { session_id: "session-a", ...body })).status,
+        ).toBe(400);
+      }
+      const once = await f.request("/v1/schedules", "POST", {
+        session_id: "session-a",
+        message: " Check the build ",
+        after_minutes: 30,
+      });
+      expect(once.status).toBe(201);
+      const onceData = (await once.json()).data.scheduled;
+      expect(onceData).toMatchObject({ message: "Check the build", origin: "user" });
+      expect(onceData.everyMinutes).toBeUndefined();
+      const repeating = await f.request("/v1/schedules", "POST", {
+        session_id: "session-a",
+        message: "Summarize the inbox",
+        after_minutes: 60,
+        repeat: true,
+      });
+      const repeatingData = (await repeating.json()).data.scheduled;
+      expect(repeatingData.everyMinutes).toBe(60);
+      const state = await (await f.request("/v1/state")).json();
+      expect(state.data.input_queue.scheduled.map((item: { id: string }) => item.id)).toEqual([
+        onceData.id,
+        repeatingData.id,
+      ]);
+      const cancel = (id: string) =>
+        f.request(`/v1/schedules/${id}/cancel`, "POST", { session_id: "session-a" });
+      expect((await (await cancel(repeatingData.id)).json()).data).toEqual({
+        cancelled: "future",
+      });
+      expect((await cancel(repeatingData.id)).status).toBe(404);
+      expect((await cancel(onceData.id)).status).toBe(200);
+      expect(f.runtime.inputQueue.scheduled).toEqual([]);
+    } finally {
+      await f.close();
+    }
+  });
 });

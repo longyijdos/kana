@@ -33,12 +33,20 @@ JSON success responses are `{schema_version: 1, data: ...}`. Errors are `{schema
 | DELETE /v1/sessions/:id | No body | Delete saved, non-active session; `{deleted: true}` |
 | POST /v1/messages | `{session_id, message, delivery?}` | Admission; 202 with `message_id` and `delivery` |
 | POST /v1/abort | `{session_id}` | Request cancellation; 202 with `{stopping: true}` |
+| POST /v1/goal | `{session_id, objective}` | Start a Goal on an idle runtime; 202 with `goal` |
+| POST /v1/goal/cancel | `{session_id}` | Stop Goal continuation; `{cancelled: true}` |
+| POST /v1/schedules | `{session_id, message, after_minutes, repeat?}` | Schedule a user message; 201 with `scheduled` |
+| POST /v1/schedules/:id/cancel | `{session_id}` | Cancel a scheduled message; `cancelled` is `future` or `pending` |
 | GET /v1/approvals | — | Pending approvals |
 | POST /v1/approvals/:id | `{session_id, decision}` | Resolve approval; `{resolved: true}` |
 
-The current `session_id` is required for messages, abort, fork, and approval decisions so a stale client cannot accidentally act on a newly selected session. Creation, fork, resume, and deletion require an idle runtime. Saved sessions are scoped to the startup workspace. The active session cannot be deleted.
+The current `session_id` is required for messages, abort, fork, Goals, schedules, and approval decisions so a stale client cannot accidentally act on a newly selected session. Creation, fork, resume, and deletion require an idle runtime. Saved sessions are scoped to the startup workspace. The active session cannot be deleted.
 
 Message `delivery` defaults to `auto`: idle input starts a run; active, steerable input enters the steering lane; other active input enters the next-turn queue. `queue` always enters that queue. Response delivery is `submitted`, `steering`, or `queued`, acknowledging admission rather than completion. Steering can later become queued under existing runtime semantics. Aborting follows existing cancellation policy and does not independently clear queued messages. Observe runtime events and state to see what executes next.
+
+A Goal runs its objective through sequential rounds up to the configured maximum, like the TUI `/goal`. Starting one requires an idle runtime. Cancelling stops further rounds without interrupting the current one; abort also cancels the Goal. Missing active Goals return 404.
+
+Scheduled messages wait `after_minutes` (1 through 1440), contain 1 through 4000 characters, and arrive as `scheduled_input` with origin `user`. With `repeat: true`, the message recurs every `after_minutes` from its previous due time until cancelled. The schedule keeps its ID while each delivery gets a fresh message ID, and an occurrence is skipped while the previous delivery is still queued. Cancelling a schedule ID stops future deliveries (`future`); cancelling a delivered message ID removes it from the queue (`pending`). Any wake in the current session can be cancelled, including Agent-scheduled ones. `input_queue.scheduled` entries include `everyMinutes` for repeating schedules. Like every wake, schedules are process-local and lost on restart.
 
 ## Approvals
 

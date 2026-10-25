@@ -33,12 +33,20 @@ JSON 成功响应为 `{schema_version: 1, data: ...}`；错误为 `{schema_versi
 | DELETE /v1/sessions/:id | 无请求体 | 删除非活跃已保存 session；`{deleted: true}` |
 | POST /v1/messages | `{session_id, message, delivery?}` | 接收入队；202，含 `message_id`、`delivery` |
 | POST /v1/abort | `{session_id}` | 请求取消；202，含 `{stopping: true}` |
+| POST /v1/goal | `{session_id, objective}` | runtime 空闲时启动 Goal；202，含 `goal` |
+| POST /v1/goal/cancel | `{session_id}` | 停止 Goal 续跑；`{cancelled: true}` |
+| POST /v1/schedules | `{session_id, message, after_minutes, repeat?}` | 定时发送用户消息；201，含 `scheduled` |
+| POST /v1/schedules/:id/cancel | `{session_id}` | 取消定时消息；`cancelled` 为 `future` 或 `pending` |
 | GET /v1/approvals | — | 待审批请求 |
 | POST /v1/approvals/:id | `{session_id, decision}` | 完成审批；`{resolved: true}` |
 
-消息、停止、fork、审批决策要求当前 `session_id`，避免过期客户端误操作刚切换的 session。创建、fork、恢复、删除要求 runtime 空闲。已保存 session 限于启动工作目录；活跃 session 不可删除。
+消息、停止、fork、Goal、定时消息、审批决策要求当前 `session_id`，避免过期客户端误操作刚切换的 session。创建、fork、恢复、删除要求 runtime 空闲。已保存 session 限于启动工作目录；活跃 session 不可删除。
 
 消息 `delivery` 默认为 `auto`：空闲时启动 run；执行中且可 steer 时进入 steering lane；其他执行中输入进入 next-turn 队列。`queue` 总是进入该队列。响应 delivery 为 `submitted`、`steering` 或 `queued`，只确认接收，不表示执行完成。Steering 可能按既有 runtime 语义转为排队。Abort 沿用原取消策略，不额外清空排队消息；通过事件和状态观察后续执行。
+
+Goal 与 TUI 的 `/goal` 相同，按顺序执行多轮，直到配置的上限。启动要求 runtime 空闲。取消只停止后续轮次，不中断当前轮；abort 也会取消 Goal。没有活跃 Goal 时返回 404。
+
+定时消息在 `after_minutes`（1 至 1440）分钟后送达，内容为 1 至 4000 个字符，以 origin 为 `user` 的 `scheduled_input` 进入对话。`repeat: true` 时，从上一次计划时间起每隔 `after_minutes` 重复，直到取消。计划 ID 保持不变，每次送达使用新的消息 ID；上一次送达仍在排队时跳过本次。取消计划 ID 会停止后续送达（`future`）；取消已送达的消息 ID 会将其移出队列（`pending`）。当前 session 的任何唤醒都可取消，包括 Agent 设定的。重复计划在 `input_queue.scheduled` 中带有 `everyMinutes`。与所有唤醒一样，定时消息只存在于进程内，重启后丢失。
 
 ## 审批
 
