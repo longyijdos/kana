@@ -175,6 +175,32 @@ describe("ConversationInputCoordinator", () => {
     harness.close();
   });
 
+  test("repeats scheduled input without piling up undelivered occurrences", () => {
+    const { scheduler, timers } = createTimerWakeScheduler(
+      ["repeat", "first", "skipped", "third"].map(messageIdForTest),
+    );
+    const harness = createHarness({ wakeScheduler: scheduler });
+
+    const repeating = harness.coordinator.scheduleInput(15, "Check the queue.", { repeat: true });
+    expect(repeating).toMatchObject({ id: "repeat", everyMinutes: 15 });
+    timers.get(1)?.();
+    timers.get(2)?.();
+    expect(harness.coordinator.queue.pending.map((item) => item.id)).toEqual([
+      messageIdForTest("first"),
+    ]);
+    expect(harness.coordinator.queue.scheduled).toMatchObject([{ id: "repeat" }]);
+
+    expect(harness.coordinator.cancelScheduledInput("first")).toBe("pending");
+    timers.get(3)?.();
+    expect(harness.coordinator.queue.pending.map((item) => item.id)).toEqual([
+      messageIdForTest("third"),
+    ]);
+
+    expect(harness.coordinator.cancelScheduledInput(repeating.id)).toBe("future");
+    expect(harness.coordinator.queue.scheduled).toEqual([]);
+    harness.close();
+  });
+
   test("drains one FIFO only after run and host gates settle", async () => {
     const firstRun = deferred<ConversationInputRunResult>();
     const { scheduler, timers } = createTimerWakeScheduler([messageIdForTest("scheduled")]);

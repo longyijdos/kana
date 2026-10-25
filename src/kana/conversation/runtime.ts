@@ -361,6 +361,11 @@ export class ConversationRuntime<TConfiguration = never> {
     return (await this.options.deleteSession?.(sessionId)) ?? false;
   }
 
+  /** Stops goal continuation without interrupting the current round. */
+  cancelGoal(): boolean {
+    return this.inputCoordinator.cancelGoal();
+  }
+
   abort(): void {
     this.inputCoordinator.cancelGoal();
     this.agent.abort();
@@ -378,8 +383,12 @@ export class ConversationRuntime<TConfiguration = never> {
     return this.inputCoordinator.queueInput(input);
   }
 
-  scheduleInput(afterMinutes: number, message: string): WakeEvent {
-    return this.inputCoordinator.scheduleInput(afterMinutes, message);
+  scheduleInput(
+    afterMinutes: number,
+    message: string,
+    options?: { readonly repeat?: boolean },
+  ): WakeEvent {
+    return this.inputCoordinator.scheduleInput(afterMinutes, message, options);
   }
 
   cancelScheduledInput(id: string): ConversationScheduledInputCancellation {

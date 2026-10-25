@@ -123,6 +123,9 @@ type ConversationInputCoordinatorOptions = {
 export class ConversationInputCoordinator {
   private readonly goalController = new KanaGoalController();
   private readonly wakeScheduler: WakeScheduler;
+  // Latest delivery per repeating schedule, so a slow conversation does not
+  // accumulate a backlog of identical wakes.
+  private readonly repeatingDeliveries = new Map<MessageId, MessageId>();
   private agent!: Agent;
   private sessionId?: string;
   private backgroundJobs?: BackgroundJobClient;
@@ -230,16 +233,17 @@ export class ConversationInputCoordinator {
     return goal;
   }
 
-  cancelGoal(): void {
+  cancelGoal(): boolean {
     const cancelled = this.goalController.cancel();
     if (!cancelled) {
-      return;
+      return false;
     }
     this.options.onGoalChanged("cancelled", cancelled);
     this.options.getLogger().info("conversation.goal_cancelled", {
       goalId: cancelled.id,
       admittedRounds: cancelled.admittedRounds,
     });
+    return true;
   }
 
   blockGoal(detail: string): void {
@@ -293,7 +297,11 @@ export class ConversationInputCoordinator {
     return input.id;
   }
 
-  scheduleInput(afterMinutes: number, message: string): WakeEvent {
+  scheduleInput(
+    afterMinutes: number,
+    message: string,
+    options: { readonly repeat?: boolean } = {},
+  ): WakeEvent {
     if (this.stopping || this.changingSession) {
       throw new Error(
         this.stopping ? "Conversation runtime is stopping." : "Conversation session is changing.",
@@ -318,6 +326,7 @@ export class ConversationInputCoordinator {
       afterMinutes,
       message: normalizedMessage,
       origin: "user",
+      repeat: options.repeat,
     });
   }
 
@@ -332,6 +341,7 @@ export class ConversationInputCoordinator {
     // Expiry and cancellation share the JavaScript event loop, so the stable
     // ID is synchronously present in either the timer map or the pending FIFO.
     if (isCurrentSessionWake && this.wakeScheduler.cancel(readMessageId(id))) {
+      this.repeatingDeliveries.delete(readMessageId(id));
       this.options.getLogger().info("conversation.scheduled_input_cancelled", { state: "future" });
       return "future";
     }
@@ -442,6 +452,16 @@ export class ConversationInputCoordinator {
       event.sessionId !== this.sessionId
     ) {
       return;
+    }
+    if (event.scheduleId) {
+      const previous = this.repeatingDeliveries.get(event.scheduleId);
+      if (previous && this.agent.inbox.nextTurn.some((item) => item.message.id === previous)) {
+        this.options.getLogger().info("conversation.repeating_wake_skipped", {
+          reason: "previous_pending",
+        });
+        return;
+      }
+      this.repeatingDeliveries.set(event.scheduleId, event.id);
     }
 
     const input = createUserMessage({

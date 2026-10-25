@@ -5,12 +5,16 @@ export type WakeEventOrigin = "agent" | "user";
 export type WakeEvent = {
   // A one-shot wake is a future logical input, so its cancellation identity is
   // the same MessageId later carried into the Agent inbox and model history.
+  // A repeating wake keeps this ID for the schedule; each delivery gets a
+  // fresh MessageId and names the schedule in `scheduleId`.
   readonly id: MessageId;
   readonly sessionId: string;
   readonly dueAt: Date;
   readonly message: string;
   readonly origin: WakeEventOrigin;
   readonly key?: string;
+  readonly everyMinutes?: number;
+  readonly scheduleId?: MessageId;
 };
 
 type ScheduleWakeOptions = {
@@ -19,6 +23,8 @@ type ScheduleWakeOptions = {
   readonly message: string;
   readonly origin?: WakeEventOrigin;
   readonly key?: string;
+  /** Repeat every `afterMinutes` until cancelled. */
+  readonly repeat?: boolean;
 };
 
 export type WakeScheduler = {
@@ -46,6 +52,8 @@ type ScheduledWakeEvent = WakeEvent & {
 
 // Wake events are intentionally process-local. A stopped Kana instance has no
 // responsibility to restore or deliver reminders after it is restarted.
+// Repeating wakes advance from their previous due time to avoid drift, and
+// skip occurrences missed entirely (e.g. while suspended) instead of replaying.
 export function createWakeScheduler(options: CreateWakeSchedulerOptions = {}): WakeScheduler {
   const now = options.now ?? (() => new Date());
   const scheduleTimeout = options.setTimeout ?? setTimeout;
@@ -99,20 +107,36 @@ export function createWakeScheduler(options: CreateWakeSchedulerOptions = {}): W
         message: scheduleOptions.message,
         origin: scheduleOptions.origin ?? "agent",
         key: scheduleOptions.key,
+        ...(scheduleOptions.repeat ? { everyMinutes: scheduleOptions.afterMinutes } : {}),
       };
-      const timer = scheduleTimeout(
-        () => {
+      const arm = (scheduled: WakeEvent): void => {
+        const timer = scheduleTimeout(
+          () => fire(scheduled),
+          Math.max(0, scheduled.dueAt.getTime() - now().getTime()),
+        );
+        events.set(id, { ...scheduled, timer });
+      };
+      const fire = (scheduled: WakeEvent): void => {
+        if (scheduled.everyMinutes === undefined) {
           remove(id);
+        } else {
+          const interval = scheduled.everyMinutes * 60_000;
+          let next = scheduled.dueAt.getTime() + interval;
+          while (next <= now().getTime()) next += interval;
+          arm({ ...scheduled, dueAt: new Date(next) });
+        }
 
-          for (const listener of listeners) {
-            listener(event);
-          }
-          publishState();
-        },
-        Math.max(0, dueAt.getTime() - now().getTime()),
-      );
+        const delivered =
+          scheduled.everyMinutes === undefined
+            ? scheduled
+            : { ...scheduled, id: createId(), scheduleId: id };
+        for (const listener of listeners) {
+          listener(delivered);
+        }
+        publishState();
+      };
 
-      events.set(id, { ...event, timer });
+      arm(event);
       if (event.key) {
         keys.set(keyFor(event.sessionId, event.key), id);
       }
