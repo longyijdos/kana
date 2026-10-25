@@ -95,9 +95,9 @@ export class WelcomeBlock implements Component {
       ...(savedSessionsAvailable ? [muted("  ... /resume for more")] : []),
       "",
       title("Highlights"),
-      text("  Codemode tool orchestration"),
-      text("  Inspect work in progress"),
-      text("  Better LaTeX and viewers"),
+      text("  Remote Goals and schedules"),
+      text("  Single-writer sessions"),
+      text("  Skills sync for Claude Code"),
       muted("  ... /help for more"),
     ];
 

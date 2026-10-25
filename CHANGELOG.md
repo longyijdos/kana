@@ -1,3 +1,31 @@
+## [0.14.0](https://github.com/longyijdos/kana/compare/v0.13.0...v0.14.0) (2026-10-25)
+
+Kana v0.14.0 lets remote clients start Goals and manage scheduled messages, including messages that repeat at a fixed interval. It makes persistent sessions single-writer across processes, adds a Claude Code target for Skills sync, and simplifies the codebase around validated, immutable data. Cancellation is now spelled `cancelled` everywhere; read the upgrade notes before updating.
+
+### Features
+
+- Start and cancel Goals through `kana serve` with `POST /v1/goal` and `POST /v1/goal/cancel`. Cancelling stops further rounds without interrupting the current one.
+- Schedule user messages through `POST /v1/schedules` and cancel them with `POST /v1/schedules/:id/cancel`. With `repeat: true`, a message recurs every `after_minutes` from its previous due time until cancelled; occurrences missed while the process was suspended are skipped, and an occurrence is skipped while the previous delivery is still queued. Repeating schedules report `everyMinutes` in `input_queue.scheduled`.
+- Copy installed Kana Skills to Claude Code with `kana skills sync claude`, which writes to `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills`.
+- Load the Kana Agent workflow's Custom provider endpoint from an optional repository secret and redact it from published text.
+
+### Bug Fixes
+
+- Give each persistent session one owner across processes. A second Kana process can no longer append to the same session journal or recover a turn another process is still running; competing resume or delete fails with a clear "in use" error, and `kana serve` returns `409 session_in_use`. A crashed owner's lock goes stale and a later resume takes over.
+- Let `job_start` share the Shell allowlist with `shell`, including exact command trust, read-only command recognition, and "Always allow this command".
+- Keep files matched by a Skill's own `.gitignore` (drafts, `.env`, `node_modules`) when running `kana skills sync` or `resync`.
+- Drop unexecuted tool calls from failed partial assistant messages before they reach history, not only from aborted ones.
+- Show integer, numeric-bound, string-length, and pattern constraints in Codemode `only` declarations.
+- Clear a completed or blocked Goal when the session changes instead of showing it in the next session.
+- Remove zero-width spaces from terminal output.
+- Stream long replies in linear rather than quadratic time.
+
+### Upgrade Notes
+
+- Cancellation is spelled `cancelled` in tool results, hosted-tool status, Jobs, Subagents, Goals, and log event names. Sessions saved by earlier versions keep `canceled` and are not migrated, so their cancelled tool calls may render as completed or failed. Remote clients must match the new spelling; Kana Remote v0.3.0 does.
+- Configuration and file-format errors share one style, for example `config.agent contains unknown field x.`, and frontmatter that declares a key twice now fails to parse.
+- Kana Remote v0.3.0 adds an Agenda for Goals, todos, and scheduled messages that uses the new server endpoints.
+
 ## [0.13.0](https://github.com/longyijdos/kana/compare/v0.12.1...v0.13.0) (2026-10-08)
 
 Kana v0.13.0 introduces an experimental HTTP and SSE server frontend, enabling remote Web and mobile clients to connect to a Kana agent instance. It also updates the QuickJS Codemode runtime.
