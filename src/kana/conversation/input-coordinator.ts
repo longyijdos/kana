@@ -418,6 +418,8 @@ export class ConversationInputCoordinator {
     }
     this.agent.clearInbox();
     this.discardGoal("session_changed");
+    this.goalController.clear();
+    this.repeatingDeliveries.clear();
   }
 
   adoptSession(agent: Agent, sessionId: string): void {

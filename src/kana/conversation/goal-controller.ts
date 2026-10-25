@@ -84,6 +84,11 @@ export class KanaGoalController {
     return this.goalData?.status === "active" ? this.finish("blocked", detail) : undefined;
   }
 
+  /** Forgets a finished goal so it does not carry over into another session. */
+  clear(): void {
+    this.goalData = undefined;
+  }
+
   discard(): KanaGoalSnapshot | undefined {
     if (this.goalData?.status !== "active") {
       return undefined;

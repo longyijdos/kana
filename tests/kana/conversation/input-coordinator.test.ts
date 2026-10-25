@@ -124,6 +124,20 @@ describe("ConversationInputCoordinator", () => {
     harness.close();
   });
 
+  test("does not carry a finished goal into the next session", () => {
+    const harness = createHarness();
+    harness.coordinator.startGoal("Finish in the old session.");
+    harness.coordinator.updateGoal({ status: "completed" });
+    expect(harness.coordinator.goal?.status).toBe("completed");
+
+    harness.coordinator.beginSessionChange();
+    harness.coordinator.cancelCurrentSessionInputs();
+    harness.coordinator.adoptSession(createAgent(), "session-b");
+
+    expect(harness.coordinator.goal).toBeUndefined();
+    harness.close();
+  });
+
   test("schedules normalized input and cancels future or pending delivery by stable ID", () => {
     const { scheduler, timers } = createTimerWakeScheduler([
       messageIdForTest("future-wake"),
