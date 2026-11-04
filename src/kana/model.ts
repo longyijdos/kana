@@ -8,6 +8,7 @@ import {
   type OpenAICodexCredentialProvider,
   type OpenAICodexReasoningEffort,
   OpenAICompatibleModel,
+  OpenAIResponsesModel,
 } from "@/providers";
 import { errorFields } from "@/utils";
 import { KanaOpenAICodexAuth } from "./auth/openai-codex";
@@ -177,7 +178,7 @@ export function createKanaModel(
           );
         }
 
-        return new OpenAICompatibleModel({
+        const config = {
           provider: "custom",
           model: model.name,
           baseUrl: provider.baseUrl,
@@ -187,7 +188,10 @@ export function createKanaModel(
           timeoutMs: provider.timeoutMs,
           maxRetries: provider.maxRetries,
           logger: options.logger,
-        });
+        };
+        return model.protocol === "responses"
+          ? new OpenAIResponsesModel(config)
+          : new OpenAICompatibleModel(config);
       } catch (error) {
         options.logger?.error("custom_provider.initialization_failed", {
           component: "custom_provider",

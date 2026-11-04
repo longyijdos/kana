@@ -49,6 +49,7 @@ describe("Kana Custom provider", () => {
       models: [
         {
           name: "local-model",
+          protocol: "chat-completions",
           metadata: {
             contextWindow: 32_768,
             maxOutputTokens: 4_096,
@@ -162,6 +163,29 @@ describe("Kana Custom provider", () => {
         },
         message: 'models[0].assistant_replay_fields cannot include Kana-managed field "content".',
       },
+      {
+        config: {
+          base_url: "https://example.com/v1",
+          models: [{ ...validModel, protocol: "messages" }],
+        },
+        message: "models[0].protocol must be chat-completions or responses.",
+      },
+      {
+        config: {
+          base_url: "https://example.com/v1",
+          models: [{ ...validModel, supports_hosted_web_search: true }],
+        },
+        message: 'models[0].supports_hosted_web_search requires protocol "responses".',
+      },
+      {
+        config: {
+          base_url: "https://example.com/v1",
+          models: [
+            { ...validModel, protocol: "responses", assistant_replay_fields: ["reasoning"] },
+          ],
+        },
+        message: 'models[0].assistant_replay_fields requires protocol "chat-completions".',
+      },
     ];
 
     for (const { config, message } of cases) {
@@ -257,6 +281,76 @@ describe("Kana Custom provider", () => {
         stopReason: "stop",
         content: [{ type: "text", text: "answer" }],
         usage: { promptTokens: 3, completionTokens: 1, totalTokens: 4 },
+      });
+    } finally {
+      server.stop(true);
+    }
+  });
+
+  test("creates a Responses Custom model with hosted web search", async () => {
+    let requestPath = "";
+    let requestBody: Record<string, unknown> = {};
+    const server = Bun.serve({
+      port: 0,
+      async fetch(request) {
+        requestPath = new URL(request.url).pathname;
+        requestBody = (await request.json()) as Record<string, unknown>;
+        return new Response(
+          [
+            'data: {"type":"response.output_item.added","output_index":0,"item":{"id":"msg-1","type":"message","role":"assistant","content":[]}}',
+            'data: {"type":"response.output_text.delta","output_index":0,"item_id":"msg-1","delta":"answer"}',
+            'data: {"type":"response.output_item.done","output_index":0,"item":{"id":"msg-1","type":"message","role":"assistant","content":[{"type":"output_text","text":"answer"}]}}',
+            'data: {"type":"response.completed","response":{"usage":{"input_tokens":3,"output_tokens":1,"total_tokens":4}}}',
+            "",
+          ].join("\n\n"),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      },
+    });
+
+    try {
+      const env = { KANA_HOME: createTempDir() };
+      const paths = getKanaConfigPaths(env);
+      mkdirSync(paths.providersDirectory, { recursive: true });
+      writeFileSync(
+        paths.customProviderPath,
+        [
+          `base_url = "http://127.0.0.1:${server.port}/v1"`,
+          "max_retries = 0",
+          "",
+          "[[models]]",
+          'name = "responses-model"',
+          'protocol = "responses"',
+          "context_window = 32768",
+          "max_output_tokens = 4096",
+          "supports_hosted_web_search = true",
+          "",
+        ].join("\n"),
+      );
+      const model = createKanaModel(
+        { provider: "custom", name: "responses-model" },
+        selectKanaProviderConfig(DEFAULT_KANA_CONFIG.provider, "custom"),
+        { env },
+      );
+      const message = await model.generate({
+        messages: [{ ...messageIdentityForTest("user"), role: "user", content: "hello" }],
+        webSearch: true,
+      });
+
+      expect(model.metadata).toMatchObject({
+        provider: "custom",
+        model: "responses-model",
+        protocol: "responses",
+        supportsHostedWebSearch: true,
+      });
+      expect(requestPath).toBe("/v1/responses");
+      expect(requestBody).toMatchObject({
+        model: "responses-model",
+        tools: [{ type: "web_search" }],
+      });
+      expect(message).toMatchObject({
+        stopReason: "stop",
+        content: [{ type: "text", text: "answer" }],
       });
     } finally {
       server.stop(true);

@@ -21,7 +21,7 @@ Kana keeps the model contract provider-neutral while allowing each adapter to ow
 
 Metadata is capability, not policy. The Agent intersects it with configuration before constructing `ModelContext`: image, web-search, and parallel-tool behavior may be disabled even when the model supports them. Context and output preferences are likewise clamped to metadata limits before requests reach an adapter.
 
-`src/providers/index.ts` is the typed built-in factory for DeepSeek, OpenAI Codex, and the test Mock model. Kana's single Custom slot directly constructs the reusable OpenAI-compatible model from validated product configuration; arbitrary provider IDs and runtime-loaded adapters are not supported.
+`src/providers/index.ts` is the typed built-in factory for DeepSeek, OpenAI Codex, and the test Mock model. Kana's single Custom slot directly constructs the reusable OpenAI-compatible Chat Completions or Responses model selected by each validated model's `protocol`; arbitrary provider IDs and runtime-loaded adapters are not supported.
 
 ## Adapter layering
 

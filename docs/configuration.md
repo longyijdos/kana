@@ -250,7 +250,7 @@ Before first use of OpenAI Codex, run `kana auth login openai-codex`. Browser au
 
 | Key | Type and allowed values | Default | Meaning |
 | --- | --- | --- | --- |
-| `agent.web_search` / `memory.agent.web_search` | Boolean | `true` / `false` | Allows hosted search only when the selected model metadata also supports it. Custom models currently declare no hosted-search capability. |
+| `agent.web_search` / `memory.agent.web_search` | Boolean | `true` / `false` | Allows hosted search only when the selected model metadata also supports it. Custom models declare it with `supports_hosted_web_search` on the Responses protocol. |
 | `agent.image_input` / `memory.agent.image_input` | Boolean | `true` / `false` | Allows persisted user/tool images and registers `view_image` only when model metadata also supports images. Disabled or unsupported images remain persisted but become omission markers in model input. |
 | `agent.model.provider` | `deepseek`, `openai-codex`, `custom` | `deepseek` | Provider selected for the conversation Agent. |
 | `agent.model.name` | Provider model name | `deepseek-flash` | Conversation model; built-in names are validated against provider metadata. |

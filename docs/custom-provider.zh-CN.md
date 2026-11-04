@@ -1,6 +1,6 @@
 # 自定义 OpenAI-compatible 提供商
 
-Kana 提供一个静态的 `custom` 供应商槽位，用于用户自己管理的 OpenAI-compatible 模型。该槽位使用内置 Chat Completions 适配器；它不是运行时插件系统，也不会动态发现任意 provider ID。保持产品层供应商集合封闭，可以避免 Agent、session、memory 和前端装配都承担动态供应商逻辑，同时仍可接入本地服务或托管的兼容 endpoint。
+Kana 提供一个静态的 `custom` 供应商槽位，用于用户自己管理的 OpenAI-compatible 模型。每个已配置模型可选择内置 Chat Completions 或 Responses 适配器；该槽位不是运行时插件系统，也不会动态发现任意 provider ID。保持产品层供应商集合封闭，可以避免 Agent、session、memory 和前端装配都承担动态供应商逻辑，同时仍可接入本地服务或托管的兼容 endpoint。
 
 ## 安装与选择
 
@@ -33,7 +33,7 @@ name = "local-model"
 
 | 键 | 必需 | 默认值 | 含义 |
 | --- | --- | --- | --- |
-| `base_url` | 是 | — | Endpoint 前缀；Kana 会追加 `/chat/completions`，通常以 `/v1` 结尾。 |
+| `base_url` | 是 | — | Endpoint 前缀；Kana 会按模型协议追加 `/chat/completions` 或 `/responses`，通常以 `/v1` 结尾。 |
 | `api_key_env` | 否 | 未设置 | 保存 Bearer token 的环境变量名；省略时不发送 Authorization header。 |
 | `timeout_ms` | 否 | `60000` | 等待响应头或相邻响应数据的无活动超时。 |
 | `max_retries` | 否 | `1` | HTTP 408、429、5xx 和可重试传输失败的重试次数。 |
@@ -52,15 +52,17 @@ api_key_env = "LOCAL_MODEL_API_KEY"
 | 键 | 必需 | 默认值 | 含义 |
 | --- | --- | --- | --- |
 | `name` | 是 | — | 请求中发送、并可从 `/model` 选择的准确模型 ID。 |
+| `protocol` | 否 | `chat-completions` | Wire protocol：`chat-completions` 或 `responses`。 |
 | `context_window` | 是 | — | Agent 预算使用的正整数上下文窗口。 |
 | `max_output_tokens` | 是 | — | 单次请求的正整数输出上限；不能超过 `context_window`。 |
 | `supports_parallel_tool_calls` | 否 | `false` | Kana 是否可以声明并实际并发执行安全工具调用。 |
-| `supports_image_input` | 否 | `false` | 是否可以把用户和工具图片作为 Chat Completions image data URL 发送。设为 true 时 Kana 也会注册 `view_image`。 |
-| `assistant_replay_fields` | 否 | 未设置 | 需要为同一 endpoint 和模型保留并回放的流式 assistant delta 字段非空列表。 |
-| `reasoning_efforts` | 否 | 未设置 | `reasoning_effort` 支持的非空请求值列表。 |
+| `supports_hosted_web_search` | 否 | `false` | 仅限 Responses。Kana 是否可以添加供应商托管的 `web_search` 工具。 |
+| `supports_image_input` | 否 | `false` | 是否可以把用户和工具图片作为 image data URL 发送。设为 true 时 Kana 也会注册 `view_image`。 |
+| `assistant_replay_fields` | 否 | 未设置 | 仅限 Chat Completions。需要为同一 endpoint 和模型保留并回放的流式 assistant delta 字段非空列表。 |
+| `reasoning_efforts` | 否 | 未设置 | 支持的推理强度请求值非空列表。 |
 | `default_reasoning_effort` | 配置 `reasoning_efforts` 时 | — | 默认值；必须出现在 `reasoning_efforts` 中。 |
 
-推理控制属于能力 metadata，不是对所有供应商的统一假设。模型没有可选择的控制时，应同时省略两个 reasoning 字段；`/model` 会跳过这一步，请求也不会发送 `reasoning_effort`。配置后，Kana 会把选择值作为 Chat Completions 顶层 `reasoning_effort` 发送。关闭档位使用 `none`，而不是 `off`；TUI 会把 `none` 显示为 `Off`。
+推理控制属于能力 metadata，不是对所有供应商的统一假设。模型没有可选择的控制时，应同时省略两个 reasoning 字段；`/model` 会跳过这一步，请求也不会发送 `reasoning_effort`。配置后，Kana 会把选择值作为 Chat Completions 顶层 `reasoning_effort` 发送，或作为 Responses 的 `reasoning.effort` 并附带 `auto` summary 发送。关闭档位使用 `none`，而不是 `off`；TUI 会把 `none` 显示为 `Off`。
 
 部分兼容 endpoint 要求在后续 assistant 历史中回传流式响应的额外字段。`assistant_replay_fields` 显式列出这些 `choice.delta` 顶层字段。Kana 会聚合其流式 JSON 值、作为不透明 provider state 保存，并且仅在来源仍是同一 Custom endpoint 和模型且配置仍启用对应字段时回放。除非 endpoint 明确要求，否则应省略此设置。`role`、`content` 和 `tool_calls` 由 Kana 管理，不能列入其中。
 
@@ -82,8 +84,12 @@ default_reasoning_effort = "none"
 
 ## 协议与安全边界
 
-该槽位使用[供应商](providers.zh-CN.md)中记录的共享 OpenAI-compatible Chat Completions 路径，包括流式文本、reasoning delta、已配置的 assistant replay 字段、本地工具调用、用量、图片观察、取消、无活动超时、重试和安全诊断。它拒绝 redirect，避免把 Bearer 凭据转发到另一个 origin；仍不支持托管网页搜索。
+Chat Completions 模型使用[供应商](providers.zh-CN.md)中记录的共享 OpenAI-compatible 路径，包括流式文本、reasoning delta、已配置的 assistant replay 字段、本地工具调用、用量、图片观察、取消、无活动超时、重试和安全诊断。该协议不支持托管网页搜索。
+
+Responses 模型使用相同的传输、鉴权和诊断，并接入共享的语义 Responses processor，因此 reasoning、文本、函数调用和托管 `web_search_call` item 会以普通 Kana 内容流式呈现。请求设置 `store: false`，函数工具以 `strict: false` 发送。已完成的 output item 回放时去掉 item ID，且仅回放给同一 Custom endpoint 和模型；其余历史退化为可见文本和本地函数调用。配置推理控制时，Kana 还会请求 `reasoning.encrypted_content`，使 reasoning 可以无状态回放，因此推理模型应配置推理控制。只有模型设置了 `supports_hosted_web_search` 且 Agent 的 `web_search` 策略允许时，Kana 才会添加 `web_search`。
+
+两个适配器都拒绝 redirect，避免把 Bearer 凭据转发到另一个 origin。
 
 `base_url` 接受 HTTP 和 HTTPS，但凭据经过不可信网络时必须使用 HTTPS。URL、query string 与 fragment 中的凭据会被拒绝，未知字段和无效模型元数据也会被拒绝。
 
-当前槽位只支持 OpenAI-compatible Chat Completions。Custom Responses、Anthropic Messages、任意 JavaScript 或 TypeScript adapter、动态 provider ID 和由 TOML 定义的 wire protocol 均不在范围内。
+该槽位只支持 OpenAI-compatible Chat Completions 和 Responses。Anthropic Messages、任意 JavaScript 或 TypeScript adapter、动态 provider ID 和由 TOML 定义的 wire protocol 均不在范围内。
