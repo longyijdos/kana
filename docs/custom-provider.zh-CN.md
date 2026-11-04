@@ -35,6 +35,7 @@ name = "local-model"
 | --- | --- | --- | --- |
 | `base_url` | 是 | — | Endpoint 前缀；Kana 会按模型协议追加 `/chat/completions` 或 `/responses`，通常以 `/v1` 结尾。 |
 | `api_key_env` | 否 | 未设置 | 保存 Bearer token 的环境变量名；省略时不发送 Authorization header。 |
+| `[headers]` | 否 | 空 | 每个请求都会附带的额外 HTTP header。`Accept` 与 `Content-Type` 为保留字段；设置 `api_key_env` 时 `Authorization` 也为保留字段。 |
 | `timeout_ms` | 否 | `60000` | 等待响应头或相邻响应数据的无活动超时。 |
 | `max_retries` | 否 | `1` | HTTP 408、429、5xx 和可重试传输失败的重试次数。 |
 | `[[models]]` | 是 | — | 一个或多个模型 metadata 表，模型名必须唯一。 |
@@ -61,6 +62,7 @@ api_key_env = "LOCAL_MODEL_API_KEY"
 | `assistant_replay_fields` | 否 | 未设置 | 仅限 Chat Completions。需要为同一 endpoint 和模型保留并回放的流式 assistant delta 字段非空列表。 |
 | `reasoning_efforts` | 否 | 未设置 | 支持的推理强度请求值非空列表。 |
 | `default_reasoning_effort` | 配置 `reasoning_efforts` 时 | — | 默认值；必须出现在 `reasoning_efforts` 中。 |
+| `[models.params]` | 否 | 未设置 | 额外的请求体顶层字段，例如采样或缓存控制。由 Kana 管理的字段会被拒绝。 |
 
 推理控制属于能力 metadata，不是对所有供应商的统一假设。模型没有可选择的控制时，应同时省略两个 reasoning 字段；`/model` 会跳过这一步，请求也不会发送 `reasoning_effort`。配置后，Kana 会把选择值作为 Chat Completions 顶层 `reasoning_effort` 发送，或作为 Responses 的 `reasoning.effort` 并附带 `auto` summary 发送。关闭档位使用 `none`，而不是 `off`；TUI 会把 `none` 显示为 `Off`。
 
@@ -79,6 +81,24 @@ assistant_replay_fields = ["reasoning", "reasoning_details"]
 reasoning_efforts = ["none", "low", "high"]
 default_reasoning_effort = "none"
 ```
+
+`[models.params]` 用于传递 Kana 未建模的 endpoint 专属选项，例如 `temperature`、prompt cache key 或网关路由字段。值按原样发送，不会针对 endpoint 校验。所选协议中由 Kana 管理的字段不能设置：Chat Completions 为 `model`、`messages`、`stream`、`stream_options`、`max_tokens`、`max_completion_tokens`、`reasoning_effort`、`tools`、`tool_choice` 和 `parallel_tool_calls`；Responses 为 `model`、`instructions`、`input`、`stream`、`store`、`include`、`previous_response_id`、`max_output_tokens`、`reasoning`、`tools`、`tool_choice` 和 `parallel_tool_calls`。输出上限与推理请使用专门的模型字段。
+
+```toml
+[headers]
+"X-Gateway-Route" = "primary"
+
+[[models]]
+name = "cached-model"
+context_window = 128000
+max_output_tokens = 8192
+
+[models.params]
+temperature = 0.2
+prompt_cache_key = "kana"
+```
+
+Header 值以明文保存在 TOML 中，因此 Bearer 凭据仍应通过 `api_key_env` 提供。
 
 `agent.model.context_limit` 是与供应商无关的偏好。Agent 实际使用该配置值与所选模型 `context_window` 中较小的一个，因此从大窗口内置模型切换到较小的 Custom 模型时，不需要额外的供应商专用 Agent 配置；`memory.agent.model` 对自己覆盖的字段应用相同规则，未覆盖时继承 `agent.model.context_limit`。
 

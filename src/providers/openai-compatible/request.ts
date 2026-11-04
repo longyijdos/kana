@@ -3,11 +3,25 @@ import { isRecord } from "@/utils";
 import type { OpenAICompatibleModelConfig } from "./types";
 import { OPENAI_COMPATIBLE_ASSISTANT_REPLAY_TYPE } from "./types";
 
+export const OPENAI_COMPATIBLE_MANAGED_REQUEST_FIELDS: ReadonlySet<string> = new Set([
+  "model",
+  "messages",
+  "stream",
+  "stream_options",
+  "max_tokens",
+  "max_completion_tokens",
+  "reasoning_effort",
+  "tools",
+  "tool_choice",
+  "parallel_tool_calls",
+]);
+
 export function buildOpenAICompatibleRequest(
   context: ModelContext,
   config: OpenAICompatibleModelConfig,
 ): Record<string, unknown> {
   const request: Record<string, unknown> = {
+    ...config.requestParams,
     model: config.model,
     messages: toMessages(context, config),
     stream: true,

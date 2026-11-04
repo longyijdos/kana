@@ -11,8 +11,16 @@ export type {
   OpenAICodexReasoningSummary,
 } from "./openai-codex";
 export { OPENAI_CODEX_MODELS } from "./openai-codex";
-export { OpenAICompatibleModel, type OpenAICompatibleModelConfig } from "./openai-compatible";
-export { OpenAIResponsesModel, type OpenAIResponsesModelConfig } from "./openai-responses";
+export {
+  OPENAI_COMPATIBLE_MANAGED_REQUEST_FIELDS,
+  OpenAICompatibleModel,
+  type OpenAICompatibleModelConfig,
+} from "./openai-compatible";
+export {
+  OPENAI_RESPONSES_MANAGED_REQUEST_FIELDS,
+  OpenAIResponsesModel,
+  type OpenAIResponsesModelConfig,
+} from "./openai-responses";
 
 export type ProviderConfigMap = {
   deepseek: DeepSeekModelConfig;

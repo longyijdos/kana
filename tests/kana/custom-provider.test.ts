@@ -44,6 +44,7 @@ describe("Kana Custom provider", () => {
     ).toEqual({
       baseUrl: "http://127.0.0.1:8080/v1",
       apiKeyEnv: undefined,
+      headers: {},
       timeoutMs: 60_000,
       maxRetries: 1,
       models: [
@@ -66,6 +67,7 @@ describe("Kana Custom provider", () => {
     const provider = parseKanaCustomProvider({
       base_url: "http://models.example.com/v1",
       api_key_env: "LOCAL_MODEL_KEY",
+      headers: { "X-Gateway-Route": "primary" },
       timeout_ms: 300_000,
       max_retries: 0,
       models: [
@@ -78,6 +80,7 @@ describe("Kana Custom provider", () => {
           assistant_replay_fields: ["reasoning", "reasoning_details"],
           reasoning_efforts: ["none", "low", "high"],
           default_reasoning_effort: "low",
+          params: { temperature: 0.2, cache: { enabled: true } },
         },
       ],
     });
@@ -86,9 +89,11 @@ describe("Kana Custom provider", () => {
     expect(provider).toMatchObject({
       baseUrl: "http://models.example.com/v1",
       apiKeyEnv: "LOCAL_MODEL_KEY",
+      headers: { "X-Gateway-Route": "primary" },
       timeoutMs: 300_000,
       maxRetries: 0,
     });
+    expect(model.params).toEqual({ temperature: 0.2, cache: { enabled: true } });
     expect(model.metadata).toMatchObject({
       contextWindow: 32_768,
       maxOutputTokens: 8_192,
@@ -186,6 +191,45 @@ describe("Kana Custom provider", () => {
         },
         message: 'models[0].assistant_replay_fields requires protocol "chat-completions".',
       },
+      {
+        config: {
+          base_url: "https://example.com/v1",
+          models: [{ ...validModel, params: { temperature: 0.2, max_tokens: 1 } }],
+        },
+        message: 'models[0].params cannot set Kana-managed request field "max_tokens".',
+      },
+      {
+        config: {
+          base_url: "https://example.com/v1",
+          models: [{ ...validModel, protocol: "responses", params: { reasoning: {} } }],
+        },
+        message: 'models[0].params cannot set Kana-managed request field "reasoning".',
+      },
+      {
+        config: {
+          base_url: "https://example.com/v1",
+          headers: { "Content-Type": "text/plain" },
+          models: [validModel],
+        },
+        message: "headers cannot override transport header Content-Type.",
+      },
+      {
+        config: {
+          base_url: "https://example.com/v1",
+          api_key_env: "LOCAL_MODEL_KEY",
+          headers: { Authorization: "Bearer inline" },
+          models: [validModel],
+        },
+        message: "headers cannot set Authorization when api_key_env is configured.",
+      },
+      {
+        config: {
+          base_url: "https://example.com/v1",
+          headers: { "Bad Header": "value" },
+          models: [validModel],
+        },
+        message: "headers contains invalid HTTP header Bad Header.",
+      },
     ];
 
     for (const { config, message } of cases) {
@@ -195,11 +239,13 @@ describe("Kana Custom provider", () => {
 
   test("creates the static Custom model and sends configured reasoning", async () => {
     let authorization = "";
+    let gatewayRoute = "";
     let requestBody: Record<string, unknown> = {};
     const server = Bun.serve({
       port: 0,
       async fetch(request) {
         authorization = request.headers.get("authorization") ?? "";
+        gatewayRoute = request.headers.get("x-gateway-route") ?? "";
         requestBody = (await request.json()) as Record<string, unknown>;
         return new Response(
           [
@@ -227,12 +273,18 @@ describe("Kana Custom provider", () => {
           'api_key_env = "KANA_CUSTOM_TEST_KEY"',
           "max_retries = 0",
           "",
+          "[headers]",
+          '"X-Gateway-Route" = "primary"',
+          "",
           "[[models]]",
           'name = "local-model"',
           "context_window = 32768",
           "max_output_tokens = 4096",
           'reasoning_efforts = ["none", "high"]',
           'default_reasoning_effort = "none"',
+          "",
+          "[models.params]",
+          "temperature = 0.2",
           "",
         ].join("\n"),
       );
@@ -272,10 +324,12 @@ describe("Kana Custom provider", () => {
         maxOutputTokens: 4_096,
       });
       expect(authorization).toBe("Bearer test-key");
+      expect(gatewayRoute).toBe("primary");
       expect(requestBody).toMatchObject({
         model: "local-model",
         max_tokens: 512,
         reasoning_effort: "high",
+        temperature: 0.2,
       });
       expect(message).toMatchObject({
         stopReason: "stop",
@@ -325,6 +379,9 @@ describe("Kana Custom provider", () => {
           "max_output_tokens = 4096",
           "supports_hosted_web_search = true",
           "",
+          "[models.params]",
+          'prompt_cache_key = "kana"',
+          "",
         ].join("\n"),
       );
       const model = createKanaModel(
@@ -346,6 +403,7 @@ describe("Kana Custom provider", () => {
       expect(requestPath).toBe("/v1/responses");
       expect(requestBody).toMatchObject({
         model: "responses-model",
+        prompt_cache_key: "kana",
         tools: [{ type: "web_search" }],
       });
       expect(message).toMatchObject({

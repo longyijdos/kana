@@ -2,6 +2,21 @@ import type { ModelContext } from "@/core";
 import { toResponsesInput, toResponsesTools } from "../responses";
 import type { OpenAIResponsesModelConfig } from "./types";
 
+export const OPENAI_RESPONSES_MANAGED_REQUEST_FIELDS: ReadonlySet<string> = new Set([
+  "model",
+  "instructions",
+  "input",
+  "stream",
+  "store",
+  "include",
+  "previous_response_id",
+  "max_output_tokens",
+  "reasoning",
+  "tools",
+  "tool_choice",
+  "parallel_tool_calls",
+]);
+
 export function buildOpenAIResponsesRequest(
   context: ModelContext,
   config: OpenAIResponsesModelConfig,
@@ -15,6 +30,7 @@ export function buildOpenAIResponsesRequest(
   const maxOutputTokens = context.maxOutputTokens ?? config.maxOutputTokens;
 
   return {
+    ...config.requestParams,
     model: config.model,
     ...(context.system ? { instructions: context.system } : {}),
     // Compatible endpoints are not assumed to retain server-side items, so
