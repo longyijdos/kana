@@ -183,6 +183,8 @@ export function createKanaModel(
           model: model.name,
           baseUrl: provider.baseUrl,
           apiKey,
+          headers: provider.headers,
+          requestParams: model.params,
           metadata: model.metadata,
           reasoningEffort,
           timeoutMs: provider.timeoutMs,

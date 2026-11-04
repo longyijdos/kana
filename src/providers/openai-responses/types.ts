@@ -7,6 +7,8 @@ export type OpenAIResponsesModelConfig = {
   baseUrl: string;
   apiKey?: string;
   headers?: Readonly<Record<string, string>>;
+  // Extra top-level request fields; they never replace Kana-managed fields.
+  requestParams?: Readonly<Record<string, unknown>>;
   maxOutputTokens?: number;
   timeoutMs?: number;
   maxRetries?: number;

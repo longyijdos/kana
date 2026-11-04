@@ -35,6 +35,7 @@ name = "local-model"
 | --- | --- | --- | --- |
 | `base_url` | Yes | — | Endpoint prefix. Kana appends `/chat/completions` or `/responses` according to the model protocol; it commonly ends in `/v1`. |
 | `api_key_env` | No | Unset | Environment-variable name containing a Bearer token. Omission sends no Authorization header. |
+| `[headers]` | No | Empty | Extra HTTP headers sent with every request. `Accept` and `Content-Type` are reserved, and `Authorization` is reserved when `api_key_env` is set. |
 | `timeout_ms` | No | `60000` | Inactivity timeout while waiting for headers or consecutive response bytes. |
 | `max_retries` | No | `1` | Retry count for HTTP 408, 429, 5xx, and retryable transport failures. |
 | `[[models]]` | Yes | — | One or more model metadata tables with unique names. |
@@ -61,6 +62,7 @@ To keep the endpoint out of a public repository when using the [Kana Agent reusa
 | `assistant_replay_fields` | No | Unset | Chat Completions only. Non-empty list of streamed assistant delta fields to preserve and replay for the same endpoint and model. |
 | `reasoning_efforts` | No | Unset | Non-empty list of supported reasoning-effort request values. |
 | `default_reasoning_effort` | With `reasoning_efforts` | — | Default value; it must appear in `reasoning_efforts`. |
+| `[models.params]` | No | Unset | Extra top-level request-body fields, such as sampling or cache controls. Fields Kana manages are rejected. |
 
 Reasoning controls are capability metadata rather than a universal provider assumption. Omit both reasoning fields when the model has no selectable control; `/model` then skips that step and requests omit `reasoning_effort`. When configured, Kana sends the selected value as the top-level Chat Completions `reasoning_effort`, or as Responses `reasoning.effort` with an `auto` summary. Use `none`, not `off`, for a disabled level; the TUI presents `none` as `Off`.
 
@@ -79,6 +81,24 @@ assistant_replay_fields = ["reasoning", "reasoning_details"]
 reasoning_efforts = ["none", "low", "high"]
 default_reasoning_effort = "none"
 ```
+
+`[models.params]` passes endpoint-specific options that Kana does not model, such as `temperature`, prompt-cache keys, or gateway routing fields. Values are sent as written and are not validated against the endpoint. Fields Kana manages for the selected protocol cannot be set: for Chat Completions these are `model`, `messages`, `stream`, `stream_options`, `max_tokens`, `max_completion_tokens`, `reasoning_effort`, `tools`, `tool_choice`, and `parallel_tool_calls`; for Responses they are `model`, `instructions`, `input`, `stream`, `store`, `include`, `previous_response_id`, `max_output_tokens`, `reasoning`, `tools`, `tool_choice`, and `parallel_tool_calls`. Use the dedicated model fields for output limits and reasoning.
+
+```toml
+[headers]
+"X-Gateway-Route" = "primary"
+
+[[models]]
+name = "cached-model"
+context_window = 128000
+max_output_tokens = 8192
+
+[models.params]
+temperature = 0.2
+prompt_cache_key = "kana"
+```
+
+Header values are stored in plain TOML, so keep Bearer credentials in `api_key_env`.
 
 `agent.model.context_limit` is a provider-independent preference. The effective Agent limit is the smaller of that configured value and the selected model's `context_window`, so switching from a large built-in model to a smaller Custom model remains valid without provider-specific Agent configuration. `memory.agent.model` follows the same rule for each field it overrides and otherwise inherits `agent.model.context_limit`.
 

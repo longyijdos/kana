@@ -1,17 +1,23 @@
 import { existsSync, readFileSync } from "node:fs";
 import { type Static, Type } from "typebox";
 import type { ModelMetadata, ModelReasoningMetadata } from "@/core";
+import {
+  OPENAI_COMPATIBLE_MANAGED_REQUEST_FIELDS,
+  OPENAI_RESPONSES_MANAGED_REQUEST_FIELDS,
+} from "@/providers";
 import { parseWithSchema, positiveInteger, strictObject } from "@/utils";
 
 export type KanaCustomProviderModel = {
   name: string;
   protocol: "chat-completions" | "responses";
+  params?: Readonly<Record<string, unknown>>;
   metadata: Omit<ModelMetadata, "provider" | "model" | "protocol">;
 };
 
 export type KanaCustomProvider = {
   baseUrl: string;
   apiKeyEnv?: string;
+  headers: Readonly<Record<string, string>>;
   timeoutMs: number;
   maxRetries: number;
   models: readonly KanaCustomProviderModel[];
@@ -33,6 +39,8 @@ const nonEmptyNames = () =>
     errorMessage: "must be a non-empty array of distinct strings",
   });
 
+const TRANSPORT_HEADER_NAMES = new Set(["accept", "content-type"]);
+
 const CUSTOM_MODEL_SCHEMA = strictObject({
   name: trimmedString(),
   protocol: Type.Optional(
@@ -48,6 +56,7 @@ const CUSTOM_MODEL_SCHEMA = strictObject({
   assistant_replay_fields: Type.Optional(nonEmptyNames()),
   reasoning_efforts: Type.Optional(nonEmptyNames()),
   default_reasoning_effort: Type.Optional(trimmedString()),
+  params: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
 });
 
 const CUSTOM_PROVIDER_SCHEMA = strictObject({
@@ -58,6 +67,7 @@ const CUSTOM_PROVIDER_SCHEMA = strictObject({
       errorMessage: "must be a valid environment variable name",
     }),
   ),
+  headers: Type.Optional(Type.Record(Type.String(), Type.String())),
   timeout_ms: Type.Optional(positiveInteger()),
   max_retries: Type.Optional(
     Type.Integer({ minimum: 0, errorMessage: "must be a non-negative integer" }),
@@ -114,6 +124,7 @@ export function parseKanaCustomProvider(rawConfig: unknown): KanaCustomProvider 
   return {
     baseUrl: parseBaseUrl(config.base_url),
     apiKeyEnv: config.api_key_env,
+    headers: parseHeaders(config.headers ?? {}, config.api_key_env !== undefined),
     timeoutMs: config.timeout_ms ?? 60_000,
     maxRetries: config.max_retries ?? 1,
     models,
@@ -144,6 +155,10 @@ export function serializeKanaCustomProviderExample(): string {
     "timeout_ms = 60000",
     "max_retries = 1",
     "",
+    "# Optional headers sent with every request.",
+    "# [headers]",
+    '# "X-Gateway-Route" = "primary"',
+    "",
     "[[models]]",
     'name = "my-model"',
     '# "chat-completions" (default) or "responses".',
@@ -158,6 +173,10 @@ export function serializeKanaCustomProviderExample(): string {
     "# supports_hosted_web_search = true",
     'reasoning_efforts = ["none", "low", "medium", "high"]',
     'default_reasoning_effort = "medium"',
+    "",
+    "# Optional extra top-level request fields; Kana-managed fields are rejected.",
+    "# [models.params]",
+    "# temperature = 0.2",
     "",
   ].join("\n");
 }
@@ -185,10 +204,21 @@ function parseCustomModel(
     );
   }
 
+  const managedParam = Object.keys(model.params ?? {}).find((field) =>
+    (protocol === "responses"
+      ? OPENAI_RESPONSES_MANAGED_REQUEST_FIELDS
+      : OPENAI_COMPATIBLE_MANAGED_REQUEST_FIELDS
+    ).has(field),
+  );
+  if (managedParam !== undefined) {
+    throw new Error(`${path}.params cannot set Kana-managed request field "${managedParam}".`);
+  }
+
   const reasoning = parseReasoning(model, path);
   return {
     name: model.name,
     protocol,
+    ...(model.params ? { params: model.params } : {}),
     metadata: {
       contextWindow: model.context_window,
       maxOutputTokens: model.max_output_tokens,
@@ -229,6 +259,24 @@ function parseReasoning(
     throw new Error(`${path}.default_reasoning_effort must be listed in reasoning_efforts.`);
   }
   return { efforts: efforts as [string, ...string[]], defaultEffort };
+}
+
+function parseHeaders(headers: Record<string, string>, hasApiKey: boolean): Record<string, string> {
+  for (const [name, value] of Object.entries(headers)) {
+    const normalized = name.toLowerCase();
+    if (TRANSPORT_HEADER_NAMES.has(normalized)) {
+      throw new Error(`headers cannot override transport header ${name}.`);
+    }
+    if (hasApiKey && normalized === "authorization") {
+      throw new Error("headers cannot set Authorization when api_key_env is configured.");
+    }
+    try {
+      new Headers([[name, value]]);
+    } catch (error) {
+      throw new Error(`headers contains invalid HTTP header ${name}.`, { cause: error });
+    }
+  }
+  return headers;
 }
 
 function parseBaseUrl(baseUrl: string): string {
