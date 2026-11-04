@@ -21,7 +21,7 @@ Kana 让模型合同保持 provider-neutral，同时由各 adapter 持有自己�
 
 Metadata 表示能力，不是策略。Agent 会先与配置取交集再构造 `ModelContext`：模型即使支持图片、web search 或并行工具，也可能被策略关闭。Context 与输出偏好同样会先按 metadata 上限钳制，再交给 adapter。
 
-`src/providers/index.ts` 是 DeepSeek、OpenAI Codex 与测试 Mock model 的 typed 内置工厂。Kana 的单一 Custom 槽位从已校验产品配置直接构造可复用 OpenAI-compatible model；不支持任意 provider ID 或 runtime 加载 adapter。
+`src/providers/index.ts` 是 DeepSeek、OpenAI Codex 与测试 Mock model 的 typed 内置工厂。Kana 的单一 Custom 槽位按已校验模型的 `protocol` 直接构造可复用的 OpenAI-compatible Chat Completions 或 Responses model；不支持任意 provider ID 或 runtime 加载 adapter。
 
 ## Adapter 分层
 

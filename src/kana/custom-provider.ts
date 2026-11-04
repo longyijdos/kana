@@ -5,6 +5,7 @@ import { parseWithSchema, positiveInteger, strictObject } from "@/utils";
 
 export type KanaCustomProviderModel = {
   name: string;
+  protocol: "chat-completions" | "responses";
   metadata: Omit<ModelMetadata, "provider" | "model" | "protocol">;
 };
 
@@ -34,9 +35,15 @@ const nonEmptyNames = () =>
 
 const CUSTOM_MODEL_SCHEMA = strictObject({
   name: trimmedString(),
+  protocol: Type.Optional(
+    Type.Union([Type.Literal("chat-completions"), Type.Literal("responses")], {
+      errorMessage: "must be chat-completions or responses",
+    }),
+  ),
   context_window: positiveInteger(),
   max_output_tokens: positiveInteger(),
   supports_parallel_tool_calls: Type.Optional(Type.Boolean()),
+  supports_hosted_web_search: Type.Optional(Type.Boolean()),
   supports_image_input: Type.Optional(Type.Boolean()),
   assistant_replay_fields: Type.Optional(nonEmptyNames()),
   reasoning_efforts: Type.Optional(nonEmptyNames()),
@@ -139,11 +146,16 @@ export function serializeKanaCustomProviderExample(): string {
     "",
     "[[models]]",
     'name = "my-model"',
+    '# "chat-completions" (default) or "responses".',
+    'protocol = "chat-completions"',
     "context_window = 128000",
     "max_output_tokens = 8192",
     "supports_parallel_tool_calls = true",
     "supports_image_input = false",
+    "# Chat Completions only:",
     '# assistant_replay_fields = ["reasoning_content"]',
+    "# Responses only:",
+    "# supports_hosted_web_search = true",
     'reasoning_efforts = ["none", "low", "medium", "high"]',
     'default_reasoning_effort = "medium"',
     "",
@@ -157,6 +169,13 @@ function parseCustomModel(
   if (model.max_output_tokens > model.context_window) {
     throw new Error(`${path}.max_output_tokens cannot exceed context_window.`);
   }
+  const protocol = model.protocol ?? "chat-completions";
+  if (protocol === "chat-completions" && model.supports_hosted_web_search !== undefined) {
+    throw new Error(`${path}.supports_hosted_web_search requires protocol "responses".`);
+  }
+  if (protocol === "responses" && model.assistant_replay_fields !== undefined) {
+    throw new Error(`${path}.assistant_replay_fields requires protocol "chat-completions".`);
+  }
   const managedField = model.assistant_replay_fields?.find((field) =>
     ["role", "content", "tool_calls"].includes(field),
   );
@@ -169,11 +188,12 @@ function parseCustomModel(
   const reasoning = parseReasoning(model, path);
   return {
     name: model.name,
+    protocol,
     metadata: {
       contextWindow: model.context_window,
       maxOutputTokens: model.max_output_tokens,
       supportsParallelToolCalls: model.supports_parallel_tool_calls ?? false,
-      supportsHostedWebSearch: false,
+      supportsHostedWebSearch: model.supports_hosted_web_search ?? false,
       supportsImageInput: model.supports_image_input ?? false,
       ...(model.assistant_replay_fields
         ? { assistantReplayFields: model.assistant_replay_fields }

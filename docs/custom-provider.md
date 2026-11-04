@@ -1,6 +1,6 @@
 # Custom OpenAI-compatible provider
 
-Kana exposes one static `custom` provider slot for user-managed OpenAI-compatible models. The slot uses the built-in Chat Completions adapter; it is not a runtime plugin system and does not discover arbitrary provider IDs. Keeping the product provider set closed avoids spreading dynamic-provider handling through Agent, session, memory, and frontend composition while still supporting a local server or hosted compatible endpoint.
+Kana exposes one static `custom` provider slot for user-managed OpenAI-compatible models. Each configured model selects the built-in Chat Completions or Responses adapter; the slot is not a runtime plugin system and does not discover arbitrary provider IDs. Keeping the product provider set closed avoids spreading dynamic-provider handling through Agent, session, memory, and frontend composition while still supporting a local server or hosted compatible endpoint.
 
 ## Install and select
 
@@ -33,7 +33,7 @@ name = "local-model"
 
 | Key | Required | Default | Meaning |
 | --- | --- | --- | --- |
-| `base_url` | Yes | — | Endpoint prefix. Kana appends `/chat/completions`; it commonly ends in `/v1`. |
+| `base_url` | Yes | — | Endpoint prefix. Kana appends `/chat/completions` or `/responses` according to the model protocol; it commonly ends in `/v1`. |
 | `api_key_env` | No | Unset | Environment-variable name containing a Bearer token. Omission sends no Authorization header. |
 | `timeout_ms` | No | `60000` | Inactivity timeout while waiting for headers or consecutive response bytes. |
 | `max_retries` | No | `1` | Retry count for HTTP 408, 429, 5xx, and retryable transport failures. |
@@ -52,15 +52,17 @@ To keep the endpoint out of a public repository when using the [Kana Agent reusa
 | Key | Required | Default | Meaning |
 | --- | --- | --- | --- |
 | `name` | Yes | — | Exact model ID sent in requests and selected from `/model`. |
+| `protocol` | No | `chat-completions` | Wire protocol: `chat-completions` or `responses`. |
 | `context_window` | Yes | — | Positive context-window size used for Agent budgeting. |
 | `max_output_tokens` | Yes | — | Positive per-request output ceiling; cannot exceed `context_window`. |
 | `supports_parallel_tool_calls` | No | `false` | Whether Kana may advertise and execute safe tool calls in parallel. |
-| `supports_image_input` | No | `false` | Whether user and tool images may be sent as Chat Completions image data URLs. When true, Kana also registers `view_image`. |
-| `assistant_replay_fields` | No | Unset | Non-empty list of streamed assistant delta fields to preserve and replay for the same endpoint and model. |
-| `reasoning_efforts` | No | Unset | Non-empty list of request values supported by `reasoning_effort`. |
+| `supports_hosted_web_search` | No | `false` | Responses only. Whether Kana may add the provider-hosted `web_search` tool. |
+| `supports_image_input` | No | `false` | Whether user and tool images may be sent as image data URLs. When true, Kana also registers `view_image`. |
+| `assistant_replay_fields` | No | Unset | Chat Completions only. Non-empty list of streamed assistant delta fields to preserve and replay for the same endpoint and model. |
+| `reasoning_efforts` | No | Unset | Non-empty list of supported reasoning-effort request values. |
 | `default_reasoning_effort` | With `reasoning_efforts` | — | Default value; it must appear in `reasoning_efforts`. |
 
-Reasoning controls are capability metadata rather than a universal provider assumption. Omit both reasoning fields when the model has no selectable control; `/model` then skips that step and requests omit `reasoning_effort`. When configured, Kana sends the selected value as the top-level Chat Completions `reasoning_effort`. Use `none`, not `off`, for a disabled level; the TUI presents `none` as `Off`.
+Reasoning controls are capability metadata rather than a universal provider assumption. Omit both reasoning fields when the model has no selectable control; `/model` then skips that step and requests omit `reasoning_effort`. When configured, Kana sends the selected value as the top-level Chat Completions `reasoning_effort`, or as Responses `reasoning.effort` with an `auto` summary. Use `none`, not `off`, for a disabled level; the TUI presents `none` as `Off`.
 
 Some compatible endpoints require extra fields from a streamed assistant response to be echoed in later assistant history. `assistant_replay_fields` explicitly names those top-level `choice.delta` fields. Kana accumulates their streamed JSON values, stores them as opaque provider state, and replays only fields that came from the same Custom endpoint and model and remain enabled in its configuration. Omit the setting unless the endpoint documents this requirement. `role`, `content`, and `tool_calls` are managed by Kana and cannot be listed.
 
@@ -82,8 +84,12 @@ default_reasoning_effort = "none"
 
 ## Protocol and security boundaries
 
-The slot uses the shared OpenAI-compatible Chat Completions path documented in [Providers](providers.md), including streaming text, reasoning deltas, configured assistant replay fields, local tool calls, usage, image observations, cancellation, inactivity, retries, and safe diagnostics. It rejects redirects so a Bearer credential cannot be forwarded to another origin. Hosted web search remains unsupported.
+Chat Completions models use the shared OpenAI-compatible path documented in [Providers](providers.md), including streaming text, reasoning deltas, configured assistant replay fields, local tool calls, usage, image observations, cancellation, inactivity, retries, and safe diagnostics. Hosted web search is unavailable on this protocol.
+
+Responses models use the same transport, authentication, and diagnostics with the shared semantic Responses processor, so reasoning, text, function calls, and hosted `web_search_call` items stream as ordinary Kana content. Requests set `store: false` and send function tools with `strict: false`. Completed output items are replayed without item IDs and only for the same Custom endpoint and model; other history falls back to visible text and local function calls. When reasoning controls are configured, Kana also requests `reasoning.encrypted_content` so reasoning can be replayed statelessly, so configure them for reasoning models. Kana adds `web_search` only when the model sets `supports_hosted_web_search` and the Agent's `web_search` policy allows it.
+
+Both adapters reject redirects so a Bearer credential cannot be forwarded to another origin.
 
 `base_url` accepts HTTP and HTTPS, but HTTPS is required to protect credentials across an untrusted network. Credentials in URLs, query strings, and fragments are rejected, as are unknown fields and invalid model metadata.
 
-The current slot supports only OpenAI-compatible Chat Completions. Custom Responses, Anthropic Messages, arbitrary JavaScript or TypeScript adapters, dynamic provider IDs, and TOML-defined wire protocols remain out of scope.
+The slot supports only OpenAI-compatible Chat Completions and Responses. Anthropic Messages, arbitrary JavaScript or TypeScript adapters, dynamic provider IDs, and TOML-defined wire protocols remain out of scope.

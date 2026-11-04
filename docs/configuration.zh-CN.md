@@ -250,7 +250,7 @@ export DEEPSEEK_API_KEY='sk-...'
 
 | 键 | 类型与可选值 | 默认值 | 含义 |
 | --- | --- | --- | --- |
-| `agent.web_search` / `memory.agent.web_search` | 布尔值 | `true` / `false` | 仅在所选模型 metadata 也支持时允许托管搜索；Custom 模型目前不声明托管搜索能力。 |
+| `agent.web_search` / `memory.agent.web_search` | 布尔值 | `true` / `false` | 仅在所选模型 metadata 也支持时允许托管搜索；Custom 模型在 Responses 协议下通过 `supports_hosted_web_search` 声明。 |
 | `agent.image_input` / `memory.agent.image_input` | 布尔值 | `true` / `false` | 仅在 metadata 支持图片时允许已持久化的用户/工具图片并注册 `view_image`；禁用或不支持时，图片仍保留，但模型输入使用省略标记。 |
 | `agent.model.provider` | `deepseek`、`openai-codex`、`custom` | `deepseek` | 为对话 Agent 选择的 provider。 |
 | `agent.model.name` | Provider 模型名 | `deepseek-flash` | 对话模型；内置模型名按 provider metadata 校验。 |
