@@ -539,6 +539,11 @@ describe("ContextManager model projection", () => {
     expect(limited.startsWith("A")).toBe(true);
     expect(limited.endsWith("Z")).toBe(true);
     expect(limited).toContain("[Tool output truncated for model context]");
+
+    const fork = manager.fork();
+    expect(fork.maxToolContentTokens).toBe(expected);
+    expect(fork.maxToolContentBytes).toBe(expected * 3);
+    expect(fork.limitToolContent(content)).toBe(limited);
   });
 
   test("estimates user and tool image patches without counting persisted base64 bytes", () => {

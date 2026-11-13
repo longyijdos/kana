@@ -163,6 +163,7 @@ export class ContextManager {
     const manager = new ContextManager({
       contextLimit: this.contextLimit,
       maxOutputTokens: this.maxOutputTokens,
+      maxToolContentTokens: this.maxToolContentTokens,
       compactPolicy: this.compactPolicy,
       checkpoint: this.checkpointData,
       compactAtRatio: this.triggerTokens / this.promptBudget,
