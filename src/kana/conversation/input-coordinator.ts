@@ -153,6 +153,12 @@ export class ConversationInputCoordinator {
       this.queueWakeEvent(event);
     });
     this.unsubscribeWakeState = this.wakeScheduler.subscribeState(() => {
+      const activeIds = new Set(this.wakeScheduler.list(this.sessionId).map((wake) => wake.id));
+      for (const id of this.repeatingDeliveries.keys()) {
+        if (!activeIds.has(id)) {
+          this.repeatingDeliveries.delete(id);
+        }
+      }
       this.emitQueueChanged();
     });
   }
@@ -337,7 +343,6 @@ export class ConversationInputCoordinator {
 
     const event = this.wakeScheduler.list(this.sessionId).find((wake) => wake.id === id);
     if (event && this.wakeScheduler.cancel(event.id)) {
-      this.repeatingDeliveries.delete(event.id);
       this.options.getLogger().info("conversation.scheduled_input_cancelled", { state: "future" });
       return "future";
     }
