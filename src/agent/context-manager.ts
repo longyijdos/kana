@@ -68,6 +68,7 @@ export type CompactPolicy = (
 export type ContextManagerConfig = {
   contextLimit: number;
   maxOutputTokens: number;
+  maxToolContentTokens?: number;
   compactPolicy?: CompactPolicy;
   checkpoint?: ContextCheckpoint;
   compactAtRatio?: number;
@@ -141,7 +142,7 @@ export class ContextManager {
       Math.floor(this.targetTokens * 0.5),
     );
     this.maxToolContentTokens = Math.min(
-      DEFAULT_MAX_TOOL_CONTENT_TOKENS,
+      config.maxToolContentTokens ?? DEFAULT_MAX_TOOL_CONTENT_TOKENS,
       Math.max(256, Math.floor(promptBudget * 0.25)),
     );
     this.maxToolContentBytes = this.maxToolContentTokens * 3;

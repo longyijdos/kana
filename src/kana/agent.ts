@@ -335,6 +335,7 @@ export function createKanaAgent(
     context: {
       contextLimit: runtime.contextLimit,
       maxOutputTokens: runtime.maxOutputTokens,
+      maxToolContentTokens: config.maxToolContentTokens,
       compactPolicy: createModelCompactPolicy(model, {
         imageInputEnabled: runtime.imageInput,
       }),

@@ -169,6 +169,7 @@ tool_deadline_ms = 300000
 parallel_tool_calls = true
 max_parallel_tool_calls = 4
 tool_result_artifacts = true
+max_tool_content_tokens = 8000
 
 [agent.model]
 provider = "deepseek"
@@ -273,6 +274,7 @@ For Custom, `config.toml` uses the same Agent model shape as built-ins: set `pro
 | `agent.parallel_tool_calls` | Boolean | `true` | Whether the model may propose and actually execute safe tool calls concurrently; always disabled when selected-model metadata does not support it. |
 | `agent.max_parallel_tool_calls` | Positive integer | `4` | Maximum concurrently executing tool bodies within one adjacent parallel-safe group. |
 | `agent.tool_result_artifacts` | Boolean | `true` | Save oversized non-`read` text results as private session artifacts and give the model a bounded retrievable preview. |
+| `agent.max_tool_content_tokens` | Positive integer | `8000` | Per-result estimated-token cap for conversation Agents and subagents, shared by artifact previews and final truncation. The effective budget is `min(configured cap, max(256, floor(promptBudget × 25%)))`; each estimated token allows three UTF-8 bytes. |
 | `agent.background_jobs.max_concurrent` | Positive integer | `4` | Maximum active Background Jobs owned by one session instance. Retained terminal Jobs do not count toward the limit. |
 | `agent.subagents.max_live` | Positive integer | `4` | Maximum running subagents owned by one session instance. Retained terminal children do not count toward the limit. |
 | `agent.repeated_tool_calls.reminder_thresholds` | Strictly increasing integer array; every value is at least 2 | `[3,5,8]` | Consecutive exact-call counts at which the Agent adds escalating advisory context. An empty array disables the policy. |

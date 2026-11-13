@@ -169,6 +169,7 @@ tool_deadline_ms = 300000
 parallel_tool_calls = true
 max_parallel_tool_calls = 4
 tool_result_artifacts = true
+max_tool_content_tokens = 8000
 
 [agent.model]
 provider = "deepseek"
@@ -273,6 +274,7 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 | `agent.parallel_tool_calls` | 布尔值 | `true` | 是否允许模型提出并实际并发执行安全的工具调用；所选模型 metadata 不支持时始终关闭。 |
 | `agent.max_parallel_tool_calls` | 正整数 | `4` | 一个相邻并行安全组内可同时执行的工具调用 body 上限。 |
 | `agent.tool_result_artifacts` | 布尔值 | `true` | 将超大的非 `read` 文本结果保存为私有 session artifact，并给模型提供有界、可取回的预览。 |
+| `agent.max_tool_content_tokens` | 正整数 | `8000` | 对话 Agent 和子代理的单条结果估算 token 上限，artifact 预览与最终截断共用。有效预算为 `min(配置上限, max(256, floor(promptBudget × 25%)))`；每个估算 token 对应三个 UTF-8 字节。 |
 | `agent.background_jobs.max_concurrent` | 正整数 | `4` | 单个 session 实例最多拥有的活动 Background Job 数；已保留的终态 Job 不计入上限。 |
 | `agent.subagents.max_live` | 正整数 | `4` | 单个 session 实例最多拥有的运行中 subagent 数；已保留的终态 child 不计入上限。 |
 | `agent.repeated_tool_calls.reminder_thresholds` | 严格递增且每项不小于 2 的整数数组 | `[3,5,8]` | 连续精确重复达到哪些次数时，Agent 插入逐级增强的建议上下文；空数组关闭策略。 |

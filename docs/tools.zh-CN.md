@@ -96,10 +96,10 @@ Run abort、工具 deadline 或内部 scheduler 失败会立即停止 pool 补�
 Kana 将每条新模型可见工具结果限制为：
 
 ```text
-min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
+min(agent.max_tool_content_tokens, max(256, floor(promptBudget × 25%))) estimated tokens
 ```
 
-最终字节保护按每个估算 token 三个 UTF-8 字节计算。启用 `tool_result_artifacts` 后，过大的非 `read` 文本会先完整保存，再构建大约 70% head / 30% tail 的有界预览；取回 notice、精确省略字节数和 locator 也必须进入同一上限。顶层 `read` 只做有界输出，不递归创建 artifact，并说明分页无法拆分单个超长行。
+`agent.max_tool_content_tokens` 默认为 8000，适用于对话 Agent 和子代理；记忆整理保留默认上限。最终字节保护按每个估算 token 三个 UTF-8 字节计算。启用 `tool_result_artifacts` 后，过大的非 `read` 文本会先完整保存，再构建大约 70% head / 30% tail 的有界预览；取回 notice、精确省略字节数和 locator 也必须进入同一上限。顶层 `read` 只做有界输出，不递归创建 artifact，并说明分页无法拆分单个超长行。
 
 实时 result 仍可通过 `tool_execution_end` 获得。ToolRuntime 将能复制且能 JSON 序列化、序列化后 UTF-8 大小不超过 128 KiB（131072 字节）的 result 完整保存在持久消息中。超限或无法序列化的 result 会整份省略；自定义策略也可显式关闭保存。这个持久化上限独立于模型上下文预算、content 上限和 artifact 创建，不截断实时 result。模型只收到 content 与 images，不收到保存的 result。恢复后的 TUI 历史和子代理查看面板依次选择 `result`、`artifact`、`content`。保留 result 时，实时与恢复后的界面使用相同结果；result 被省略时，artifact 提供已存储输出摘要。Artifact 存储路径、权限、审计、fork 与清理归[会话与记忆](sessions-and-memory.zh-CN.md)所有。
 

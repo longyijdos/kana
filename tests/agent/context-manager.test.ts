@@ -519,17 +519,23 @@ describe("ContextManager model projection", () => {
     );
   });
 
-  test("bounds model-visible tool content while retaining the structured result elsewhere", () => {
+  test.each([
+    [undefined, 8_000],
+    [16_000, 16_000],
+    [40_000, 30_400],
+    [1_000, 1_000],
+  ])("bounds tool content with configured cap %s and effective budget %s", (cap, expected) => {
     const manager = new ContextManager({
       contextLimit: 128_000,
       maxOutputTokens: 8_192,
+      maxToolContentTokens: cap,
     });
-    const content = `${"A".repeat(48_000)}${"Z".repeat(12_000)}`;
-
+    const content = `${"A".repeat(120_000)}${"Z".repeat(30_000)}`;
     const limited = manager.limitToolContent(content);
 
-    expect(manager.maxToolContentTokens).toBe(8_000);
+    expect(manager.maxToolContentTokens).toBe(expected);
     expect(estimateTextTokens(limited)).toBeLessThanOrEqual(manager.maxToolContentTokens);
+    expect(manager.maxToolContentBytes).toBe(expected * 3);
     expect(limited.startsWith("A")).toBe(true);
     expect(limited.endsWith("Z")).toBe(true);
     expect(limited).toContain("[Tool output truncated for model context]");

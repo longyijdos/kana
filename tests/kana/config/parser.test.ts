@@ -31,6 +31,7 @@ const invalidScalarConfigs: InvalidConfigCase[] = [
     invalidPositiveIntegerConfig("agent", "tool_deadline_ms", value),
     invalidPositiveIntegerConfig("agent", "goal_max_rounds", value),
     invalidPositiveIntegerConfig("agent", "max_parallel_tool_calls", value),
+    invalidPositiveIntegerConfig("agent", "max_tool_content_tokens", value),
     invalidPositiveIntegerConfig("agent.background_jobs", "max_concurrent", value),
     invalidPositiveIntegerConfig("agent.subagents", "max_live", value),
   ]),
@@ -71,6 +72,7 @@ describe("Kana config parser", () => {
         "parallel_tool_calls = false",
         "max_parallel_tool_calls = 2",
         "tool_result_artifacts = false",
+        "max_tool_content_tokens = 16000",
         "",
         "[agent.model]",
         'provider = "deepseek"',
@@ -153,6 +155,7 @@ describe("Kana config parser", () => {
           contextLimit: 200000,
         },
         toolResultArtifacts: false,
+        maxToolContentTokens: 16_000,
         backgroundJobs: {
           maxConcurrent: 6,
         },

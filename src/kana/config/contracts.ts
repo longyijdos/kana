@@ -60,6 +60,7 @@ export type KanaAgentConfig = KanaAgentRuntimeConfig & {
   readonly tools: readonly KanaConfigurableBuiltInToolName[];
   readonly goalMaxRounds: number;
   readonly toolResultArtifacts: boolean;
+  readonly maxToolContentTokens: number;
   readonly backgroundJobs: KanaBackgroundJobsConfig;
   readonly subagents: KanaSubagentsConfig;
   readonly repeatedToolCalls: KanaRepeatedToolCallsConfig;

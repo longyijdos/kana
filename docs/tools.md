@@ -96,10 +96,10 @@ The reusable repeated-call policy keys calls by tool name plus deeply canonicali
 Kana caps every new model-visible tool result at:
 
 ```text
-min(8000, max(256, floor(promptBudget × 25%))) estimated tokens
+min(agent.max_tool_content_tokens, max(256, floor(promptBudget × 25%))) estimated tokens
 ```
 
-The final byte guard uses three UTF-8 bytes per estimated token. With `tool_result_artifacts` enabled, oversized non-`read` text is saved completely before a bounded roughly 70% head / 30% tail preview is built. The retrieval notice, exact omitted-byte count, and locator fit inside the same guard. Top-level `read` is bounded without recursively creating another artifact and explains that pagination cannot split one very long line.
+`agent.max_tool_content_tokens` defaults to 8000 and applies to conversation Agents and subagents; memory consolidation keeps the default cap. The final byte guard uses three UTF-8 bytes per estimated token. With `tool_result_artifacts` enabled, oversized non-`read` text is saved completely before a bounded roughly 70% head / 30% tail preview is built. The retrieval notice, exact omitted-byte count, and locator fit inside the same guard. Top-level `read` is bounded without recursively creating another artifact and explains that pagination cannot split one very long line.
 
 The live result remains available to `tool_execution_end`. ToolRuntime saves a cloneable, JSON-serializable result completely in durable messages when its serialized UTF-8 size is at most 128 KiB (131072 bytes). Oversized or non-serializable results are omitted as a whole; a custom policy may also explicitly disable retention. This persistence limit is independent of model-context budgets, content limits, and artifact creation; it does not truncate the live result. The model receives content and images, not this stored result. Restored TUI history and subagent inspection prefer `result`, then `artifact`, then `content`. When result is retained, live and restored views use the same result; when result was omitted, an artifact provides the stored-output summary. Artifact storage paths, permissions, audit, fork, and cleanup belong to [Sessions and memory](sessions-and-memory.md).
 

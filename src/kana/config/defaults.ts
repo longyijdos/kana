@@ -37,6 +37,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
       contextLimit: undefined,
     },
     toolResultArtifacts: true,
+    maxToolContentTokens: 8_000,
     backgroundJobs: {
       maxConcurrent: 4,
     },

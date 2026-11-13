@@ -79,6 +79,7 @@ describe("Kana config persistence", () => {
     expect(installedConfigExample).toContain("parallel_tool_calls = true");
     expect(installedConfigExample).toContain("max_parallel_tool_calls = 4");
     expect(installedConfigExample).toContain("tool_result_artifacts = true");
+    expect(installedConfigExample).toContain("max_tool_content_tokens = 8000");
     expect(installedConfigExample).toContain("[agent.background_jobs]");
     expect(installedConfigExample).toContain("[agent.repeated_tool_calls]");
     expect(installedConfigExample).toContain("reminder_thresholds = [3,5,8]");

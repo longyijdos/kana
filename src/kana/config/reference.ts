@@ -26,6 +26,7 @@ export function serializeKanaConfigExample(config: KanaConfig): string {
     `parallel_tool_calls = ${config.agent.parallelToolCalls}`,
     `max_parallel_tool_calls = ${config.agent.maxParallelToolCalls}`,
     `tool_result_artifacts = ${config.agent.toolResultArtifacts}`,
+    `max_tool_content_tokens = ${config.agent.maxToolContentTokens}`,
     "",
     "[agent.model]",
     ...serializeModelConfig(config.agent.model, {

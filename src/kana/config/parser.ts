@@ -70,6 +70,7 @@ const KANA_CONFIG_FILE_SCHEMA = table({
     ...agentRuntimeFields(),
     goal_max_rounds: positiveInteger(),
     tool_result_artifacts: Type.Boolean(),
+    max_tool_content_tokens: positiveInteger(),
     model: modelTable(),
     background_jobs: table({ max_concurrent: positiveInteger() }),
     subagents: table({ max_live: positiveInteger() }),
