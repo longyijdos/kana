@@ -1,3 +1,25 @@
+## [0.15.0](https://github.com/longyijdos/kana/compare/v0.14.0...v0.15.0) (2026-11-13)
+
+Kana v0.15.0 adds the Responses protocol and endpoint-specific request options to Custom providers, brings repeating reminder controls to Agent tools and the TUI, and lets subagents save oversized tool output as retrievable artifacts. Tool-output context budgets are now configurable. Schedule cancellation only stops future timer triggers; read the upgrade notes if you use the HTTP API.
+
+### Features
+
+- Select `protocol = "responses"` per Custom model to use an OpenAI-compatible Responses endpoint, including streaming reasoning, text, tool calls, and optional provider-hosted web search. Existing models default to Chat Completions. Configure extra provider headers with `[headers]` and endpoint-specific request fields with `[models.params]`; Kana-managed fields remain reserved.
+- Create repeating reminders with `schedule_wake` using `repeat: true`, inspect active timers with `list_wakes`, and stop future triggers with `cancel_wake`. The TUI's `/schedule` manager can create one-shot or repeating reminders and shows repeat intervals. Timers remain process-local and are lost when Kana exits.
+- Save oversized subagent tool output as private, retrievable text artifacts, with child-scoped storage and cleanup tied to the parent session. Subagents no longer have to rely only on a truncated output preview.
+- Set `agent.max_tool_content_tokens` to control the per-result estimated-token cap for conversation Agents and subagents. It defaults to 8000 and applies to both artifact previews and final truncation, subject to the available prompt budget.
+
+### Bug Fixes
+
+- Preserve the effective tool-content budget when forking a context manager.
+- Remove stale repeating-reminder delivery records when timers are cancelled through any entry point or replaced by the same key, without retracting queued messages.
+
+### Upgrade Notes
+
+- Schedule management now covers active timers only, not pending input. `POST /v1/schedules/:id/cancel` stops future triggers without retracting already queued messages; an expired one-shot timer or a delivered message ID returns 404. Clients must not treat schedule cancellation as pending-input cancellation.
+- If you explicitly configure `agent.tools`, add `list_wakes` and `cancel_wake` to expose the new reminder-management tools. The default tool selection includes both.
+- Upgrade the pinned Bun toolchain to 1.4.4 for source development and builds; release binaries embed the updated runtime.
+
 ## [0.14.0](https://github.com/longyijdos/kana/compare/v0.13.0...v0.14.0) (2026-10-25)
 
 Kana v0.14.0 lets remote clients start Goals and manage scheduled messages, including messages that repeat at a fixed interval. It makes persistent sessions single-writer across processes, adds a Claude Code target for Skills sync, and simplifies the codebase around validated, immutable data. Cancellation is now spelled `cancelled` everywhere; read the upgrade notes before updating.

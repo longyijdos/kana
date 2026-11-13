@@ -95,9 +95,9 @@ export class WelcomeBlock implements Component {
       ...(savedSessionsAvailable ? [muted("  ... /resume for more")] : []),
       "",
       title("Highlights"),
-      text("  Remote Goals and schedules"),
-      text("  Single-writer sessions"),
-      text("  Skills sync for Claude Code"),
+      text("  Custom Responses API"),
+      text("  Repeating wake controls"),
+      text("  Subagent output artifacts"),
       muted("  ... /help for more"),
     ];
 
