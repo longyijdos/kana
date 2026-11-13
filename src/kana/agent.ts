@@ -42,7 +42,9 @@ import type {
 import type { KanaTodoItem, KanaTodoStateChange } from "./todo";
 import {
   createCancelSubagentTool,
+  createCancelWakeTool,
   createDelegateUserTaskTool,
+  createListWakesTool,
   createMcpTools,
   createRememberTool,
   createScheduleWakeTool,
@@ -269,6 +271,14 @@ export function createKanaAgent(
       name: "scheduled-wake",
       tools: selectEnabledTools([
         createScheduleWakeTool({
+          scheduler: options.wakeScheduler,
+          sessionId: options.sessionId,
+        }),
+        createListWakesTool({
+          scheduler: options.wakeScheduler,
+          sessionId: options.sessionId,
+        }),
+        createCancelWakeTool({
           scheduler: options.wakeScheduler,
           sessionId: options.sessionId,
         }),

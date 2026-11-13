@@ -295,6 +295,8 @@ describe("Kana Agent tools", () => {
         "shell",
         "todo_write",
         "schedule_wake",
+        "list_wakes",
+        "cancel_wake",
       ]);
       expect(agent.state.tools.some((tool) => tool.name === "job_start")).toBe(false);
     } finally {
@@ -312,6 +314,8 @@ describe("Kana Agent tools", () => {
         "todo_write",
         "remember",
         "schedule_wake",
+        "list_wakes",
+        "cancel_wake",
         "spawn_subagent",
         "mcp_list_tools",
         "mcp_call",

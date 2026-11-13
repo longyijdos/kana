@@ -143,7 +143,9 @@ Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回
 | `todo_write` | 完整 todo item 数组 | 原子替换或显式清空 session todo 状态。 |
 | `delegate_user_task` | 具体的 `task` 文本 | 邀请用户并行处理任务；接受后创建进程内任务 ID。 |
 | `remember` | `content`；可选 scope/title/reason | 记忆启用时追加长期记忆暂存记录。 |
-| `schedule_wake` | `afterMinutes`、`message`、可选 `key` | 为活动 session 创建进程内未来输入。 |
+| `schedule_wake` | `afterMinutes`、`message`、可选 `key`、`repeat` | 为活动 session 创建进程内一次性或周期提醒定时器。 |
+| `list_wakes` | 无 | 列出当前 session 的活动提醒定时器，不包含排队消息。 |
+| `cancel_wake` | `id` | 取消当前 session 的定时器，不撤回已排队消息。 |
 | `update_goal` | `status`、可选 `detail` | 把已授权活动 Goal 结束为 completed 或 blocked。 |
 | `mcp_list_tools` | Server `name`；可选 `offset`、`limit` | 从已启用 MCP server 的缓存目录列出工具名称和描述。 |
 | `mcp_get_tool` | `server`、`tool` | 读取远端工具缓存的 input schema 与可选 output schema。 |
@@ -173,7 +175,9 @@ Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回
 | `todo_write` | `{ status: "updated" \| "cleared" }` |
 | `delegate_user_task` | `{ status: "accepted", taskId }` |
 | `remember` | `{ id, scope }` |
-| `schedule_wake` | `{ id, dueAt }` |
+| `schedule_wake` | `{ id, dueAt, everyMinutes? }` |
+| `list_wakes` | `{ wakes: [{ id, dueAt, message, origin, key?, everyMinutes? }] }` |
+| `cancel_wake` | `{ cancelled: boolean }` |
 | `update_goal` | `{ status: "completed" \| "blocked" }` |
 | `mcp_list_tools` | `{ tools, nextOffset? }`；每个工具包含 `{ name, description }`。 |
 | `mcp_get_tool` | `{ inputSchema, outputSchema? }` |
@@ -213,9 +217,9 @@ Subagent 启动时选择预定义角色卡并返回稳定 child ID；等待和�
 
 `remember` 向 project 或 global daily memory 追加结构化记录，不直接编辑长期 `memory.md`；合并与保留归[会话与记忆](sessions-and-memory.zh-CN.md)所有。
 
-`schedule_wake` 校验 1–1440 分钟延迟和有界非空消息，再通过 Host 进程内 wake 边界安排。它与 `update_goal` 只在产品装配提供所需 runtime capability 时可用。投递与 Goal admission 归[对话运行时](conversation-runtime.zh-CN.md)所有。
+`schedule_wake` 校验 1–1440 分钟延迟和有界非空消息，再通过 Host 进程内 wake 边界安排。可选 `repeat: true` 按该间隔重复直到取消，省略时创建一次性定时器。`list_wakes` 只列出当前 session 的活动定时器；`cancel_wake` 通过稳定计划 ID 停止定时器，不影响已送达或排队的消息。这些工具与 `update_goal` 只在产品装配提供所需 runtime capability 时可用。投递与 Goal admission 归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`update_goal`、`mcp_list_tools` 或 `mcp_get_tool` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Shell 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`shell` 与 `job_start` 共用同一份 Shell allowlist，包括精确命令信任、只读命令识别和持久化的“Always allow this command”选项。审批是交互授权，不是文件系统或进程隔离。
+Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`list_wakes`、`cancel_wake`、`update_goal`、`mcp_list_tools` 或 `mcp_get_tool` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Shell 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`shell` 与 `job_start` 共用同一份 Shell allowlist，包括精确命令信任、只读命令识别和持久化的“Always allow this command”选项。审批是交互授权，不是文件系统或进程隔离。
 
 ## MCP 与自定义工具
 

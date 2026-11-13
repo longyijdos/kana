@@ -41,10 +41,12 @@ describe("scheduled message manager controller", () => {
 
     harness.press("A");
     harness.press("\r");
+    harness.press("\r");
     harness.press("Check the build");
     harness.press("\r");
 
     harness.press("A");
+    harness.press("\r");
     for (let index = 0; index < 4; index += 1) {
       harness.press("\x1b[B");
     }
@@ -55,8 +57,8 @@ describe("scheduled message manager controller", () => {
     harness.press("\r");
 
     expect(harness.scheduled).toEqual([
-      { afterMinutes: 5, message: "Check the build" },
-      { afterMinutes: 120, message: "Review the result" },
+      { afterMinutes: 5, message: "Check the build", repeat: false },
+      { afterMinutes: 120, message: "Review the result", repeat: false },
     ]);
     expect(harness.renderFocus()).toContain("Check the build");
     expect(harness.renderFocus()).toContain("Review the result");
@@ -70,6 +72,7 @@ describe("scheduled message manager controller", () => {
 
     harness.press("A");
     harness.press("\r");
+    harness.press("\r");
     harness.press(`\x1b[200~${pastedText}\x1b[201~`);
 
     expect(harness.renderFocus()).not.toContain("[Pasted");
@@ -77,7 +80,52 @@ describe("scheduled message manager controller", () => {
     harness.press("\x7f");
     harness.press("\r");
 
-    expect(harness.scheduled).toEqual([{ afterMinutes: 5, message: "x".repeat(999) }]);
+    expect(harness.scheduled).toEqual([
+      { afterMinutes: 5, message: "x".repeat(999), repeat: false },
+    ]);
+  });
+
+  test("creates a repeating timer and keeps its interval when navigating back", () => {
+    const harness = createHarness();
+    harness.controller.open();
+    harness.press("A");
+    harness.press("\x1b[B");
+    harness.press("\r");
+    expect(harness.renderFocus()).toContain("Repeat every");
+    harness.press("\r");
+    harness.press("\x1b");
+    expect(harness.renderFocus()).toContain("Repeat every");
+    harness.press("\r");
+    harness.press("Check progress");
+    harness.press("\r");
+    expect(harness.scheduled).toEqual([
+      { afterMinutes: 5, message: "Check progress", repeat: true },
+    ]);
+    expect(harness.renderFocus()).toContain("every 5m");
+    harness.press("D");
+    expect(harness.renderFocus()).toContain("Repeats every 5 minutes");
+    expect(harness.renderFocus()).toContain("Already queued messages are unaffected.");
+    harness.press("\x1b[B");
+    harness.press("\r");
+    expect(harness.queue.scheduled).toEqual([]);
+  });
+
+  test("does not show an expired timer's pending message", () => {
+    const harness = createHarness([wake("timer", "Timer", "agent", 5)]);
+    harness.queue.pending.push({
+      id: readMessageId("delivered"),
+      kind: "scheduled",
+      content: "Queued reminder",
+      dueAt: new Date(),
+      origin: "agent",
+    });
+    harness.controller.open();
+    expect(harness.renderFocus()).toContain("Timer");
+    expect(harness.renderFocus()).not.toContain("Queued reminder");
+    harness.queue.scheduled = [];
+    harness.press("R");
+    expect(harness.renderFocus()).toContain("No scheduled messages");
+    expect(harness.queue.pending).toHaveLength(1);
   });
 
   test("handles a stale delete by stable ID and clears its warning on manual refresh", () => {
@@ -121,7 +169,7 @@ function createHarness(initial: WakeEvent[] = [], options: HarnessOptions = {}) 
     pending: [],
     scheduled: initial.map(cloneWake),
   };
-  const scheduled: Array<{ afterMinutes: number; message: string }> = [];
+  const scheduled: Array<{ afterMinutes: number; message: string; repeat: boolean }> = [];
   const cancelled: string[] = [];
   const errors: unknown[] = [];
   let loads = 0;
@@ -131,14 +179,17 @@ function createHarness(initial: WakeEvent[] = [], options: HarnessOptions = {}) 
     editor,
     bottomArea: new BottomAreaController({ layout, tui, fallback: editor }),
     tui,
-    getQueue: () => {
+    getSchedules: () => {
       loads += 1;
-      return structuredClone(queue);
+      return structuredClone(queue.scheduled);
     },
-    schedule: (afterMinutes, message) => {
-      scheduled.push({ afterMinutes, message });
+    schedule: (afterMinutes, message, { repeat }) => {
+      scheduled.push({ afterMinutes, message, repeat });
       nextId += 1;
-      const event = wake(`manual-${nextId}`, message, "user", afterMinutes);
+      const event = {
+        ...wake(`manual-${nextId}`, message, "user", afterMinutes),
+        ...(repeat ? { everyMinutes: afterMinutes } : {}),
+      };
       queue.scheduled.push(event);
       queue.scheduled.sort((left, right) => left.dueAt.getTime() - right.dueAt.getTime());
       return cloneWake(event);

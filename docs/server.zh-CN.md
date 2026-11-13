@@ -36,7 +36,7 @@ JSON 成功响应为 `{schema_version: 1, data: ...}`；错误为 `{schema_versi
 | POST /v1/goal | `{session_id, objective}` | runtime 空闲时启动 Goal；202，含 `goal` |
 | POST /v1/goal/cancel | `{session_id}` | 停止 Goal 续跑；`{cancelled: true}` |
 | POST /v1/schedules | `{session_id, message, after_minutes, repeat?}` | 定时发送用户消息；201，含 `scheduled` |
-| POST /v1/schedules/:id/cancel | `{session_id}` | 取消定时消息；`cancelled` 为 `future` 或 `pending` |
+| POST /v1/schedules/:id/cancel | `{session_id}` | 取消定时器；`cancelled` 为 `future` |
 | GET /v1/approvals | — | 待审批请求 |
 | POST /v1/approvals/:id | `{session_id, decision}` | 完成审批；`{resolved: true}` |
 
@@ -46,7 +46,7 @@ JSON 成功响应为 `{schema_version: 1, data: ...}`；错误为 `{schema_versi
 
 Goal 与 TUI 的 `/goal` 相同，按顺序执行多轮，直到配置的上限。启动要求 runtime 空闲。取消只停止后续轮次，不中断当前轮；abort 也会取消 Goal。没有活跃 Goal 时返回 404。
 
-定时消息在 `after_minutes`（1 至 1440）分钟后送达，内容为 1 至 4000 个字符，以 origin 为 `user` 的 `scheduled_input` 进入对话。`repeat: true` 时，从上一次计划时间起每隔 `after_minutes` 重复，直到取消。计划 ID 保持不变，每次送达使用新的消息 ID；上一次送达仍在排队时跳过本次。取消计划 ID 会停止后续送达（`future`）；取消已送达的消息 ID 会将其移出队列（`pending`）。当前 session 的任何唤醒都可取消，包括 Agent 设定的。重复计划在 `input_queue.scheduled` 中带有 `everyMinutes`。与所有唤醒一样，定时消息只存在于进程内，重启后丢失。
+定时消息在 `after_minutes`（1 至 1440）分钟后送达，内容为 1 至 4000 个字符，以 origin 为 `user` 的 `scheduled_input` 进入对话。`repeat: true` 时，从上一次计划时间起每隔 `after_minutes` 重复，直到取消。计划 ID 保持不变，每次送达使用新的消息 ID；上一次送达仍在排队时跳过本次。取消计划 ID 会停止后续触发（`future`），但不会撤回已排队消息。已到期的一次性定时器或已投递消息 ID 返回 404。当前 session 的任何唤醒都可取消，包括 Agent 设定的。重复计划在 `input_queue.scheduled` 中带有 `everyMinutes`。与所有唤醒一样，定时消息只存在于进程内，重启后丢失。
 
 ## 审批
 

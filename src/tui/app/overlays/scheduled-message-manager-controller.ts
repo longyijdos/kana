@@ -1,8 +1,4 @@
-import type {
-  ConversationInputQueueSnapshot,
-  ConversationScheduledInputCancellation,
-  WakeEvent,
-} from "@/kana";
+import type { ConversationScheduledInputCancellation, WakeEvent } from "@/kana";
 import {
   ChoicePrompt,
   type Editor,
@@ -21,8 +17,12 @@ export type ScheduledMessageManagerControllerOptions = {
   editor: Editor;
   bottomArea: BottomAreaController;
   tui: Tui;
-  getQueue: () => ConversationInputQueueSnapshot;
-  schedule: (afterMinutes: number, message: string) => WakeEvent;
+  getSchedules: () => readonly WakeEvent[];
+  schedule: (
+    afterMinutes: number,
+    message: string,
+    options: { readonly repeat: boolean },
+  ) => WakeEvent;
   cancel: (id: string) => ConversationScheduledInputCancellation;
   showError: (error: unknown) => void;
   collapseLongPastes?: boolean;
@@ -47,8 +47,6 @@ export class ScheduledMessageManagerController {
     this.options.editor.clear();
     const manager = new ScheduledMessageManager((action) => this.handleAction(action));
 
-    // Activate the queued-run gate before reading the initial snapshot. Any
-    // wake that expires afterward remains cancellable in the pending queue.
     this.manager = manager;
     this.refresh();
     this.show(manager);
@@ -72,7 +70,7 @@ export class ScheduledMessageManagerController {
   private handleAction(action: ScheduledMessageManagerAction): void {
     switch (action.type) {
       case "add":
-        this.showDelayChoices();
+        this.showFrequencyChoices();
         break;
       case "delete":
         this.showDeleteConfirmation(action.item);
@@ -86,9 +84,23 @@ export class ScheduledMessageManagerController {
     }
   }
 
-  private showDelayChoices(defaultValue: ScheduleDelayChoice = "5m"): void {
+  private showFrequencyChoices(repeat = false): void {
+    const prompt = new ChoicePrompt<"once" | "repeat">({
+      title: "Schedule frequency",
+      options: [
+        { value: "once", label: "Once" },
+        { value: "repeat", label: "Repeating" },
+      ],
+      defaultValue: repeat ? "repeat" : "once",
+      onSelect: (choice) => this.showDelayChoices(choice === "repeat"),
+      onCancel: () => this.returnToManager(),
+    });
+    this.show(prompt);
+  }
+
+  private showDelayChoices(repeat: boolean, defaultValue: ScheduleDelayChoice = "5m"): void {
     const prompt = new ChoicePrompt<ScheduleDelayChoice>({
-      title: "Schedule after",
+      title: repeat ? "Repeat every" : "Schedule after",
       options: [
         { value: "5m", label: "5 minutes" },
         { value: "15m", label: "15 minutes" },
@@ -99,18 +111,18 @@ export class ScheduledMessageManagerController {
       defaultValue,
       onSelect: (choice) => {
         if (choice === "custom") {
-          this.showCustomDelay();
+          this.showCustomDelay(repeat);
           return;
         }
-        this.showMessagePrompt(parsePresetDelay(choice), choice);
+        this.showMessagePrompt(parsePresetDelay(choice), choice, repeat);
       },
-      onCancel: () => this.returnToManager(),
+      onCancel: () => this.showFrequencyChoices(repeat),
     });
 
     this.show(prompt);
   }
 
-  private showCustomDelay(initialValue = "", error?: string): void {
+  private showCustomDelay(repeat: boolean, initialValue = "", error?: string): void {
     const prompt = new TextPrompt({
       title: error ? `Custom delay · ${error}` : "Custom delay (1m–24h)",
       initialValue,
@@ -119,12 +131,12 @@ export class ScheduledMessageManagerController {
       onSubmit: (value) => {
         const result = parseCustomDelay(value);
         if (typeof result === "string") {
-          this.showCustomDelay(value, result);
+          this.showCustomDelay(repeat, value, result);
           return;
         }
-        this.showMessagePrompt(result, "custom");
+        this.showMessagePrompt(result, "custom", repeat);
       },
-      onCancel: () => this.showDelayChoices("custom"),
+      onCancel: () => this.showDelayChoices(repeat, "custom"),
     });
 
     this.show(prompt);
@@ -133,6 +145,7 @@ export class ScheduledMessageManagerController {
   private showMessagePrompt(
     afterMinutes: number,
     delayChoice: ScheduleDelayChoice,
+    repeat: boolean,
     initialValue = "",
     error?: string,
   ): void {
@@ -144,25 +157,33 @@ export class ScheduledMessageManagerController {
       onSubmit: (value) => {
         const message = value.trim();
         if (!message) {
-          this.showMessagePrompt(afterMinutes, delayChoice, value, "message is required");
+          this.showMessagePrompt(afterMinutes, delayChoice, repeat, value, "message is required");
           return;
         }
         if (message.length > 4_000) {
-          this.showMessagePrompt(afterMinutes, delayChoice, value, "maximum 4000 characters");
+          this.showMessagePrompt(
+            afterMinutes,
+            delayChoice,
+            repeat,
+            value,
+            "maximum 4000 characters",
+          );
           return;
         }
 
         try {
-          const event = this.options.schedule(afterMinutes, message);
+          const event = this.options.schedule(afterMinutes, message, { repeat });
           this.returnToManager();
-          this.refresh(`Scheduled for ${formatLocalTimestamp(event.dueAt)}.`);
+          this.refresh(
+            `Scheduled for ${formatLocalTimestamp(event.dueAt)}.${repeat ? ` Repeats every ${afterMinutes} minutes.` : ""}`,
+          );
         } catch (scheduleError) {
           this.options.showError(scheduleError);
           this.returnToManager();
           this.refresh();
         }
       },
-      onCancel: () => this.showDelayChoices(delayChoice),
+      onCancel: () => this.showDelayChoices(repeat, delayChoice),
     });
 
     this.show(prompt);
@@ -173,6 +194,8 @@ export class ScheduledMessageManagerController {
       title: "Delete scheduled message?",
       detail: [
         `${formatLocalTimestamp(item.dueAt)} · ${item.origin === "agent" ? "Kana" : "you"}`,
+        ...(item.everyMinutes === undefined ? [] : [`Repeats every ${item.everyMinutes} minutes`]),
+        "Already queued messages are unaffected.",
         singleLine(item.message),
       ].join("\n"),
       options: [
@@ -216,7 +239,16 @@ export class ScheduledMessageManagerController {
     }
 
     try {
-      manager.replaceItems(toManagerItems(this.options.getQueue()), notice);
+      manager.replaceItems(
+        this.options.getSchedules().map((event) => ({
+          id: event.id,
+          dueAt: event.dueAt,
+          origin: event.origin,
+          message: event.message,
+          everyMinutes: event.everyMinutes,
+        })),
+        notice,
+      );
     } catch (error) {
       this.options.showError(error);
       manager.replaceItems([], "Unable to load scheduled messages.");
@@ -237,33 +269,6 @@ export class ScheduledMessageManagerController {
       this.show(this.manager);
     }
   }
-}
-
-function toManagerItems(queue: ConversationInputQueueSnapshot): ScheduledMessageManagerItem[] {
-  const future = queue.scheduled.map(
-    (event): ScheduledMessageManagerItem => ({
-      id: event.id,
-      state: "future",
-      dueAt: new Date(event.dueAt.getTime()),
-      origin: event.origin,
-      message: event.message,
-    }),
-  );
-  const pending = queue.pending.flatMap((input): ScheduledMessageManagerItem[] =>
-    input.kind === "scheduled"
-      ? [
-          {
-            id: input.id,
-            state: "pending",
-            dueAt: new Date(input.dueAt.getTime()),
-            origin: input.origin,
-            message: input.content,
-          },
-        ]
-      : [],
-  );
-
-  return [...future, ...pending];
 }
 
 function parsePresetDelay(choice: Exclude<ScheduleDelayChoice, "custom">): number {

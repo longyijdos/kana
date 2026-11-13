@@ -280,8 +280,9 @@ export class KanaTuiApp {
       editor: this.editor,
       bottomArea: this.bottomArea,
       tui: this.tui,
-      getQueue: () => this.conversation.inputQueue,
-      schedule: (afterMinutes, message) => this.conversation.scheduleInput(afterMinutes, message),
+      getSchedules: () => this.conversation.inputQueue.scheduled,
+      schedule: (afterMinutes, message, options) =>
+        this.conversation.scheduleInput(afterMinutes, message, options),
       cancel: (id) => this.conversation.cancelScheduledInput(id),
       showError: (error) => this.showInteractionError(error),
       collapseLongPastes: options.ui.config.collapseLongPastes,

@@ -403,29 +403,33 @@ describe("tool call rendering", () => {
     }
   });
 
-  test("flattens a multiline schedule_wake target and removes control sequences", () => {
-    const block = new ToolCallBlock({
-      type: "tool_call",
-      id: "call_wake",
-      name: "schedule_wake",
-      args: {
-        afterMinutes: 5,
-        message: `first\u001b[31mred\u001b[0m\nsecond line\u0007`,
-      },
-    });
-    block.updateResult({ id: "wake_123", dueAt: "2026-08-23T00:00:00.000Z" }, false);
+  test.each([false, true])(
+    "renders a schedule_wake target with repeat=%s and removes control sequences",
+    (repeat) => {
+      const block = new ToolCallBlock({
+        type: "tool_call",
+        id: "call_wake",
+        name: "schedule_wake",
+        args: {
+          afterMinutes: 5,
+          repeat,
+          message: `first\u001b[31mred\u001b[0m\nsecond line\u0007`,
+        },
+      });
+      block.updateResult({ id: "wake_123", dueAt: "2026-08-23T00:00:00.000Z" }, false);
 
-    const rendered = block.render(80);
-    const raw = rendered.join("\n");
+      const rendered = block.render(80);
+      const raw = rendered.join("\n");
 
-    expect(raw).not.toContain("\u001b[31m");
-    expect(raw).not.toContain("\u0007");
-    // The multiline target collapses onto one flattened, width-bounded row.
-    const targetRow = rendered.map(stripAnsi).find((line) => line.startsWith("  └ "));
-    expect(targetRow).toBe("  └ in 5 minutes firstred second line");
-    expect(targetRow).not.toContain("\n");
-    expect(rendered.every((line) => visibleWidth(line) <= 80)).toBe(true);
-  });
+      expect(raw).not.toContain("\u001b[31m");
+      expect(raw).not.toContain("\u0007");
+      // The multiline target collapses onto one flattened, width-bounded row.
+      const targetRow = rendered.map(stripAnsi).find((line) => line.startsWith("  └ "));
+      expect(targetRow).toBe(`  └ ${repeat ? "every" : "in"} 5 minutes firstred second line`);
+      expect(targetRow).not.toContain("\n");
+      expect(rendered.every((line) => visibleWidth(line) <= 80)).toBe(true);
+    },
+  );
 
   test("renders non-zero shell output as a completed command without structured result metadata", () => {
     const block = new ToolCallBlock({

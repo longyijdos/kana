@@ -69,9 +69,9 @@ It claims the first `next-turn` item, derives the run source from its delivery m
 
 ## Scheduled input
 
-`WakeScheduler` stores one-shot timers in memory. Each event belongs to a session, has a due time and origin, and may carry a replacement key. Scheduling a new event with the same session/key removes the older timer. Events are ordered by due time and then `MessageId`; they are never written to the session journal before delivery and are not restored after process exit.
+`WakeScheduler` stores one-shot and repeating timers in memory. Each event belongs to a session, has a due time and origin, and may carry a replacement key. Scheduling a new event with the same session/key removes the older timer. Events are ordered by due time and then `MessageId`; they are never written to the session journal before delivery and are not restored after process exit.
 
-The scheduler assigns the future logical input's `MessageId` when the timer is created. At expiry, the same ID enters the Agent's `next-turn` lane with scheduled provenance. Cancellation checks the current session's future timers first and then its due `next-turn` items synchronously, returning `future`, `pending`, or `not_found`; no separate wake or queue ID exists.
+The scheduler assigns a stable schedule ID when the timer is created. A one-shot timer is removed at expiry and its ID enters the Agent's `next-turn` lane with scheduled provenance. A repeating timer retains its schedule ID, exposes `everyMinutes`, and gives each delivery a fresh message ID. It advances from the previous due time without drift, skips missed occurrences after suspension, and skips delivery while its previous occurrence remains queued. Cancellation only checks current-session timers, returning `future` or `not_found`; it stops future triggers without retracting already delivered or queued messages. Timer management does not own the pending input queue.
 
 Session changes cancel the previous session's timers and clear its inbox. Shutdown disposes the scheduler after inbox, Goal, and observer cleanup.
 

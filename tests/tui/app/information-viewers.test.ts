@@ -38,6 +38,7 @@ describe("information viewers", () => {
     internal.handleCommand({ name: "schedule", arguments: "", raw: "/schedule" });
 
     sendInput("a");
+    sendInput("\r");
     for (let index = 0; index < 4; index += 1) {
       sendInput("\x1b[B");
     }
@@ -48,6 +49,11 @@ describe("information viewers", () => {
     sendInput("\x1b");
     expect(internal.scheduledMessageManager.active).toBe(true);
     expect(internal.layout.render(80, 24).map(stripAnsi)).toContain("Schedule after");
+    expect(state.abortCalls).toBe(0);
+
+    sendInput("\x1b");
+    expect(internal.scheduledMessageManager.active).toBe(true);
+    expect(internal.layout.render(80, 24).map(stripAnsi)).toContain("Schedule frequency");
     expect(state.abortCalls).toBe(0);
 
     sendInput("\x1b");

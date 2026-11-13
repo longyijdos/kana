@@ -13,7 +13,11 @@ import {
 import { KanaSubagentManager } from "../../src/kana/subagents";
 import { createDelegateUserTaskTool } from "../../src/kana/tools/delegate-user-task";
 import { createRememberTool } from "../../src/kana/tools/remember";
-import { createScheduleWakeTool } from "../../src/kana/tools/schedule-wake";
+import {
+  createCancelWakeTool,
+  createListWakesTool,
+  createScheduleWakeTool,
+} from "../../src/kana/tools/schedule-wake";
 import { createTodoWriteTool } from "../../src/kana/tools/todo-write";
 import { KanaUserTaskManager } from "../../src/kana/user-tasks";
 import {
@@ -267,9 +271,23 @@ const schemaCases: SchemaCase[] = [
   {
     name: "schedule_wake",
     tool: createScheduleWakeTool({ scheduler, sessionId: "session-a" }),
-    valid: { afterMinutes: 30, message: "continue", key: "build" },
+    valid: { afterMinutes: 30, message: "continue", key: "build", repeat: true },
     invalidArgs: { afterMinutes: 30, message: "continue", replaceKey: "build" },
     unexpected: "replaceKey",
+  },
+  {
+    name: "list_wakes",
+    tool: createListWakesTool({ scheduler, sessionId: "session-a" }),
+    valid: {},
+    invalidArgs: { sessionId: "session-b" },
+    unexpected: "sessionId",
+  },
+  {
+    name: "cancel_wake",
+    tool: createCancelWakeTool({ scheduler, sessionId: "session-a" }),
+    valid: { id: "wake-1" },
+    invalidArgs: { id: "wake-1", sessionId: "session-b" },
+    unexpected: "sessionId",
   },
   {
     name: "todo_write",

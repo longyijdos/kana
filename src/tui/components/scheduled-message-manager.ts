@@ -10,7 +10,7 @@ const SCHEDULED_MESSAGE_RESERVED_ROWS = 4;
 
 export type ScheduledMessageManagerItem = {
   id: string;
-  state: "future" | "pending";
+  everyMinutes?: number;
   dueAt: Date;
   origin: WakeEventOrigin;
   message: string;
@@ -109,9 +109,10 @@ export class ScheduledMessageManager implements Component {
 
     for (const { item, selected } of viewport.rows) {
       const marker = selected ? "> " : "  ";
-      const state = item.state === "pending" ? "due" : formatDueAt(item.dueAt, this.snapshotAt);
+      const state = formatDueAt(item.dueAt, this.snapshotAt);
+      const frequency = item.everyMinutes === undefined ? "" : ` · every ${item.everyMinutes}m`;
       const origin = item.origin === "agent" ? "Kana" : "you";
-      const label = `${marker}${state} · ${origin} · ${singleLine(item.message)}`;
+      const label = `${marker}${state}${frequency} · ${origin} · ${singleLine(item.message)}`;
 
       lines.push(truncateToWidth(color(label, selected ? tuiTheme.user : tuiTheme.muted), width));
     }

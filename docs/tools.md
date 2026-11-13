@@ -143,7 +143,9 @@ Source execution loads the local Worker and WASM. Bun executable builds list the
 | `todo_write` | Complete todo-item array | Atomically replaces or explicitly clears the session todo state. |
 | `delegate_user_task` | Concrete `task` text | Invites the user to work in parallel; acceptance creates a process-local task ID. |
 | `remember` | `content`; optional scope/title/reason | Appends a durable-memory staging entry when memory is enabled. |
-| `schedule_wake` | `afterMinutes`, `message`, optional `key` | Creates a process-local future input for the active session. |
+| `schedule_wake` | `afterMinutes`, `message`, optional `key`, `repeat` | Creates a one-shot or repeating process-local reminder timer for the active session. |
+| `list_wakes` | None | Lists the current session's active reminder timers, excluding queued messages. |
+| `cancel_wake` | `id` | Cancels a current-session timer without retracting already queued messages. |
 | `update_goal` | `status`, optional `detail` | Ends the authorized active Goal as completed or blocked. |
 | `mcp_list_tools` | Server `name`; optional `offset`, `limit` | Lists names and descriptions from an enabled MCP server's cached catalog. |
 | `mcp_get_tool` | `server`, `tool` | Reads a remote tool's cached input and optional output schemas. |
@@ -173,7 +175,9 @@ The following table describes the successful public result contracts of all buil
 | `todo_write` | `{ status: "updated" \| "cleared" }` |
 | `delegate_user_task` | `{ status: "accepted", taskId }` |
 | `remember` | `{ id, scope }` |
-| `schedule_wake` | `{ id, dueAt }` |
+| `schedule_wake` | `{ id, dueAt, everyMinutes? }` |
+| `list_wakes` | `{ wakes: [{ id, dueAt, message, origin, key?, everyMinutes? }] }` |
+| `cancel_wake` | `{ cancelled: boolean }` |
 | `update_goal` | `{ status: "completed" \| "blocked" }` |
 | `mcp_list_tools` | `{ tools, nextOffset? }`; each tool contains `{ name, description }`. |
 | `mcp_get_tool` | `{ inputSchema, outputSchema? }` |
@@ -213,9 +217,9 @@ Subagent spawning selects a predefined role card and returns a stable child ID; 
 
 `remember` appends a structured entry to project or global daily memory. It does not edit durable `memory.md` directly; consolidation and retention belong to [Sessions and memory](sessions-and-memory.md).
 
-`schedule_wake` validates a delay of 1–1440 minutes and a bounded non-empty message, then schedules through the host's in-process wake boundary. It and `update_goal` are available only when product composition supplies their required runtime capability. Delivery and Goal admission belong to [Conversation runtime](conversation-runtime.md).
+`schedule_wake` validates a delay of 1–1440 minutes and a bounded non-empty message, then schedules through the host's in-process wake boundary. Optional `repeat: true` repeats at that interval until cancelled; omission creates a one-shot timer. `list_wakes` exposes only the current session's active timers, and `cancel_wake` stops a timer by its stable schedule ID without touching already delivered or queued messages. These tools and `update_goal` are available only when product composition supplies their required runtime capability. Delivery and Goal admission belong to [Conversation runtime](conversation-runtime.md).
 
-Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, `update_goal`, `mcp_list_tools`, or `mcp_get_tool`. `delegate_user_task` always asks whether the user accepts the task, even in `never` mode; declining returns a normal result and leaves the work with the Agent. Other calls, including `mcp_call`, follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Shell commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `shell` and `job_start` share the same Shell allowlist, including exact command trust, read-only command recognition, and the persistent “Always allow this command” option. Approval is interactive authorization, not filesystem or process isolation.
+Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, `list_wakes`, `cancel_wake`, `update_goal`, `mcp_list_tools`, or `mcp_get_tool`. `delegate_user_task` always asks whether the user accepts the task, even in `never` mode; declining returns a normal result and leaves the work with the Agent. Other calls, including `mcp_call`, follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Shell commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `shell` and `job_start` share the same Shell allowlist, including exact command trust, read-only command recognition, and the persistent “Always allow this command” option. Approval is interactive authorization, not filesystem or process isolation.
 
 ## MCP and custom tools
 

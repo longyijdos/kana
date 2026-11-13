@@ -14,7 +14,7 @@ import {
   sanitizeToolOutput,
   type ToolApprovalSource,
 } from "./detail";
-import { getNumberProperty, getStringProperty } from "./properties";
+import { getBooleanProperty, getNumberProperty, getStringProperty } from "./properties";
 import { formatEditOutput, hasExpandableEditOutput } from "./renderers/edit";
 import { formatGlobOutput } from "./renderers/glob";
 import { formatGrepOutput } from "./renderers/grep";
@@ -311,7 +311,7 @@ export function resolveToolTarget(toolCall: ToolCallContent, result?: unknown): 
       const message = getStringProperty(toolCall.args, "message");
 
       if (afterMinutes !== undefined) {
-        const delay = `in ${afterMinutes} ${afterMinutes === 1 ? "minute" : "minutes"}`;
+        const delay = `${getBooleanProperty(toolCall.args, "repeat") ? "every" : "in"} ${afterMinutes} ${afterMinutes === 1 ? "minute" : "minutes"}`;
         return message ? `${delay}\n${message}` : delay;
       }
       return undefined;

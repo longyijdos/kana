@@ -69,9 +69,9 @@ Coordinator 的 drain loop 是启动排队 run 的唯一边界。它只会在以
 
 ## 定时输入
 
-`WakeScheduler` 在内存中保存一次性 timer。每个事件属于一个 session，包含到期时间和来源，并可带替换 key；相同 session/key 的新事件会移除旧 timer。事件先按到期时间、再按 `MessageId` 排序；投递前不会写入 session journal，进程退出后也不会恢复。
+`WakeScheduler` 在内存中保存一次性和周期 timer。每个事件属于一个 session，包含到期时间和来源，并可带替换 key；相同 session/key 的新事件会移除旧 timer。事件先按到期时间、再按 `MessageId` 排序；投递前不会写入 session journal，进程退出后也不会恢复。
 
-Scheduler 在创建 timer 时就分配未来逻辑输入的 `MessageId`。到期时，同一个 ID 带 scheduled provenance 进入 Agent 的 `next-turn` lane。取消操作会同步先检查当前 session 的未来 timer，再检查已经到期的 `next-turn` 项，并返回 `future`、`pending` 或 `not_found`；不存在另一套 wake 或 queue ID。
+Scheduler 创建 timer 时分配稳定计划 ID。一次性 timer 到期后被移除，同一个 ID 带 scheduled provenance 进入 Agent 的 `next-turn` lane。周期 timer 保留计划 ID，通过 `everyMinutes` 暴露间隔，每次投递分配新的消息 ID；从上次计划时间推进以避免漂移，跳过休眠期间错过的次数，且上次消息仍在排队时跳过本次投递。取消操作只检查当前 session 的 timer，返回 `future` 或 `not_found`；仅停止后续触发，不撤回已送达或排队的消息。定时器管理不负责 pending 输入队列。
 
 Session 切换会取消旧 session 的 timer 并清空 inbox。Shutdown 则在清理 inbox、Goal 与 observer 后释放 scheduler。
 

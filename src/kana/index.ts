@@ -146,6 +146,8 @@ export {
   type KanaTodoStateChange,
 } from "./todo";
 export {
+  createCancelWakeTool,
+  createListWakesTool,
   createRememberTool,
   createScheduleWakeTool,
 } from "./tools";

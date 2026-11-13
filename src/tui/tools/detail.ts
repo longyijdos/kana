@@ -298,7 +298,7 @@ function buildToolSections(
       if (afterMinutes !== undefined) {
         pushSection(
           sections,
-          "Delay",
+          getBooleanProperty(args, "repeat") ? "Interval" : "Delay",
           `${afterMinutes} ${afterMinutes === 1 ? "minute" : "minutes"}`,
         );
       }

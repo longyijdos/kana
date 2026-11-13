@@ -23,6 +23,8 @@ export const KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES = [
   "delegate_user_task",
   "remember",
   "schedule_wake",
+  "list_wakes",
+  "cancel_wake",
   ...KANA_MCP_TOOL_NAMES,
 ] as const;
 
@@ -38,5 +40,7 @@ export const KANA_BUILT_IN_TOOL_NAMES = [
   "update_goal",
   "remember",
   "schedule_wake",
+  "list_wakes",
+  "cancel_wake",
   ...KANA_MCP_TOOL_NAMES,
 ] as const;

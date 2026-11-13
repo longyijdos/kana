@@ -138,7 +138,7 @@ describe("ConversationInputCoordinator", () => {
     harness.close();
   });
 
-  test("schedules normalized input and cancels future or pending delivery by stable ID", () => {
+  test("schedules normalized input and cancels only timers without retracting pending delivery", () => {
     const { scheduler, timers } = createTimerWakeScheduler([
       messageIdForTest("future-wake"),
       messageIdForTest("pending-wake"),
@@ -165,8 +165,8 @@ describe("ConversationInputCoordinator", () => {
         dueAt: pending.dueAt,
       },
     ]);
-    expect(harness.coordinator.cancelScheduledInput(pending.id)).toBe("pending");
     expect(harness.coordinator.cancelScheduledInput(pending.id)).toBe("not_found");
+    expect(harness.coordinator.queue.pending.map((item) => item.id)).toEqual([pending.id]);
 
     for (const delay of [0, -1, 1.5, 1_441]) {
       expect(() => harness.coordinator.scheduleInput(delay, "Invalid delay.")).toThrow(
@@ -204,7 +204,8 @@ describe("ConversationInputCoordinator", () => {
     ]);
     expect(harness.coordinator.queue.scheduled).toMatchObject([{ id: "repeat" }]);
 
-    expect(harness.coordinator.cancelScheduledInput("first")).toBe("pending");
+    expect(harness.coordinator.cancelScheduledInput("first")).toBe("not_found");
+    harness.agent.cancelInput(messageIdForTest("first"));
     timers.get(3)?.();
     expect(harness.coordinator.queue.pending.map((item) => item.id)).toEqual([
       messageIdForTest("third"),
@@ -212,6 +213,9 @@ describe("ConversationInputCoordinator", () => {
 
     expect(harness.coordinator.cancelScheduledInput(repeating.id)).toBe("future");
     expect(harness.coordinator.queue.scheduled).toEqual([]);
+    expect(harness.coordinator.queue.pending.map((item) => item.id)).toEqual([
+      messageIdForTest("third"),
+    ]);
     harness.close();
   });
 

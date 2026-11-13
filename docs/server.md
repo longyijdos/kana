@@ -36,7 +36,7 @@ JSON success responses are `{schema_version: 1, data: ...}`. Errors are `{schema
 | POST /v1/goal | `{session_id, objective}` | Start a Goal on an idle runtime; 202 with `goal` |
 | POST /v1/goal/cancel | `{session_id}` | Stop Goal continuation; `{cancelled: true}` |
 | POST /v1/schedules | `{session_id, message, after_minutes, repeat?}` | Schedule a user message; 201 with `scheduled` |
-| POST /v1/schedules/:id/cancel | `{session_id}` | Cancel a scheduled message; `cancelled` is `future` or `pending` |
+| POST /v1/schedules/:id/cancel | `{session_id}` | Cancel a timer; `cancelled` is `future` |
 | GET /v1/approvals | — | Pending approvals |
 | POST /v1/approvals/:id | `{session_id, decision}` | Resolve approval; `{resolved: true}` |
 
@@ -46,7 +46,7 @@ Message `delivery` defaults to `auto`: idle input starts a run; active, steerabl
 
 A Goal runs its objective through sequential rounds up to the configured maximum, like the TUI `/goal`. Starting one requires an idle runtime. Cancelling stops further rounds without interrupting the current one; abort also cancels the Goal. Missing active Goals return 404.
 
-Scheduled messages wait `after_minutes` (1 through 1440), contain 1 through 4000 characters, and arrive as `scheduled_input` with origin `user`. With `repeat: true`, the message recurs every `after_minutes` from its previous due time until cancelled. The schedule keeps its ID while each delivery gets a fresh message ID, and an occurrence is skipped while the previous delivery is still queued. Cancelling a schedule ID stops future deliveries (`future`); cancelling a delivered message ID removes it from the queue (`pending`). Any wake in the current session can be cancelled, including Agent-scheduled ones. `input_queue.scheduled` entries include `everyMinutes` for repeating schedules. Like every wake, schedules are process-local and lost on restart.
+Scheduled messages wait `after_minutes` (1 through 1440), contain 1 through 4000 characters, and arrive as `scheduled_input` with origin `user`. With `repeat: true`, the message recurs every `after_minutes` from its previous due time until cancelled. The schedule keeps its ID while each delivery gets a fresh message ID, and an occurrence is skipped while the previous delivery is still queued. Cancelling a schedule ID stops future triggers (`future`) without retracting already queued messages. An expired one-shot timer or a delivered message ID returns 404. Any wake in the current session can be cancelled, including Agent-scheduled ones. `input_queue.scheduled` entries include `everyMinutes` for repeating schedules. Like every wake, schedules are process-local and lost on restart.
 
 ## Approvals
 

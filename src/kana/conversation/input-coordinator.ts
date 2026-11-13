@@ -1,5 +1,5 @@
 import type { Agent, AgentEvent, AgentInboxItem, AgentInputDelivery } from "@/agent";
-import { createUserMessage, type MessageId, readMessageId, type UserMessage } from "@/core";
+import { createUserMessage, type MessageId, type UserMessage } from "@/core";
 import type { BackgroundJobClient, BackgroundJobSummary, OwnedTaskEvent } from "@/jobs";
 import type { Logger } from "@/logging";
 import { shortId } from "@/utils";
@@ -75,7 +75,7 @@ export type ConversationInputQueueSnapshot = {
   scheduled: WakeEvent[];
 };
 
-export type ConversationScheduledInputCancellation = "future" | "pending" | "not_found";
+export type ConversationScheduledInputCancellation = "future" | "not_found";
 
 export type ConversationInputRunRequest = {
   source: ConversationInputRunSource;
@@ -335,30 +335,17 @@ export class ConversationInputCoordinator {
       return "not_found";
     }
 
-    const isCurrentSessionWake = this.wakeScheduler
-      .list(this.sessionId)
-      .some((event) => event.id === id);
-    // Expiry and cancellation share the JavaScript event loop, so the stable
-    // ID is synchronously present in either the timer map or the pending FIFO.
-    if (isCurrentSessionWake && this.wakeScheduler.cancel(readMessageId(id))) {
-      this.repeatingDeliveries.delete(readMessageId(id));
+    const event = this.wakeScheduler.list(this.sessionId).find((wake) => wake.id === id);
+    if (event && this.wakeScheduler.cancel(event.id)) {
+      this.repeatingDeliveries.delete(event.id);
       this.options.getLogger().info("conversation.scheduled_input_cancelled", { state: "future" });
       return "future";
     }
 
-    const pending = this.agent.inbox.nextTurn.find(
-      (item) => item.message.id === id && item.delivery.kind === "scheduled",
-    );
-    if (!pending) {
-      this.options.getLogger().info("conversation.scheduled_input_cancel_skipped", {
-        reason: "not_found",
-      });
-      return "not_found";
-    }
-
-    this.agent.cancelInput(pending.message.id);
-    this.options.getLogger().info("conversation.scheduled_input_cancelled", { state: "pending" });
-    return "pending";
+    this.options.getLogger().info("conversation.scheduled_input_cancel_skipped", {
+      reason: "not_found",
+    });
+    return "not_found";
   }
 
   async steer(input: UserMessage): Promise<ConversationInputDisposition> {

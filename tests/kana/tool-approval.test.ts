@@ -113,7 +113,13 @@ describe("Kana tool approval", () => {
         toolCall("remember", { content: "Use Chinese by default." }),
       ),
     ).toBe(false);
-    for (const name of ["spawn_subagent", "wait_subagent", "cancel_subagent"]) {
+    for (const name of [
+      "spawn_subagent",
+      "wait_subagent",
+      "cancel_subagent",
+      "list_wakes",
+      "cancel_wake",
+    ]) {
       expect(
         shouldRequestToolApproval(
           { mode: "always" },

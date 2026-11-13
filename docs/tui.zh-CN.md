@@ -98,7 +98,7 @@ Background Job 和 Subagent completion 与其它 runtime 输入共用 queued-inp
 | `/resume [id]` | 恢复或删除已保存的会话。 |
 | `/skills` | 管理全局 Skill 的自动发现状态并重建 Agent 系统提示词；所有 Skill 仍可通过 `@` 显式调用。 |
 | `/mcp` | 管理 MCP server 开关，并在选择变化时 reload。 |
-| `/schedule` | 查看、添加、刷新或删除当前 session 的进程内定时消息。 |
+| `/schedule` | 查看、添加、刷新或删除当前 session 的进程内一次性或周期定时器。 |
 | `/jobs` | 管理当前 session 拥有的 Job：刷新、查看不消耗游标的输出尾部，以及停止活动 Job。Agent 运行期间同样可用；TUI 查看和停止不会确认终态完成。 |
 | `/agents` | 查看角色卡 profile，检查当前 session 的 child transcript，刷新或取消活动 subagent；主 Agent 运行期间同样可用。 |
 | `/goal <目标>` | 在有界的连续 Agent run 中持续推进一个目标。 |
@@ -135,7 +135,7 @@ BTW 用流式 `ContentViewer` 替换编辑器，上方主 transcript 继续更�
 
 - `McpLifecycleController` 统一处理会话可见后的首次 MCP startup和后续 MCP reload，持有活动操作的取消 signal、追加式生命周期输出以及输入禁用与恢复状态；工具集合变化时只通过回调请求 App 重建 Agent。
 - `QueuedInputController` 保存当前 run 输入的 optimistic preview，并用既有 `MessageId` 与权威 runtime snapshot 对齐。它只持有显示标签和 preview 状态；queue lane、投递顺序、scheduled metadata 与取消语义见[对话运行时](conversation-runtime.zh-CN.md)。
-- `ScheduledMessageManagerController` 展示 `/schedule` 的当前 session 快照，以及多步添加、刷新与删除流程。它持有列表排序、标签、快捷键和焦点恢复；timer 身份、取消、到期投递与 queue gate 见[对话运行时](conversation-runtime.zh-CN.md)。
+- `ScheduledMessageManagerController` 展示 `/schedule` 当前 session 的定时器快照，不包含 pending 输入。创建时先选择一次性或周期，再选择预设或自定义间隔并输入消息；周期行在下次时间旁显示 `every Nm`，删除定时器不撤回排队消息。Controller 负责多步添加、刷新与删除流程。它持有列表排序、标签、快捷键和焦点恢复；timer 身份、取消、到期投递与 queue gate 见[对话运行时](conversation-runtime.zh-CN.md)。
 - `BackgroundJobManagerController` 用 `/jobs` 打开面板，并在 Job 状态变化或按 `R` 时刷新。它会保持选中项稳定、显示不消耗游标的输出尾部、用 `K` 停止活动 Job 但不确认终态，并在面板通过 `Esc` 关闭前阻止 pending run 启动。
 - `SubagentManagerController` 用 `/agents` 打开面板，重新加载 profile 诊断、保持 run 选中项稳定、预览当前进展、用 `Enter` 按需打开 child 快照，并用 `K` 取消活动 child。详情与预览共用 Markdown 回复和工具状态/目标行，省略 thinking 与工具输出；快照生命周期见[子代理](subagents.zh-CN.md)。Child 状态变化会刷新视图，但不消费结果。
 - `BackgroundActivityController` 绑定当前 session 的 Background Job、Subagent 与用户任务管理器，把待处理用户任务投影为 `Your tasks`，把运行中或停止中的 Job 与 Subagent 投影为 `Background`，并在任务开始或结束时刷新。它在 session 切换时重新绑定，无活动任务时不渲染任何行，也绝不确认、取消或改变所显示的任务。
@@ -153,7 +153,7 @@ BTW 用流式 `ContentViewer` 替换编辑器，上方主 transcript 继续更�
 - `LocalShellController` 复用 shell Tool 显示逻辑，但不会触发审批。
 - `MemoryCompactController` 运行可中止的全量记忆合并并在 transcript 中写摘要。
 
-运行期间，`/quit`、`/help`、`/btw`、`/todo`、`/task`、`/tools`、`/usage`、`/image`、`/schedule`、`/jobs` 和 `/agents` 仍可使用。`/help`、`/usage` 及只读查看器会保留当前 Agent run phase；`/image` 只把图片附加到编辑器草稿，供后续排队输入使用；`/schedule` 管理 pending 与 scheduled input，不会中断当前 turn；`/tools` 打开时会固定当前工具历史快照；`/jobs` 可查看并停止当前 session 的 Job，但不会确认其完成；`/agents` 可查看或取消 session-owned child。`/clear`、`/new`、`/fork`、`/resume`、`/skills`、`/mcp`、`/goal`、`/approval`、`/model`、`/memory` 和 `/compact` 会显示不可用错误，而不是静默忽略。打开底部视图时会切换焦点；关闭后优先恢复正在等待的审批，否则回到编辑器。审批到达时不会抢占当前底部视图。
+运行期间，`/quit`、`/help`、`/btw`、`/todo`、`/task`、`/tools`、`/usage`、`/image`、`/schedule`、`/jobs` 和 `/agents` 仍可使用。`/help`、`/usage` 及只读查看器会保留当前 Agent run phase；`/image` 只把图片附加到编辑器草稿，供后续排队输入使用；`/schedule` 管理定时器，不影响 pending 输入或中断当前 turn；`/tools` 打开时会固定当前工具历史快照；`/jobs` 可查看并停止当前 session 的 Job，但不会确认其完成；`/agents` 可查看或取消 session-owned child。`/clear`、`/new`、`/fork`、`/resume`、`/skills`、`/mcp`、`/goal`、`/approval`、`/model`、`/memory` 和 `/compact` 会显示不可用错误，而不是静默忽略。打开底部视图时会切换焦点；关闭后优先恢复正在等待的审批，否则回到编辑器。审批到达时不会抢占当前底部视图。
 
 ## 通知
 
