@@ -234,6 +234,7 @@ describe("ConversationInputCoordinator", () => {
         key: "check",
       });
       timers.get(1)?.();
+      // biome-ignore lint/complexity/useLiteralKeys: Bracket access inspects private cleanup state without exposing a public API.
       const deliveries = harness.coordinator["repeatingDeliveries"];
       expect(deliveries.get(repeating.id)).toBe(messageIdForTest("delivered"));
 
