@@ -12,6 +12,7 @@ import { ToolRuntime } from "../../../src/agent/tool-runtime";
 import {
   createKanaToolResultArtifactPolicy,
   createPersistentKanaSessionArtifactStore,
+  createPersistentKanaSubagentArtifactStore,
   type KanaSessionArtifactStore,
 } from "../../../src/kana/artifacts";
 
@@ -24,72 +25,83 @@ afterEach(() => {
 });
 
 describe("Kana tool-result artifacts", () => {
-  test("stores complete oversized text and returns an exactly bounded retrievable preview", async () => {
-    const kanaHome = createTempDirectory();
-    const cwd = path.join(kanaHome, "workspace");
-    mkdirSync(cwd);
-    const store = createPersistentKanaSessionArtifactStore({
-      sessionId: "session-1",
-      cwd,
-      env: { KANA_HOME: kanaHome },
-    });
-    const policy = createKanaToolResultArtifactPolicy({ store });
-    const content = `HEAD\n${"内容🙂".repeat(800)}\nTAIL needle`;
-    const contentByteLimit = 1_024;
+  test.each(["session", "subagent"] as const)(
+    "stores complete oversized %s text with a bounded retrievable preview",
+    async (scope) => {
+      const kanaHome = createTempDirectory();
+      const cwd = path.join(kanaHome, "workspace");
+      mkdirSync(cwd);
+      const store =
+        scope === "session"
+          ? createPersistentKanaSessionArtifactStore({
+              sessionId: "session-1",
+              cwd,
+              env: { KANA_HOME: kanaHome },
+            })
+          : createPersistentKanaSubagentArtifactStore({
+              parentSessionId: "session-1",
+              agentId: "child-1",
+              cwd,
+              env: { KANA_HOME: kanaHome },
+            });
+      const policy = createKanaToolResultArtifactPolicy({ store });
+      const content = `HEAD\n${"内容🙂".repeat(800)}\nTAIL needle`;
+      const contentByteLimit = 1_024;
 
-    const result = await policy.finalize({
-      toolCall: {
-        type: "tool_call",
-        id: "call-1",
-        name: "shell",
-        args: { path: "../../unsafe output.log" },
-      },
-      content,
-      isError: false,
-      resultByteLength: Buffer.byteLength(JSON.stringify({ content }), "utf8"),
-      contentByteLimit,
-    });
+      const result = await policy.finalize({
+        toolCall: {
+          type: "tool_call",
+          id: "call-1",
+          name: "shell",
+          args: { path: "../../unsafe output.log" },
+        },
+        content,
+        isError: false,
+        resultByteLength: Buffer.byteLength(JSON.stringify({ content }), "utf8"),
+        contentByteLimit,
+      });
 
-    expect(result?.persistResult).toBeUndefined();
-    expect(result?.artifact).toBeDefined();
-    const artifact = result?.artifact;
-    if (!artifact || !result?.content) {
-      throw new Error("Expected an artifact-backed preview.");
-    }
-    expect(readFileSync(artifact.locator, "utf8")).toBe(content);
-    expect(artifact.byteLength).toBe(Buffer.byteLength(content, "utf8"));
-    expect(Buffer.byteLength(result.content, "utf8")).toBeLessThanOrEqual(contentByteLimit);
-    expect(result.content).toStartWith("HEAD");
-    expect(result.content).toEndWith("TAIL needle");
-    expect(result.content).toContain(`Full output locator: ${artifact.locator}`);
-    expect(path.basename(artifact.locator)).toMatch(/^[0-9a-f-]+-unsafe-output\.txt$/);
+      expect(result?.persistResult).toBeUndefined();
+      expect(result?.artifact).toBeDefined();
+      const artifact = result?.artifact;
+      if (!artifact || !result?.content) {
+        throw new Error("Expected an artifact-backed preview.");
+      }
+      expect(readFileSync(artifact.locator, "utf8")).toBe(content);
+      expect(artifact.byteLength).toBe(Buffer.byteLength(content, "utf8"));
+      expect(Buffer.byteLength(result.content, "utf8")).toBeLessThanOrEqual(contentByteLimit);
+      expect(result.content).toStartWith("HEAD");
+      expect(result.content).toEndWith("TAIL needle");
+      expect(result.content).toContain(`Full output locator: ${artifact.locator}`);
+      expect(path.basename(artifact.locator)).toMatch(/^[0-9a-f-]+-unsafe-output\.txt$/);
 
-    const omittedBytes = readOmittedByteCount(result.content);
-    const notice = formatExpectedNotice(artifact.locator, omittedBytes);
-    const retainedBytes =
-      Buffer.byteLength(result.content, "utf8") - Buffer.byteLength(notice, "utf8");
-    expect(artifact.byteLength - retainedBytes).toBe(omittedBytes);
+      const omittedBytes = readOmittedByteCount(result.content);
+      const notice = formatExpectedNotice(artifact.locator, omittedBytes);
+      const retainedBytes =
+        Buffer.byteLength(result.content, "utf8") - Buffer.byteLength(notice, "utf8");
+      expect(artifact.byteLength - retainedBytes).toBe(omittedBytes);
 
-    const readResult = await createReadTool({ root: cwd }).execute(
-      { path: artifact.locator },
-      createToolContext(),
-    );
-    expect(readResult).toMatchObject({ result: { content } });
-    const grepResult = await createGrepTool({ root: cwd }).execute(
-      { path: artifact.locator, pattern: "needle", literal: true },
-      createToolContext(),
-    );
-    expect(grepResult).toMatchObject({
-      result: { matches: [expect.objectContaining({ text: "TAIL needle" })] },
-    });
+      const readResult = await createReadTool({ root: cwd }).execute(
+        { path: artifact.locator },
+        createToolContext(),
+      );
+      expect(readResult).toMatchObject({ result: { content } });
+      const grepResult = await createGrepTool({ root: cwd }).execute(
+        { path: artifact.locator, pattern: "needle", literal: true },
+        createToolContext(),
+      );
+      expect(grepResult).toMatchObject({
+        result: { matches: [expect.objectContaining({ text: "TAIL needle" })] },
+      });
 
-    expect(statSync(path.dirname(path.dirname(path.dirname(artifact.locator)))).mode & 0o777).toBe(
-      0o700,
-    );
-    expect(statSync(path.dirname(path.dirname(artifact.locator))).mode & 0o777).toBe(0o700);
-    expect(statSync(path.dirname(artifact.locator)).mode & 0o777).toBe(0o700);
-    expect(statSync(artifact.locator).mode & 0o777).toBe(0o600);
-  });
+      expect(
+        statSync(path.dirname(path.dirname(path.dirname(artifact.locator)))).mode & 0o777,
+      ).toBe(0o700);
+      expect(statSync(path.dirname(path.dirname(artifact.locator))).mode & 0o777).toBe(0o700);
+      expect(statSync(path.dirname(artifact.locator)).mode & 0o777).toBe(0o700);
+      expect(statSync(artifact.locator).mode & 0o777).toBe(0o600);
+    },
+  );
 
   test("stores complete shell output after live updates have been bounded", async () => {
     const kanaHome = createTempDirectory();

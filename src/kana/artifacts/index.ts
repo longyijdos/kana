@@ -8,6 +8,7 @@ export {
 export { createKanaToolResultArtifactPolicy } from "./policy";
 export {
   createPersistentKanaSessionArtifactStore,
+  createPersistentKanaSubagentArtifactStore,
   createTemporaryKanaSessionArtifactStore,
   getKanaSessionArtifactDirectory,
   type KanaSessionArtifactStore,

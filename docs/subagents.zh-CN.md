@@ -34,7 +34,7 @@ Host 从 conversation 的已校验 Agent 配置中派生 child 的模型和能�
 - 工作区工具必须同时被 `agent.tools` 和角色卡允许；
 - MCP 入口必须同时被 `agent.tools` 与角色卡允许；`mcp_list_tools`、`mcp_get_tool` 与 `mcp_call` 覆盖全部当前已启用、经过过滤的 MCP 能力，不提供逐 server 或逐远端工具权限；
 - child Agent 永远不会获得 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、Background Job、todo、Goal、memory 或 scheduled-wake 工具；
-- 过大的 child 结果不会转存进 parent-session artifact。
+- child 继承 `agent.tool_result_artifacts` 和结果大小预算；过大的非 `read` 文本保存为 child 自己的 artifact，而不是写入 parent 对话的 artifact 目录。存储与清理见[会话与记忆](sessions-and-memory.zh-CN.md)。
 
 角色卡正文是 child 的完整 system prompt，任务是它的 user message。它的 runtime-context section 列表为空：不会接收 Kana 默认 prompt、环境上下文、AGENTS.md、memory、Skills、Host 实时状态、parent 对话消息或继承 checkpoint。主 Agent 必须通过 `task` 参数提供任务所需的全部事实、约束、路径和预期结果。Child 使用普通审批 hook，因此角色卡不能弱化 `approval.mode` 或 Shell/MCP 审批规则。TUI 按 FIFO 串行处理同时到达的 main/child 审批请求，并用准确的 profile 与短 Agent 身份标记 child 提示。
 
@@ -55,10 +55,10 @@ Parent runtime context 只投影活动和未观察终态 child 的身份、profi
 普通模式下，每个 child 都有独立的内部 journal：
 
 ```text
-<KANA_HOME>/sessions/<encoded-workspace>/.subagents/<parent-session-id>/<child-id>.jsonl
+<KANA_HOME>/sessions/<encoded-workspace>/.subagents/<parent-session-id>/<timestamp>_<child-id>.jsonl
 ```
 
-它复用 session turn record 格式，但 header 额外包含 parent ID、spawn tool-call ID 与完整 profile 快照。这些文件是用于调试、审计、accounting 与未来历史浏览的持久化日志；它们不是 runtime manager state、普通可恢复 session，也不会出现在 `/resume`。新的 Kana 进程绝不会把这些文件恢复进 `KanaSubagentManager`。Fork parent 不复制 child；删除 parent 会移除完整 child-journal 目录。
+它复用 session turn record 格式，但 header 额外包含 parent ID、spawn tool-call ID 与完整 profile 快照。这些文件是用于调试、审计、accounting 与未来历史浏览的持久化日志；它们不是 runtime manager state、普通可恢复 session，也不会出现在 `/resume`。新的 Kana 进程绝不会把这些文件恢复进 `KanaSubagentManager`。Fork parent 不复制 child journal 或其 artifact；删除 parent 会移除完整 child-journal 目录和 child-artifact 子树。Child 结束或 Kana 退出后，其 artifact 仍保留。
 
 主 Agent 运行期间也可使用 `/agents`。面板显示启动时 profile 快照，以及当前 hosted session instance 中活动和仍被保留的终态 record；方向键选择，`Enter` 打开当前进程内的最新进展快照，`K` 取消活动 child 但不确认其 completion，`R` 刷新选中 child 的预览。在详情中按 `Esc` 会返回列表并保留选中项；在列表中按 `Esc` 才关闭面板。启动时的无效 profile 诊断也会显示在面板中。退出 Kana 会丢弃这些 runtime state；以后恢复 parent session 时不会从 child journal 重新填充。
 

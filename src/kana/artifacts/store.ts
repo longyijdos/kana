@@ -36,6 +36,34 @@ export function createPersistentKanaSessionArtifactStore(options: {
   });
 }
 
+export function createPersistentKanaSubagentArtifactStore(options: {
+  parentSessionId: string;
+  agentId: string;
+  cwd: string;
+  env?: NodeJS.ProcessEnv;
+}): KanaSessionArtifactStore {
+  const parentDirectory = getKanaSubagentArtifactParentDirectory(
+    options.parentSessionId,
+    options.cwd,
+    options.env,
+  );
+  assertSafeSessionId(options.agentId);
+  const directory = path.join(parentDirectory, options.agentId);
+  const subagentDirectory = path.dirname(parentDirectory);
+  const workspaceDirectory = path.dirname(subagentDirectory);
+  return createStore({
+    directory,
+    privateDirectories: [
+      path.dirname(workspaceDirectory),
+      workspaceDirectory,
+      subagentDirectory,
+      parentDirectory,
+      directory,
+    ],
+    persistent: true,
+  });
+}
+
 export function createTemporaryKanaSessionArtifactStore(): KanaSessionArtifactStore {
   const directory = path.join(tmpdir(), `kana-session-artifacts-${randomUUID()}`);
   return createStore({
@@ -59,6 +87,15 @@ export function getKanaSessionArtifactDirectory(
 ): string {
   assertSafeSessionId(sessionId);
   return path.join(getKanaWorkspaceArtifactDirectory(cwd, env), sessionId);
+}
+
+export function getKanaSubagentArtifactParentDirectory(
+  parentSessionId: string,
+  cwd: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  assertSafeSessionId(parentSessionId);
+  return path.join(getKanaWorkspaceArtifactDirectory(cwd, env), ".subagents", parentSessionId);
 }
 
 function createStore(options: CreateStoreOptions): KanaSessionArtifactStore {

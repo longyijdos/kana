@@ -11,6 +11,7 @@ import {
   recordKanaAgentRunAccounting,
 } from "../accounting";
 import { createKanaAgent, type KanaAgentOptions } from "../agent";
+import { createPersistentKanaSubagentArtifactStore } from "../artifacts";
 import { createKanaOAuthTokenStore } from "../auth";
 import {
   createKanaConfigStore,
@@ -626,7 +627,6 @@ export class KanaConversationHost<TConfiguration = never> {
       ...parentConfig,
       agent: {
         ...parentConfig.agent,
-        toolResultArtifacts: false,
         ...(model === undefined
           ? {}
           : {
@@ -652,6 +652,14 @@ export class KanaConversationHost<TConfiguration = never> {
       logger,
       resolveMcp: this.resolveMcp,
       subagentProfile: context.profile,
+      artifactStore: context.owner.persistent
+        ? createPersistentKanaSubagentArtifactStore({
+            parentSessionId: context.owner.sessionId,
+            agentId: context.agentId,
+            cwd: context.owner.cwd,
+            env: this.env,
+          })
+        : undefined,
       customProviderSnapshot: this.customProviderSnapshot,
       journal,
       beforeToolExecution: bindBeforeToolExecution({

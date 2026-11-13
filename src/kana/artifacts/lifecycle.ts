@@ -17,7 +17,11 @@ import type { ContextCheckpoint } from "@/agent";
 import type { Message, ToolResultArtifact } from "@/core";
 import { errorCode, errorFields } from "@/utils";
 import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
-import { getKanaSessionArtifactDirectory, getKanaWorkspaceArtifactDirectory } from "./store";
+import {
+  getKanaSessionArtifactDirectory,
+  getKanaSubagentArtifactParentDirectory,
+  getKanaWorkspaceArtifactDirectory,
+} from "./store";
 
 // A fork copies artifacts before its snapshot is journaled. The grace period
 // prevents another Kana process from mistaking that short protocol gap for a
@@ -168,30 +172,39 @@ export function deleteKanaSessionArtifacts(options: {
   cwd: string;
   env?: NodeJS.ProcessEnv;
 }): KanaArtifactCleanupResult {
-  let directory: string;
+  const result: KanaArtifactCleanupResult = {
+    removedDirectoryCount: 0,
+    removedFileCount: 0,
+    failures: [],
+  };
   try {
-    directory = getKanaSessionArtifactDirectory(options.sessionId, options.cwd, options.env);
-  } catch (error) {
-    return {
-      removedDirectoryCount: 0,
-      removedFileCount: 0,
-      failures: [errorFields(error)],
-    };
-  }
-  if (!existsSync(directory)) {
-    return { removedDirectoryCount: 0, removedFileCount: 0, failures: [] };
-  }
-  try {
+    const directory = getKanaSessionArtifactDirectory(options.sessionId, options.cwd, options.env);
+    const subagentDirectory = getKanaSubagentArtifactParentDirectory(
+      options.sessionId,
+      options.cwd,
+      options.env,
+    );
+    if (!existsSync(directory) && !existsSync(subagentDirectory)) {
+      return result;
+    }
     assertManagedDirectory(path.dirname(path.dirname(directory)), "artifact root");
     assertManagedDirectory(path.dirname(directory), "workspace artifact path");
+    for (const target of [directory, subagentDirectory]) {
+      try {
+        if (target === subagentDirectory && existsSync(target)) {
+          assertManagedDirectory(path.dirname(target), "subagent artifact root");
+        }
+        const removed = removeArtifactDirectory(target);
+        result.removedDirectoryCount += removed.removedDirectoryCount;
+        result.failures.push(...removed.failures);
+      } catch (error) {
+        result.failures.push(errorFields(error));
+      }
+    }
   } catch (error) {
-    return {
-      removedDirectoryCount: 0,
-      removedFileCount: 0,
-      failures: [errorFields(error)],
-    };
+    result.failures.push(errorFields(error));
   }
-  return removeArtifactDirectory(directory);
+  return result;
 }
 
 export function cleanupOrphanedKanaSessionArtifacts(options: {
@@ -224,11 +237,7 @@ export function cleanupOrphanedKanaSessionArtifacts(options: {
     if (!artifactStats.isDirectory() || artifactStats.isSymbolicLink()) {
       throw new Error("Workspace artifact path is not a managed directory.");
     }
-    sessionFilePaths = existsSync(sessionDirectory)
-      ? readdirSync(sessionDirectory, { withFileTypes: true })
-          .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
-          .map((entry) => path.join(sessionDirectory, entry.name))
-      : [];
+    sessionFilePaths = listJournalPaths(sessionDirectory);
     artifactEntries = readdirSync(artifactDirectory, { withFileTypes: true });
   } catch (error) {
     return {
@@ -240,38 +249,97 @@ export function cleanupOrphanedKanaSessionArtifacts(options: {
 
   const cleanupCutoff = Date.now() - ORPHAN_CLEANUP_GRACE_MS;
   for (const entry of artifactEntries) {
-    if (!entry.isDirectory()) {
+    if (!entry.isDirectory() || entry.name === ".subagents") {
       continue;
     }
-    const journalPath = sessionFilePaths.find((filePath) =>
-      filePath.endsWith(`_${entry.name}.jsonl`),
+    cleanupArtifactDirectory(
+      path.join(artifactDirectory, entry.name),
+      findJournalPath(sessionFilePaths, entry.name),
+      cleanupCutoff,
+      result,
     );
-    const sessionArtifactDirectory = path.join(artifactDirectory, entry.name);
-    if (journalPath) {
-      cleanupUnreferencedArtifactFiles(
-        sessionArtifactDirectory,
-        journalPath,
-        cleanupCutoff,
-        result,
-      );
-      continue;
-    }
+  }
+  cleanupSubagentArtifacts(
+    artifactDirectory,
+    sessionDirectory,
+    sessionFilePaths,
+    cleanupCutoff,
+    result,
+  );
+  return result;
+}
 
-    try {
-      if (lstatSync(sessionArtifactDirectory).mtimeMs > cleanupCutoff) {
+function listJournalPaths(directory: string): string[] {
+  if (!existsSync(directory)) return [];
+  assertManagedDirectory(directory, "session journal path");
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
+    .map((entry) => path.join(directory, entry.name));
+}
+
+function findJournalPath(journals: readonly string[], sessionId: string): string | undefined {
+  return journals.find((filePath) => filePath.endsWith(`_${sessionId}.jsonl`));
+}
+
+function cleanupSubagentArtifacts(
+  artifactDirectory: string,
+  sessionDirectory: string,
+  parentJournals: readonly string[],
+  cleanupCutoff: number,
+  result: KanaArtifactCleanupResult,
+): void {
+  const subagentDirectory = path.join(artifactDirectory, ".subagents");
+  if (!existsSync(subagentDirectory)) return;
+  try {
+    assertManagedDirectory(subagentDirectory, "subagent artifact root");
+    for (const parent of readdirSync(subagentDirectory, { withFileTypes: true })) {
+      if (!parent.isDirectory()) continue;
+      const parentDirectory = path.join(subagentDirectory, parent.name);
+      if (!findJournalPath(parentJournals, parent.name)) {
+        cleanupArtifactDirectory(parentDirectory, undefined, cleanupCutoff, result);
         continue;
       }
-    } catch (error) {
-      result.failures.push(errorFields(error));
-      continue;
+      try {
+        const journalRoot = path.join(sessionDirectory, ".subagents");
+        if (existsSync(journalRoot)) assertManagedDirectory(journalRoot, "subagent journal root");
+        const journals = listJournalPaths(path.join(journalRoot, parent.name));
+        for (const child of readdirSync(parentDirectory, { withFileTypes: true })) {
+          if (!child.isDirectory()) continue;
+          cleanupArtifactDirectory(
+            path.join(parentDirectory, child.name),
+            findJournalPath(journals, child.name),
+            cleanupCutoff,
+            result,
+          );
+        }
+      } catch (error) {
+        result.failures.push(errorFields(error));
+      }
     }
+  } catch (error) {
+    result.failures.push(errorFields(error));
+  }
+}
 
-    const removed = removeArtifactDirectory(sessionArtifactDirectory);
+function cleanupArtifactDirectory(
+  directory: string,
+  journalPath: string | undefined,
+  cleanupCutoff: number,
+  result: KanaArtifactCleanupResult,
+): void {
+  if (journalPath) {
+    cleanupUnreferencedArtifactFiles(directory, journalPath, cleanupCutoff, result);
+    return;
+  }
+  try {
+    if (lstatSync(directory).mtimeMs > cleanupCutoff) return;
+    const removed = removeArtifactDirectory(directory);
     result.removedDirectoryCount += removed.removedDirectoryCount;
     result.removedFileCount += removed.removedFileCount;
     result.failures.push(...removed.failures);
+  } catch (error) {
+    result.failures.push(errorFields(error));
   }
-  return result;
 }
 
 function collectArtifactReferences(messages: readonly Message[]): Map<string, ToolResultArtifact> {

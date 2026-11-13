@@ -66,13 +66,14 @@ Clean 模式不向 session repository 注册 journal，因此当前对话只保�
 
 工具消息还可以带 `durationMs`，保存 Runtime 记录的有限、非负执行耗时，不受结构化 result 保存策略影响。没有该字段的旧消息仍然有效。计时边界见 [工具](tools.zh-CN.md#调用管线)。
 
-超大的文本工具结果在消息中保留有界 `content` 预览和 `artifact: { kind: "text", locator, byteLength }`。能复制且能 JSON 序列化、序列化后 UTF-8 大小不超过 128 KiB（131072 字节）的 `result` 会完整、独立地保存在同一条 JSONL 消息中。超限、无法序列化或被自定义策略显式排除的 result 会整份省略。完整 UTF-8 文本位于：
+超大的文本工具结果在消息中保留有界 `content` 预览和 `artifact: { kind: "text", locator, byteLength }`。能复制且能 JSON 序列化、序列化后 UTF-8 大小不超过 128 KiB（131072 字节）的 `result` 会完整、独立地保存在同一条 JSONL 消息中。超限、无法序列化或被自定义策略显式排除的 result 会整份省略。对话 Agent 与 subagent 的完整 UTF-8 文本分别位于：
 
 ```text
 <KANA_HOME>/artifacts/<encoded-workspace>/<session-id>/<uuid>-<safe-stem>.txt
+<KANA_HOME>/artifacts/<encoded-workspace>/.subagents/<parent-session-id>/<child-id>/<uuid>-<safe-stem>.txt
 ```
 
-artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访问的 `0700`，文件使用不可预测名称、exclusive no-follow 创建和 `0600`；建议文件名会缩减成不能穿越目录的安全 stem。绝对 locator 可直接交给现有 `read` 与 `grep` 工具，同时结构化 artifact 元数据让恢复和生命周期代码无需解析模型可见 notice，就能校验归属与字节长度。恢复后的 TUI 历史优先显示保留的 result；result 缺失时，artifact 元数据提供紧凑的已存储输出摘要，只在展开式查看器中显示 locator。artifact 文本可能包含原本会进入 session 的同等敏感工具输出，因此该目录属于私有用户数据，并不是通用文件管理器。Clean 模式使用惰性创建的进程级临时目录，在该托管 session 被替换或关闭时删除，不创建上述持久路径。
+全部受管 artifact 目录均使用仅 owner 可访问的 `0700`，文件使用不可预测名称、exclusive no-follow 创建和 `0600`；建议文件名会缩减成不能穿越目录的安全 stem。绝对 locator 可直接交给现有 `read` 与 `grep` 工具，同时结构化 artifact 元数据让恢复和生命周期代码无需解析模型可见 notice，就能校验归属与字节长度。恢复后的 TUI 历史优先显示保留的 result；result 缺失时，artifact 元数据提供紧凑的已存储输出摘要，只在展开式查看器中显示 locator。artifact 文本可能包含原本会进入 session 的同等敏感工具输出，因此该目录属于私有用户数据，并不是通用文件管理器。Clean 模式使用惰性创建的进程级临时目录，在该托管 session 被替换或关闭时删除，不创建上述持久路径。
 
 压缩不会从 session JSONL 删除原始图片。生成摘要时传入图片字节还是只传元数据，取决于当前模型的图片能力，详见 [Agent 运行时](agent-runtime.zh-CN.md)。
 
@@ -94,13 +95,13 @@ artifact 根目录、工作区目录与 session 目录均使用仅 owner 可访�
 - 持久 session 只有一个写入者。Kana 从创建或恢复开始持有一把跨进程排他锁，即 journal 旁的 `<session-file>.lock` 目录，直到该托管 session 的前台 run、后台 Job 与 subagent 全部结束。恢复会先获取这把锁，再做尾部修复或中断 turn 恢复，因此与之竞争的 CLI、headless 或 server 进程会以 session 正在使用的错误失败，且不改动 journal；Kana 不会接管仍然存活的持有者。持有者运行期间会持续刷新锁的 mtime，因此崩溃进程留下的锁约 10 秒后过期，之后的恢复可以接管。若锁被破坏，后续追加会失败，直到重新加载该 session。列出 session 不加锁，clean 模式的 session 也不加锁。
 - 恢复会重建 journal 中已提交的消息、最后一个 context checkpoint 和最新 todo 状态。进程内的 inbox、wake、Goal 与用户任务状态不属于 session 格式，详见[对话运行时](conversation-runtime.zh-CN.md)。
 - 恢复会检查每个保留 artifact 是否位于该 session 的受管目录、是否为普通文件，以及大小是否与记录字节数一致。引用缺失或无效时记录安全诊断，但不会让 journal 无法读取，也不会修改其中的有界预览。
-- fork 会在注册 snapshot 前把所有保留 artifact 复制到目标 session 的私有目录，再重写继承工具消息与累计 checkpoint 摘要中的 locator。因此源 session 与 fork 可以独立删除。Subagent journal 属于内部 child 而非对话历史，不会被复制。复制或重写失败会中止 fork，并以 best-effort 回滚目标目录。
+- fork 会在注册 snapshot 前把所有保留 artifact 复制到目标 session 的私有目录，再重写继承工具消息与累计 checkpoint 摘要中的 locator。因此源 session 与 fork 可以独立删除。Subagent journal 及其 artifact 属于内部 child 资源而非对话历史，不会被复制。复制或重写失败会中止 fork，并以 best-effort 回滚目标目录。
 - 继续会话按当前工作目录查找；会话选择器同样只展示当前工作区的其他会话。
 - `listKanaSessions()` 不限定 cwd 时会扫描所有工作区目录，并按活动时间降序排序。每个列出的会话以最后一条完整 timeline entry 的 timestamp 作为派生的 `updatedAt`，没有条目时回退到 `createdAt`。该值不会写回 header，因此打开或恢复会话但未追加新 journal 条目时，其位置保持不变；未终止的崩溃尾部记录不算活动。
 - 列表读取到损坏 JSONL 时会跳过该文件，避免一条坏记录隐藏其他历史；显式加载该会话仍会报错。
 - 用量统计忽略其他账本版本的 accounting 记录。格式损坏的 accounting 行会被跳过，并在会话日志中写一条 `accounting.record_skipped` 警告，不会让 `/usage` 失败。
-- 删除按 session ID 找到文件，并一并移除 `.subagents/<session-id>`。Kana 先等待当前进程中为该 session 托管的后台 Job、subagent 与 artifact store 释放，再在 session 锁的保护下删除，因此其他进程持有的 session 会以正在使用为由被拒绝。成功删除 journal 后，再以 best-effort 删除对应持久 artifact 目录，之后才报告成功；找不到返回 `false`。Child journal 契约见 [Subagent](subagents.zh-CN.md)。
-- 普通模式启动时执行保守的孤儿清理，并保留 24 小时宽限期：删除没有对应 session journal 的陈旧 artifact 目录，以及其 JSON 编码 locator 不在已有 journal 中的陈旧文件。近期文件、被引用文件、符号链接、异常路径和清理失败不会被冒险删除，只会保留或报告。
+- 删除按 session ID 找到文件，并一并移除 `.subagents/<session-id>`。Kana 先等待当前进程中为该 session 托管的后台 Job、subagent 与 artifact store 释放，再在 session 锁的保护下删除，因此其他进程持有的 session 会以正在使用为由被拒绝。成功删除 journal 后，再以 best-effort 删除对应持久 artifact 目录和 artifact 下的 `.subagents/<session-id>` 子树，之后才报告成功；找不到返回 `false`。Child journal 契约见 [Subagent](subagents.zh-CN.md)。
+- 普通模式启动时执行保守的孤儿清理，并保留 24 小时宽限期：删除没有对应 session journal 的陈旧 artifact 目录，以及其 JSON 编码 locator 不在已有 journal 中的陈旧文件。Child artifact 文件按同一 parent 下对应的 child journal 检查，而不是按 parent journal；parent journal 缺失时，其 child-artifact 子树会在超过宽限期后按孤儿清理。近期文件、被引用文件、符号链接、异常路径和清理失败不会被冒险删除，只会保留或报告。
 
 会话文件用 `0600` 追加。文件格式中保存完整用户、助手和工具消息，包括内联结果或有界 artifact 元数据；不要把会话目录或 artifact 目录当作无敏感信息的日志位置。
 

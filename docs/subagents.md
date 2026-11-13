@@ -34,7 +34,7 @@ The host derives the child model and capability limits from the conversation's v
 - workspace tools must be enabled by both `agent.tools` and the card;
 - MCP gateways must be allowed by both `agent.tools` and the role card; `mcp_list_tools`, `mcp_get_tool`, and `mcp_call` cover all currently enabled, filtered MCP capabilities, without per-server or per-remote-tool permissions;
 - child Agents never receive `spawn_subagent`, `wait_subagent`, `cancel_subagent`, Background Job, todo, Goal, memory, or scheduled-wake tools;
-- oversized child results are not moved into parent-session artifacts.
+- children inherit `agent.tool_result_artifacts` and the result-size budget; oversized non-`read` text is saved in child-owned artifacts rather than the parent conversation's artifact directory. Storage and cleanup follow [Sessions and memory](sessions-and-memory.md).
 
 The card body is the child's complete system prompt, and the task is its user message. Its runtime-context section list is empty: it receives no default Kana prompt, environment context, AGENTS.md content, memory, Skills, live host state, parent conversation messages, or inherited checkpoint. The main Agent must include every task-specific fact, constraint, path, and expected result in the `task` argument. The child uses the ordinary approval hook, so cards cannot weaken `approval.mode` or Shell/MCP approval rules. The TUI serializes simultaneous main/child approval requests in FIFO order and labels child prompts with their exact profile and short Agent identity.
 
@@ -55,10 +55,10 @@ Live and unobserved terminal child identity, profile, and state are projected in
 In normal mode every child has an independent internal journal:
 
 ```text
-<KANA_HOME>/sessions/<encoded-workspace>/.subagents/<parent-session-id>/<child-id>.jsonl
+<KANA_HOME>/sessions/<encoded-workspace>/.subagents/<parent-session-id>/<timestamp>_<child-id>.jsonl
 ```
 
-It uses the session turn record format but includes the parent ID, spawning tool-call ID, and complete profile snapshot in its header. These files are persistent logs for debugging, auditing, accounting, and possible future history views; they are not runtime manager state, ordinary resumable sessions, or entries in `/resume`. A new Kana process never restores them into `KanaSubagentManager`. Forking a parent does not copy children. Deleting the parent removes its complete child-journal directory.
+It uses the session turn record format but includes the parent ID, spawning tool-call ID, and complete profile snapshot in its header. These files are persistent logs for debugging, auditing, accounting, and possible future history views; they are not runtime manager state, ordinary resumable sessions, or entries in `/resume`. A new Kana process never restores them into `KanaSubagentManager`. Forking a parent copies neither child journals nor their artifacts. Deleting the parent removes both its complete child-journal directory and child-artifact subtree. Child artifacts remain available after the child settles or Kana exits.
 
 `/agents` is available while the main Agent runs. It shows the startup profile snapshot and only the current hosted session instance's running and retained terminal records. Arrows select, `Enter` opens a current in-process progress snapshot, `K` cancels a live child without acknowledging its completion, and `R` refreshes the selected child's preview. `Esc` from detail returns to the list with its selection preserved; `Esc` from the list closes the manager. Startup profile diagnostics appear in the panel. Exiting Kana discards this runtime state; resuming the parent session in a later process does not repopulate it from child journals.
 
