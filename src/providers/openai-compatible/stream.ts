@@ -20,7 +20,10 @@ export function applyOpenAICompatibleChunk(
   if (chunk.error !== undefined) {
     throw new Error("OpenAI-compatible provider returned an error event in its completion stream.");
   }
-  if (chunk.usage) {
+  // Some proxies attach a partial usage object to every streamed chunk and only
+  // fill in total_tokens on the final one. Ignore incomplete snapshots instead
+  // of failing the whole turn.
+  if (chunk.usage && typeof chunk.usage.total_tokens === "number") {
     state.usage = toModelUsage(chunk.usage);
   }
 
