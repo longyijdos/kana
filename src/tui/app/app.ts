@@ -766,17 +766,17 @@ export class KanaTuiApp {
     }
 
     if (isCtrlC(data)) {
-      if (this.status.running) {
-        this.abort();
-        return { consume: true };
-      }
-
       if (
         this.bottomArea.isShowing(this.editor) &&
         this.bottomArea.hasFocus(this.editor) &&
         this.editor.hasDraft()
       ) {
         this.editor.clear();
+        return { consume: true };
+      }
+
+      if (this.status.running) {
+        this.abort();
         return { consume: true };
       }
 

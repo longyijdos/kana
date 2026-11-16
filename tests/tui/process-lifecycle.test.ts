@@ -417,6 +417,77 @@ describe("Kana TUI shutdown", () => {
     expect(terminalStopCount).toBe(1);
   });
 
+  test("clears a focused editor draft before running Ctrl+C aborts", async () => {
+    let handleInput!: (data: string) => void;
+    let abortCount = 0;
+    let terminalStopCount = 0;
+    const calls: Array<{ input: unknown; stream: AgentEventStream }> = [];
+    const terminal = {
+      ...createTerminal(),
+      start: (onInput: (data: string) => void) => {
+        handleInput = onInput;
+      },
+      stop: () => {
+        terminalStopCount += 1;
+      },
+    };
+    const app = new KanaTuiApp(
+      () =>
+        withAgentInboxForTest({
+          state: createAgentState(),
+          abort() {
+            abortCount += 1;
+          },
+          async waitForIdle() {},
+          stream(input: unknown) {
+            const stream = new AgentEventStream();
+            calls.push({ input, stream });
+            return stream;
+          },
+        }) as never,
+      terminal,
+      createOptions(),
+    );
+    const editor = (
+      app as unknown as {
+        editor: {
+          attachImage(image: {
+            mimeType: "image/png";
+            data: string;
+            width: number;
+            height: number;
+          }): void;
+          getText(): string;
+          hasDraft(): boolean;
+          setText(value: string): void;
+        };
+      }
+    ).editor;
+
+    app.start();
+    editor.setText("first");
+    handleInput("\r");
+    await waitFor(() => calls.length === 1);
+
+    editor.setText("unfinished");
+    editor.attachImage({ mimeType: "image/png", data: "eA==", width: 1, height: 1 });
+
+    handleInput("\x03");
+
+    expect(editor.getText()).toBe("");
+    expect(editor.hasDraft()).toBe(false);
+    expect(abortCount).toBe(0);
+    expect(terminalStopCount).toBe(0);
+
+    handleInput("\x03");
+
+    expect(abortCount).toBe(1);
+    expect(terminalStopCount).toBe(0);
+
+    calls[0]?.stream.end({ type: "agent_end", reason: "aborted", messages: [] });
+    await app.stop();
+  });
+
   for (const trigger of ["/quit", "Ctrl+C"] as const) {
     test(`${trigger} confirms active memory, defaults to Cancel, and supports Quit now`, async () => {
       let handleInput!: (data: string) => void;
