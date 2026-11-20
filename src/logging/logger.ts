@@ -107,10 +107,22 @@ function sanitizeLogMetadata(metadata: LogMetadata): LogMetadata {
 
 function sanitizeLogValue(value: unknown, depth = 0): unknown {
   if (value instanceof Error) {
+    if (depth >= MAX_DEPTH) return "[TRUNCATED]";
+    const code = "code" in value && typeof value.code === "string" ? value.code : undefined;
+    const cause: unknown = value.cause;
     return {
-      name: value.name,
+      name: truncate(value.name === "Error" ? value.constructor.name : value.name),
       message: truncate(value.message),
+      ...(code === undefined ? {} : { code: truncate(code) }),
       ...(value.stack === undefined ? {} : { stack: truncate(value.stack) }),
+      ...(cause === undefined
+        ? {}
+        : {
+            cause:
+              cause instanceof Error || cause === null || typeof cause !== "object"
+                ? sanitizeLogValue(cause, depth + 1)
+                : "[OBJECT]",
+          }),
     };
   }
 

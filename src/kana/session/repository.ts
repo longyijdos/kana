@@ -145,7 +145,7 @@ function findKanaSession(
 
 function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
   let parsed = readKanaSessionFile(filePath);
-  const recoveredIncompleteTail = parsed.recoveredIncompleteTail;
+  const truncatedTailBytes = parsed.truncatedTailBytes;
   let recoveredInterruptedTurn: LoadKanaSessionResult["recoveredInterruptedTurn"];
 
   const initialMetadata = headerToMetadata(
@@ -213,7 +213,7 @@ function loadKanaSessionFile(filePath: string): LoadKanaSessionResult {
     todoState,
     contextCheckpoint,
     recoveredInterruptedTurn,
-    recoveredIncompleteTail: recoveredIncompleteTail || undefined,
+    truncatedTailBytes,
   };
 }
 
@@ -261,13 +261,13 @@ function readRecordTimestamp(line: string): string | undefined {
 function readKanaSessionFile(filePath: string): {
   header: KanaSessionHeader;
   timeline: readonly KanaSessionTimelineEntry[];
-  recoveredIncompleteTail: boolean;
+  truncatedTailBytes?: number;
 } {
-  const { headerLine, recordLines, recoveredIncompleteTail } = readSessionLines(filePath, true);
+  const { headerLine, recordLines, truncatedTailBytes } = readSessionLines(filePath, true);
   return {
     header: parseHeader(headerLine, filePath),
     timeline: recordLines.map((line, index) => parseTimelineEntry(line, filePath, index + 2)),
-    recoveredIncompleteTail,
+    truncatedTailBytes,
   };
 }
 
@@ -281,14 +281,15 @@ function readSessionLines(
 ): {
   headerLine: string;
   recordLines: string[];
-  recoveredIncompleteTail: boolean;
+  truncatedTailBytes?: number;
 } {
   if (!existsSync(filePath)) {
     throw new Error(`Kana session file not found: ${filePath}`);
   }
 
-  let content = readFileSync(filePath, "utf8");
-  let recoveredIncompleteTail = false;
+  const bytes = readFileSync(filePath);
+  let content = bytes.toString("utf8");
+  let truncatedTailBytes: number | undefined;
 
   if (repairIncompleteTail && content.length > 0 && !content.endsWith("\n")) {
     const lastNewline = content.lastIndexOf("\n");
@@ -306,9 +307,10 @@ function readSessionLines(
       }
       // Only an unterminated final record is recoverable. Corruption in any
       // completed JSONL record continues to fail normal parsing.
-      truncateSync(filePath, lastNewline + 1);
+      const retainedBytes = bytes.lastIndexOf(0x0a) + 1;
+      truncateSync(filePath, retainedBytes);
       content = content.slice(0, lastNewline + 1);
-      recoveredIncompleteTail = true;
+      truncatedTailBytes = bytes.length - retainedBytes;
     }
   }
 
@@ -316,7 +318,7 @@ function readSessionLines(
   if (headerLine === undefined) {
     throw new Error(`Kana session file is empty: ${filePath}`);
   }
-  return { headerLine, recordLines, recoveredIncompleteTail };
+  return { headerLine, recordLines, truncatedTailBytes };
 }
 
 function listDirectories(directory: string): string[] {

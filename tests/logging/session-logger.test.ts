@@ -24,7 +24,8 @@ describe("session logger", () => {
 
     logger.debug("agent.turn_started", { turn: 1 });
     logger.info("agent.run_started", { promptMessageCount: 1 });
-    logger.error("agent.failed", { error: new Error("unexpected") });
+    const cause = Object.assign(new Error("connection reset"), { code: "ECONNRESET" });
+    logger.error("agent.failed", { error: new Error("unexpected", { cause }) });
 
     const records = readLogRecords(logPath);
     expect(records).toEqual([
@@ -40,7 +41,12 @@ describe("session logger", () => {
         event: "agent.failed",
         sessionId: "session-1",
         metadata: {
-          error: expect.objectContaining({ name: "Error", message: "unexpected" }),
+          error: expect.objectContaining({
+            name: "Error",
+            message: "unexpected",
+            stack: expect.stringContaining("unexpected"),
+            cause: expect.objectContaining({ message: "connection reset", code: "ECONNRESET" }),
+          }),
         },
       }),
     ]);

@@ -15,7 +15,7 @@ import path from "node:path";
 
 import type { ContextCheckpoint } from "@/agent";
 import type { Message, ToolResultArtifact } from "@/core";
-import { errorCode, errorFields } from "@/utils";
+import { errorCode } from "@/utils";
 import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
 import {
   getKanaSessionArtifactDirectory,
@@ -37,7 +37,7 @@ export type ForkKanaSessionArtifactsResult = {
 export type KanaArtifactCleanupResult = {
   removedDirectoryCount: number;
   removedFileCount: number;
-  failures: Array<{ errorType: string; errorCode?: string }>;
+  failures: unknown[];
 };
 
 export type KanaArtifactAuditResult = {
@@ -198,11 +198,11 @@ export function deleteKanaSessionArtifacts(options: {
         result.removedDirectoryCount += removed.removedDirectoryCount;
         result.failures.push(...removed.failures);
       } catch (error) {
-        result.failures.push(errorFields(error));
+        result.failures.push(error);
       }
     }
   } catch (error) {
-    result.failures.push(errorFields(error));
+    result.failures.push(error);
   }
   return result;
 }
@@ -243,7 +243,7 @@ export function cleanupOrphanedKanaSessionArtifacts(options: {
     return {
       removedDirectoryCount: 0,
       removedFileCount: 0,
-      failures: [errorFields(error)],
+      failures: [error],
     };
   }
 
@@ -313,11 +313,11 @@ function cleanupSubagentArtifacts(
           );
         }
       } catch (error) {
-        result.failures.push(errorFields(error));
+        result.failures.push(error);
       }
     }
   } catch (error) {
-    result.failures.push(errorFields(error));
+    result.failures.push(error);
   }
 }
 
@@ -338,7 +338,7 @@ function cleanupArtifactDirectory(
     result.removedFileCount += removed.removedFileCount;
     result.failures.push(...removed.failures);
   } catch (error) {
-    result.failures.push(errorFields(error));
+    result.failures.push(error);
   }
 }
 
@@ -443,7 +443,7 @@ function removeArtifactDirectory(directory: string): KanaArtifactCleanupResult {
     return {
       removedDirectoryCount: 0,
       removedFileCount: 0,
-      failures: [errorFields(error)],
+      failures: [error],
     };
   }
 }
@@ -480,6 +480,6 @@ function cleanupUnreferencedArtifactFiles(
       result.removedFileCount += 1;
     }
   } catch (error) {
-    result.failures.push(errorFields(error));
+    result.failures.push(error);
   }
 }

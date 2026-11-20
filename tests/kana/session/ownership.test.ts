@@ -68,7 +68,7 @@ describe("Kana session ownership", () => {
     }
 
     const resumed = loadKanaSession(owned.id, { cwd: owned.cwd, env });
-    expect(resumed.recoveredIncompleteTail).toBe(true);
+    expect(resumed.truncatedTailBytes).toBeGreaterThan(0);
     expect(resumed.recoveredInterruptedTurn).toEqual({
       turnId: "running-turn",
       unknownToolCallCount: 1,

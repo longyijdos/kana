@@ -9,7 +9,7 @@ import {
   type ToolCallContent,
 } from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
-import { errorFields, sliceUtf8Prefix, sliceUtf8Suffix } from "@/utils";
+import { sliceUtf8Prefix, sliceUtf8Suffix } from "@/utils";
 import { isRuntimeContextMessage, resolveRuntimeContextMessages } from "./prompt-assembly";
 import {
   estimateContextTokens,
@@ -405,7 +405,7 @@ export class ContextManager {
         reason,
         estimatedTokens: beforeTokens,
         compactedMessageCount,
-        ...errorFields(error),
+        error,
       });
       if (options.signal?.aborted) {
         throw error;

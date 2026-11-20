@@ -77,7 +77,10 @@ describe("shared provider HTTP primitives", () => {
       fetch() {
         requestCount += 1;
         return requestCount === 1
-          ? new Response("busy", { status: 429, headers: { "retry-after": "0" } })
+          ? new Response("busy\ninternal proxy details", {
+              status: 429,
+              headers: { "retry-after": "0" },
+            })
           : new Response("ok");
       },
     });
@@ -92,12 +95,14 @@ describe("shared provider HTTP primitives", () => {
 
       expect(await response.text()).toBe("ok");
       expect(requestCount).toBe(2);
-      expect(retries).toEqual([
+      expect(retries).toMatchObject([
         {
           attempt: 1,
           delayMs: 0,
           errorCode: "PROVIDER_HTTP_ERROR",
-          errorType: "ProviderHttpError",
+          error: expect.objectContaining({
+            message: expect.stringMatching(/: busy internal proxy details$/),
+          }),
           httpStatus: 429,
         },
       ]);
@@ -119,7 +124,7 @@ describe("shared provider HTTP primitives", () => {
     ).catch((caught) => caught);
 
     expect(error).toBe(reason);
-    expect(retries).toEqual([]);
+    expect(retries).toMatchObject([]);
   });
 
   test("retries a 401 once with refreshed credentials before failing", async () => {
@@ -153,18 +158,67 @@ describe("shared provider HTTP primitives", () => {
     }
   });
 
+  test.each([
+    ["text/html", "upstream connection refused"],
+    [
+      "text/html",
+      "<html><head><title>502</title></head><body>upstream connection refused<script>details()</script></body></html>",
+    ],
+    [undefined, "upstream connection refused"],
+  ] satisfies [string | undefined, string][])(
+    "keeps the proxy error detail with content type %s",
+    (contentType, body) => {
+      const error = new ProviderHttpError(
+        "Custom API",
+        502,
+        "Bad Gateway",
+        body,
+        undefined,
+        undefined,
+        contentType,
+      );
+      expect(error.message).toBe(
+        "Custom API request failed with 502 Bad Gateway: upstream connection refused",
+      );
+    },
+  );
+
+  test("falls back to a body preview for JSON without a message and malformed JSON", () => {
+    for (const body of [
+      '{\n  "error": {\n    "details": "Connection refused by upstream"\n  }\n}',
+      '{\n  "error": { "details": "Connection refused by upstream"',
+    ]) {
+      const error = new ProviderHttpError(
+        "Custom API",
+        502,
+        "Bad Gateway",
+        body,
+        undefined,
+        undefined,
+        "application/json",
+      );
+      expect(error.message).toContain("Connection refused by upstream");
+      expect(error.message).not.toContain("\n");
+    }
+  });
+
   test("reads provider error codes and bounds the retained body", () => {
     const error = new ProviderHttpError(
       "Test API",
       400,
       "Bad Request",
-      JSON.stringify({ error: { code: "bad_param", param: "model" } }),
+      JSON.stringify({
+        error: { code: "bad_param", param: "model", message: "Unknown model" },
+        context: "do not log this field",
+      }),
       "req_1",
       (code) => (code ? ` Hint for ${code}.` : ""),
     );
 
     expect(error.providerCode).toBe("bad_param");
     expect(error.providerParam).toBe("model");
+    expect(error.message).toContain("Unknown model");
+    expect(error.message).not.toContain("do not log this field");
     expect(error.message).toEndWith(" Hint for bad_param. Request ID: req_1.");
 
     const long = new ProviderHttpError(
@@ -174,5 +228,6 @@ describe("shared provider HTTP primitives", () => {
       `${"x".repeat(MAX_PROVIDER_HTTP_ERROR_BODY_LENGTH)}secret-tail`,
     );
     expect(long.body).not.toContain("secret-tail");
+    expect(long.message).toEndWith(`: ${"x".repeat(512)}…`);
   });
 });

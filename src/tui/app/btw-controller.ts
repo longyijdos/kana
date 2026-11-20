@@ -1,6 +1,6 @@
 import { Agent, type AgentStableContext } from "@/agent";
 import type { Logger } from "@/logging";
-import { errorFields, formatError } from "@/utils";
+import { formatError } from "@/utils";
 import { type ContentView, ContentViewer, MarkdownBlock, TextBlock } from "../components";
 import { dim } from "../render";
 import { tuiTheme } from "../theme";
@@ -154,7 +154,7 @@ export class BtwController {
       outcome = "Failed";
       slot.error = formatError(error);
       this.options.getLogger().error("tui.btw_failed", {
-        ...errorFields(error),
+        error,
       });
     } finally {
       await slot.agent.waitForIdle();

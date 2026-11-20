@@ -180,9 +180,9 @@ describe("Kana tool-result artifacts", () => {
     expect(result?.content).toContain("cannot page within one very long line");
   });
 
-  test("leaves result persistence unchanged and logs safe diagnostics when storage fails", async () => {
+  test("leaves result persistence unchanged and logs the error without the tool output when storage fails", async () => {
     const logs: Array<{ event: string; metadata?: LogMetadata }> = [];
-    const error = Object.assign(new Error("secret output must not be logged"), {
+    const error = Object.assign(new Error("no space left on device"), {
       code: "ENOSPC",
     });
     const policy = createKanaToolResultArtifactPolicy({
@@ -207,8 +207,7 @@ describe("Kana tool-result artifacts", () => {
         metadata: {
           toolName: "shell",
           phase: "write",
-          errorType: "Error",
-          errorCode: "ENOSPC",
+          error,
         },
       },
     ]);

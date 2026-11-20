@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { createNoopLogger, type Logger } from "@/logging";
-import { errorFields } from "@/utils";
 import { type OwnedTask, type OwnedTaskEvent, OwnedTaskRegistry } from "./owned-tasks";
 
 const DEFAULT_MAX_RETAINED_OUTPUT_BYTES = 1024 * 1024;
@@ -219,7 +218,7 @@ export class BackgroundJobManager {
         logger.warn("background_job.producer_failed", {
           jobId: summary.id,
           producer: options.kind,
-          ...errorFields(error),
+          error,
         });
         this.finalize(job, { status: "failed", exitCode: null });
       },

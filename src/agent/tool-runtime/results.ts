@@ -1,7 +1,6 @@
 import { createUserMessage, type ToolResultArtifact, type UserMessage } from "@/core";
 import type { Logger } from "@/logging";
 import type { ToolResult } from "@/tools";
-import { errorFields } from "@/utils";
 import type { ToolResultPolicy } from "../tool-result-policy";
 import type { ExecutedToolCall } from "./types";
 
@@ -132,7 +131,7 @@ export async function finalizeToolResult(
       options.logger.warn("tool.result_policy_failed", {
         policySource: policy.source,
         toolName: executed.toolCall.name,
-        ...errorFields(error),
+        error,
       });
     }
   }

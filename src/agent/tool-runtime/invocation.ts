@@ -1,7 +1,7 @@
 import type { ToolCallContent } from "@/core";
 import type { Logger } from "@/logging";
 import { normalizeToolResult, type Tool, validateToolArguments } from "@/tools";
-import { errorFields, formatError, SerialTaskQueue } from "@/utils";
+import { formatError, SerialTaskQueue } from "@/utils";
 import { createNestedToolInvoker } from "./nested";
 import type { SerialEventQueue } from "./queues";
 import {
@@ -170,7 +170,7 @@ export class ToolInvoker {
               toolName: tool.name,
               reason,
               outcome: late.type,
-              ...(late.type === "rejected" ? errorFields(late.error) : {}),
+              ...(late.type === "rejected" ? { error: late.error } : {}),
             });
           });
         }

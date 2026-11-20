@@ -9,11 +9,7 @@ import {
   type ProviderHttpError,
   waitForProviderRetry,
 } from "../http";
-import {
-  createProviderDiagnostics,
-  getProviderErrorType,
-  type ProviderDiagnostics,
-} from "../lifecycle";
+import { createProviderDiagnostics, type ProviderDiagnostics } from "../lifecycle";
 import {
   isRetryableResponsesStreamError,
   ResponsesStreamError,
@@ -168,8 +164,9 @@ export class OpenAICodexModel extends BaseModel {
               diagnostics.streamRecoveryStarted({
                 attempt: retriesUsed,
                 delayMs,
+                error,
                 errorCode: "PROVIDER_STREAM_TRANSIENT_ERROR",
-                errorType: getProviderErrorType(error),
+
                 eventType: error.eventType,
                 ...(error.providerCode === undefined ? {} : { providerCode: error.providerCode }),
               });
@@ -193,8 +190,8 @@ export class OpenAICodexModel extends BaseModel {
     } catch (error) {
       this.diagnostics.authenticationRefreshEnded({
         outcome: "failed",
+        error,
         errorCode: "PROVIDER_AUTHENTICATION_ERROR",
-        errorType: getProviderErrorType(error),
       });
       throw error;
     }

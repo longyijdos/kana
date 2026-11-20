@@ -16,7 +16,7 @@ describe("provider lifecycle diagnostics", () => {
       attempt: 1,
       delayMs: 250,
       errorCode: "PROVIDER_HTTP_ERROR",
-      errorType: "TestHttpError",
+      error: new Error("server busy"),
       httpStatus: 503,
     });
     diagnostics.authenticationRefreshStarted("http_401");
@@ -25,14 +25,16 @@ describe("provider lifecycle diagnostics", () => {
       attempt: 2,
       delayMs: 500,
       errorCode: "PROVIDER_STREAM_TRANSIENT_ERROR",
-      errorType: "ResponsesStreamError",
+      error: new Error("stream overloaded"),
       eventType: "error",
       providerCode: "server_error",
     });
     diagnostics.streamRecoveryEnded(2);
     diagnostics.requestCompleted("stop");
     diagnostics.requestFailed(
-      formatProviderFailure(new Error("streamed secret"), { phase: "response_stream" }),
+      formatProviderFailure(new Error("stream failed", { cause: new Error("connection lost") }), {
+        phase: "response_stream",
+      }),
     );
 
     expect(
@@ -99,14 +101,16 @@ describe("provider lifecycle diagnostics", () => {
       attempt: 1,
       delayMs: 250,
       errorCode: "PROVIDER_HTTP_ERROR",
-      errorType: "TestHttpError",
+      error: expect.objectContaining({ message: "server busy" }),
       httpStatus: 503,
     });
     expect(records[7]?.metadata).toMatchObject({
       errorCode: "PROVIDER_STREAM_ERROR",
-      errorType: "Error",
+      error: expect.objectContaining({
+        message: "stream failed",
+        cause: expect.objectContaining({ message: "connection lost" }),
+      }),
     });
-    expect(JSON.stringify(records)).not.toContain("streamed secret");
   });
 
   test("distinguishes upstream cancellation from inactivity timeout", () => {
@@ -123,7 +127,7 @@ describe("provider lifecycle diagnostics", () => {
       phase: "http_request",
       outcome: "aborted",
       errorCode: "PROVIDER_REQUEST_ABORTED",
-      errorType: "Error",
+      error: reason,
     });
     expect(
       formatProviderFailure(new Error("timeout"), {
@@ -134,7 +138,7 @@ describe("provider lifecycle diagnostics", () => {
       phase: "response_stream",
       outcome: "timed_out",
       errorCode: "PROVIDER_INACTIVITY_TIMEOUT",
-      errorType: "Error",
+      error: expect.objectContaining({ message: "timeout" }),
     });
   });
 });

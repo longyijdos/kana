@@ -2,7 +2,6 @@ import type { AgentJournal, ContextCheckpoint } from "@/agent";
 import type { Message } from "@/core";
 import { type BackgroundJobClient, BackgroundJobManager } from "@/jobs";
 import { createNoopLogger, createSessionLogger, type Logger, type LogLevel } from "@/logging";
-import { errorFields } from "@/utils";
 import {
   auditKanaSessionArtifacts,
   cleanupOrphanedKanaSessionArtifacts,
@@ -240,7 +239,7 @@ export class HostedSessionRegistry {
       } catch (error) {
         source.logger.error("session.artifact_fork_failed", {
           phase: "copy",
-          ...errorFields(error),
+          error,
         });
         throw error;
       }
@@ -300,7 +299,7 @@ export class HostedSessionRegistry {
       if (disposal.status === "rejected") {
         (hosted?.logger ?? this.getLogger()).warn("session.cleanup_failed", {
           phase: "session_delete",
-          ...errorFields(disposal.reason),
+          error: disposal.reason,
         });
       }
     }
@@ -577,7 +576,7 @@ export class HostedSessionRegistry {
       });
     } catch (error) {
       hostedSession.logger.warn("session.todo_state_notification_failed", {
-        ...errorFields(error),
+        error,
       });
     }
     hostedSession.logger.debug("session.todo_state_committed", {
@@ -611,7 +610,7 @@ export class HostedSessionRegistry {
     } catch (error) {
       hostedSession.logger.error("session.journal_write_failed", {
         phase,
-        ...errorFields(error),
+        error,
       });
       throw error;
     }
@@ -640,7 +639,7 @@ export class HostedSessionRegistry {
     try {
       ownership?.release();
     } catch (error) {
-      session.logger.warn("session.ownership_release_failed", errorFields(error));
+      session.logger.warn("session.ownership_release_failed", { error });
     }
   }
 
@@ -652,7 +651,7 @@ export class HostedSessionRegistry {
       session.artifactCleanup = session.artifactStore.close().catch((error) => {
         session.logger.warn("session.artifact_cleanup_failed", {
           phase: source === "shutdown" ? "session_close" : "session_disposal",
-          ...errorFields(error),
+          error,
         });
       });
     }
@@ -682,8 +681,10 @@ export class HostedSessionRegistry {
         unknownToolCallCount: hosted.data.recoveredInterruptedTurn.unknownToolCallCount,
       });
     }
-    if (hosted.data.recoveredIncompleteTail) {
-      hosted.logger.warn("session.incomplete_tail_recovered");
+    if (hosted.data.truncatedTailBytes !== undefined) {
+      hosted.logger.warn("session.incomplete_tail_recovered", {
+        truncatedBytes: hosted.data.truncatedTailBytes,
+      });
     }
   }
 
@@ -699,10 +700,10 @@ export class HostedSessionRegistry {
         fileCount: result.removedFileCount,
       });
     }
-    for (const failure of result.failures) {
+    for (const error of result.failures) {
       logger?.warn("session.artifact_cleanup_failed", {
         phase,
-        ...failure,
+        error,
       });
     }
   }

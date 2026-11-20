@@ -72,9 +72,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<voi
     console.error(`Kana API listening on http://127.0.0.1:${port} (experimental)`);
     await stopped;
   } catch (error) {
-    host
-      .getLogger()
-      .error("server.failed", { errorType: error instanceof Error ? error.name : "Error" });
+    host.getLogger().error("server.failed", { error });
     throw error;
   } finally {
     process.off("SIGINT", onSignal);
