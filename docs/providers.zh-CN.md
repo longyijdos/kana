@@ -46,7 +46,7 @@ Provider 专属行为分别见 [DeepSeek](deepseek-provider.zh-CN.md)、[OpenAI 
 
 Phase 包括 `validation`、`authentication`、`request_build`、`http_request` 与 `response_stream`。稳定 error code 区分取消、无活动 timeout、校验、认证、request 构造、HTTP/network 失败、stream 失败、临时 stream 失败和 context-window 超限。
 
-HTTP 诊断提取 JSON 中的错误消息，或 `text/plain` 响应的首个非空行，不转储完整响应体或请求。上游错误消息可能回显敏感内容；分享日志前请检查。Logger 失败会被隔离，不能改变 provider 控制流。
+HTTP 诊断优先提取 JSON 中的错误消息，否则使用去掉 HTML 标签后的简短正文预览，不转储完整响应体或请求。上游错误消息可能回显敏感内容；分享日志前请检查。Logger 失败会被隔离，不能改变 provider 控制流。
 
 ## 取消、无活动 timeout 与 HTTP 重试 primitive
 

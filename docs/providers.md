@@ -46,7 +46,7 @@ Network adapters use one diagnostic vocabulary for request start, HTTP retry, au
 
 Phases are `validation`, `authentication`, `request_build`, `http_request`, and `response_stream`. Stable error codes distinguish cancellation, inactivity timeout, validation, authentication, request construction, HTTP/network failure, stream failure, transient stream failure, and context-window exhaustion.
 
-HTTP diagnostics use the JSON error message or the first non-empty line of a `text/plain` response rather than dumping the full response or request. Upstream messages can echo sensitive information; review logs before sharing them. Logger failures are contained and cannot alter provider control flow.
+HTTP diagnostics use the JSON error message or a short text preview of the response with HTML markup removed rather than dumping the full response or request. Upstream messages can echo sensitive information; review logs before sharing them. Logger failures are contained and cannot alter provider control flow.
 
 ## Cancellation, inactivity, and HTTP retry primitives
 

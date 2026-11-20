@@ -156,6 +156,31 @@ describe("shared provider HTTP primitives", () => {
     }
   });
 
+  test.each([
+    ["text/html", "upstream connection refused"],
+    [
+      "text/html",
+      "<html><head><title>502</title></head><body>upstream connection refused<script>details()</script></body></html>",
+    ],
+    [undefined, "upstream connection refused"],
+  ] satisfies [string | undefined, string][])(
+    "keeps the proxy error detail with content type %s",
+    (contentType, body) => {
+      const error = new ProviderHttpError(
+        "Custom API",
+        502,
+        "Bad Gateway",
+        body,
+        undefined,
+        undefined,
+        contentType,
+      );
+      expect(error.message).toBe(
+        "Custom API request failed with 502 Bad Gateway: upstream connection refused",
+      );
+    },
+  );
+
   test("reads provider error codes and bounds the retained body", () => {
     const error = new ProviderHttpError(
       "Test API",
@@ -182,5 +207,6 @@ describe("shared provider HTTP primitives", () => {
       `${"x".repeat(MAX_PROVIDER_HTTP_ERROR_BODY_LENGTH)}secret-tail`,
     );
     expect(long.body).not.toContain("secret-tail");
+    expect(long.message).toEndWith(`: ${"x".repeat(512)}…`);
   });
 });

@@ -2,6 +2,7 @@ import { isRecord } from "@/utils";
 import { isAbortError, type ProviderRetryDetails } from "./lifecycle";
 
 export const MAX_PROVIDER_HTTP_ERROR_BODY_LENGTH = 16_384;
+const MAX_PROVIDER_HTTP_ERROR_PREVIEW_LENGTH = 512;
 
 export class ProviderHttpError extends Error {
   readonly body: string;
@@ -19,11 +20,7 @@ export class ProviderHttpError extends Error {
   ) {
     const boundedBody = boundProviderHttpErrorBody(body);
     const details = readErrorDetails(body);
-    const message =
-      details.message ??
-      (contentType?.split(";")[0]?.trim().toLowerCase() === "text/plain"
-        ? boundedBody.trimStart().split(/\r?\n/, 1)[0]
-        : undefined);
+    const message = details.message?.trim() || previewErrorBody(boundedBody, contentType);
     super(
       `${label} request failed with ${status} ${statusText}` +
         (message ? `: ${boundProviderHttpErrorBody(message)}` : "") +
@@ -233,6 +230,26 @@ export function waitForProviderRetry(delayMs: number, signal?: AbortSignal | nul
 
     signal?.addEventListener("abort", abort, { once: true });
   });
+}
+
+function previewErrorBody(body: string, contentType: string | undefined): string {
+  const text = body.trimStart();
+  if (text.startsWith("{") || text.startsWith("[")) return "";
+
+  const mediaType = contentType?.split(";", 1)[0]?.trim().toLowerCase();
+  const preview =
+    mediaType === "text/html" || /^<(?:!doctype\b|!--|\/?[a-z]\w*\b)/i.test(text)
+      ? text
+          .replace(/<!--[\s\S]*?(?:-->|$)/g, " ")
+          .replace(/<(head|script|style)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi, " ")
+          .replace(/<[^>]*(?:>|$)/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+      : (text.split(/[\r\n]/, 1)[0]?.trimEnd() ?? "");
+
+  return preview.length > MAX_PROVIDER_HTTP_ERROR_PREVIEW_LENGTH
+    ? `${preview.slice(0, MAX_PROVIDER_HTTP_ERROR_PREVIEW_LENGTH)}…`
+    : preview;
 }
 
 function readErrorDetails(body: string): { code?: string; param?: string; message?: string } {
