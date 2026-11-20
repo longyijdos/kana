@@ -234,18 +234,15 @@ export function waitForProviderRetry(delayMs: number, signal?: AbortSignal | nul
 
 function previewErrorBody(body: string, contentType: string | undefined): string {
   const text = body.trimStart();
-  if (text.startsWith("{") || text.startsWith("[")) return "";
-
   const mediaType = contentType?.split(";", 1)[0]?.trim().toLowerCase();
-  const preview =
+  const readable =
     mediaType === "text/html" || /^<(?:!doctype\b|!--|\/?[a-z]\w*\b)/i.test(text)
       ? text
           .replace(/<!--[\s\S]*?(?:-->|$)/g, " ")
           .replace(/<(head|script|style)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi, " ")
           .replace(/<[^>]*(?:>|$)/g, " ")
-          .replace(/\s+/g, " ")
-          .trim()
-      : (text.split(/[\r\n]/, 1)[0]?.trimEnd() ?? "");
+      : text;
+  const preview = readable.replace(/\s+/g, " ").trim();
 
   return preview.length > MAX_PROVIDER_HTTP_ERROR_PREVIEW_LENGTH
     ? `${preview.slice(0, MAX_PROVIDER_HTTP_ERROR_PREVIEW_LENGTH)}…`

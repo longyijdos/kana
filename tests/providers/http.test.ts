@@ -100,7 +100,9 @@ describe("shared provider HTTP primitives", () => {
           attempt: 1,
           delayMs: 0,
           errorCode: "PROVIDER_HTTP_ERROR",
-          error: expect.objectContaining({ message: expect.stringMatching(/: busy$/) }),
+          error: expect.objectContaining({
+            message: expect.stringMatching(/: busy internal proxy details$/),
+          }),
           httpStatus: 429,
         },
       ]);
@@ -180,6 +182,25 @@ describe("shared provider HTTP primitives", () => {
       );
     },
   );
+
+  test("falls back to a body preview for JSON without a message and malformed JSON", () => {
+    for (const body of [
+      '{\n  "error": {\n    "details": "Connection refused by upstream"\n  }\n}',
+      '{\n  "error": { "details": "Connection refused by upstream"',
+    ]) {
+      const error = new ProviderHttpError(
+        "Custom API",
+        502,
+        "Bad Gateway",
+        body,
+        undefined,
+        undefined,
+        "application/json",
+      );
+      expect(error.message).toContain("Connection refused by upstream");
+      expect(error.message).not.toContain("\n");
+    }
+  });
 
   test("reads provider error codes and bounds the retained body", () => {
     const error = new ProviderHttpError(
