@@ -72,10 +72,10 @@ default_reasoning_effort = "none"
       `[agent]
 tools = []
 [agent.model]
-provider = "custom"
+provider = "custom:custom"
 name = "local-test"
 [memory.agent.model]
-provider = "custom"
+provider = "custom:custom"
 name = "local-test"
 `,
     );

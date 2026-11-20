@@ -79,7 +79,9 @@ Model selection remains entirely in Kana's existing configuration schema. See
 [Configuration and installation](configuration.md) for all built-in provider, Agent, and
 runtime settings.
 
-To use a Custom OpenAI-compatible endpoint, select `custom` in `config.toml`:
+To use a Custom OpenAI-compatible endpoint, use a Kana release that supports named
+providers and select `custom:custom` in `config.toml`. The workflow installs the supplied
+provider file as `providers/custom.toml`:
 
 ```toml
 # .github/kana/config.toml
@@ -87,7 +89,7 @@ To use a Custom OpenAI-compatible endpoint, select `custom` in `config.toml`:
 goal_max_rounds = 3
 
 [agent.model]
-provider = "custom"
+provider = "custom:custom"
 name = "coding-plan-model"
 
 [memory]

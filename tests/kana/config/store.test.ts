@@ -29,14 +29,14 @@ describe("Kana config store", () => {
     });
     expect(readFileSync(configPath, "utf8")).toBe(document);
     const updated = store.update((draft) => {
-      draft.agent.model.provider = "custom";
+      draft.agent.model.provider = "custom:custom";
       draft.agent.model.name = "selected-model";
       draft.agent.model.reasoningEffort = undefined;
     });
     expect(updated.agent.maxTurns).toBe(50);
     expect(updated.agent.model.maxOutputTokens).toBe(4096);
     expect(readFileSync(configPath, "utf8")).toBe(
-      '# preserved\n[agent]\nmax_turns = 10\n[agent.model]\nname = "selected-model"\nprovider = "custom"\n',
+      '# preserved\n[agent]\nmax_turns = 10\n[agent.model]\nname = "selected-model"\nprovider = "custom:custom"\n',
     );
   });
 
@@ -45,13 +45,13 @@ describe("Kana config store", () => {
     const store = createKanaConfigStore(env, [
       "agent.max_turns=20",
       "agent.max_turns=50",
-      'agent.model={ provider="custom", name="a=b" }',
+      'agent.model={ provider="custom:custom", name="a=b" }',
       'provider.openai-codex.reasoning_summary="detailed"',
       "memory.agent.model.context_limit=8000",
     ]);
     expect(store.load().agent).toMatchObject({
       maxTurns: 50,
-      model: { provider: "custom", name: "a=b" },
+      model: { provider: "custom:custom", name: "a=b" },
     });
     expect(store.load().memory.agent.model.contextLimit).toBe(8000);
     expect(existsSync(getKanaConfigPaths(env).configPath)).toBe(false);
@@ -222,13 +222,13 @@ describe("Kana config store", () => {
     );
     const store = createKanaConfigStore(env);
     const config = store.update((draft) => {
-      draft.agent.model.provider = "custom";
+      draft.agent.model.provider = "custom:custom";
       draft.agent.model.name = "local-model";
       draft.agent.model.reasoningEffort = undefined;
     });
 
     const updated = readFileSync(configPath, "utf8");
-    expect(updated).toContain('[agent.model]\nprovider = "custom"\nname = "local-model"');
+    expect(updated).toContain('[agent.model]\nprovider = "custom:custom"\nname = "local-model"');
     expect(updated).not.toContain('reasoning_effort = "high"');
     expect(updated).toContain("max_output_tokens = 64000");
     expect(updated).toContain("context_limit = 200000");
@@ -236,7 +236,7 @@ describe("Kana config store", () => {
       '[memory.agent.model]\nprovider = "deepseek"\nname = "deepseek-flash"\nreasoning_effort = "low"',
     );
     expect(config.agent.model).toEqual({
-      provider: "custom",
+      provider: "custom:custom",
       name: "local-model",
       reasoningEffort: undefined,
       maxOutputTokens: 64_000,

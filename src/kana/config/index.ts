@@ -1,7 +1,6 @@
 export { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tools/names";
 export {
   isKanaTuiThemeName,
-  KANA_MODEL_PROVIDERS,
   type KanaAgentConfig,
   type KanaAgentRuntimeConfig,
   type KanaConfig,

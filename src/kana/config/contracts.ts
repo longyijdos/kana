@@ -3,9 +3,26 @@ import type { LogLevel } from "@/logging";
 import type { OpenAICodexReasoningSummary } from "@/providers";
 import type { KanaConfigurableBuiltInToolName } from "../tools/names";
 
-export const KANA_MODEL_PROVIDERS = ["deepseek", "openai-codex", "custom"] as const;
+export const KANA_BUILT_IN_MODEL_PROVIDERS = ["deepseek", "openai-codex"] as const;
+export const KANA_CUSTOM_MODEL_PROVIDER_PATTERN = "^custom:[a-z0-9][a-z0-9_-]{0,63}$";
 
-export type KanaModelProvider = (typeof KANA_MODEL_PROVIDERS)[number];
+export type KanaCustomModelProvider = `custom:${string}`;
+export type KanaModelProvider =
+  | (typeof KANA_BUILT_IN_MODEL_PROVIDERS)[number]
+  | KanaCustomModelProvider;
+
+const customModelProviderPattern = new RegExp(KANA_CUSTOM_MODEL_PROVIDER_PATTERN);
+
+export function isKanaCustomModelProvider(value: string): value is KanaCustomModelProvider {
+  return customModelProviderPattern.test(value);
+}
+
+export function isKanaModelProvider(value: string): value is KanaModelProvider {
+  return (
+    KANA_BUILT_IN_MODEL_PROVIDERS.some((provider) => provider === value) ||
+    isKanaCustomModelProvider(value)
+  );
+}
 
 export type KanaDeepSeekProviderConfig = {
   readonly apiKeyEnv: string;

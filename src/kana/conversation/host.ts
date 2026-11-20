@@ -56,7 +56,6 @@ import {
   runFullMemoryConsolidation,
 } from "../memory";
 import { getKanaModelManagement, type KanaModelManagement } from "../model-management";
-import { getKanaConfigPaths } from "../path";
 import { loadKanaInstructionSections } from "../prompt";
 import type { LoadKanaSessionResult } from "../session";
 import {
@@ -169,9 +168,7 @@ export class KanaConversationHost<TConfiguration = never> {
     );
     this.configData = this.configStore.load();
     this.toolApprovalStore = createKanaToolApprovalStore(this.env);
-    this.customProviderSnapshot = loadKanaCustomProviderSnapshot(
-      getKanaConfigPaths(this.env).customProviderPath,
-    );
+    this.customProviderSnapshot = loadKanaCustomProviderSnapshot(this.env);
     this.customizations = this.persistent
       ? {
           mcpConfiguration: createKanaMcpConfigurationStore(this.env),

@@ -17,7 +17,7 @@ describe("Kana config resolver", () => {
       configPath,
       [
         "[agent.model]",
-        'provider = "custom"',
+        'provider = "custom:custom"',
         'name = "local-model"',
         'reasoning_effort = "high"',
         "max_output_tokens = 16384",
@@ -30,7 +30,7 @@ describe("Kana config resolver", () => {
 
     expect(inherited.memory.agent.model).toEqual({});
     expect(inheritedAgent.model).toEqual({
-      provider: "custom",
+      provider: "custom:custom",
       name: "local-model",
       reasoningEffort: "high",
       maxOutputTokens: 16_384,
@@ -43,7 +43,7 @@ describe("Kana config resolver", () => {
       configPath,
       [
         "[agent.model]",
-        'provider = "custom"',
+        'provider = "custom:custom"',
         'name = "local-model"',
         'reasoning_effort = "high"',
         "max_output_tokens = 16384",
@@ -55,7 +55,7 @@ describe("Kana config resolver", () => {
     );
 
     expect(resolveKanaMemoryAgentConfig(loadKanaConfig(env)).model).toEqual({
-      provider: "custom",
+      provider: "custom:custom",
       name: "local-mini",
       reasoningEffort: "high",
       maxOutputTokens: 16_384,

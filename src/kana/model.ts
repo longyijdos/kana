@@ -19,17 +19,19 @@ import type {
   KanaOpenAICodexProviderConfig,
   KanaProviderConfig,
 } from "./config";
+import type { KanaCustomModelProvider } from "./config/contracts";
 import {
+  getKanaCustomProviderEntry,
   getKanaCustomProviderModel,
   type KanaCustomProviderSnapshot,
-  loadKanaCustomProvider,
+  loadKanaCustomProviderSnapshot,
 } from "./custom-provider";
 import { getKanaConfigPaths } from "./path";
 
 export type KanaSelectedProviderConfig =
   | { provider: "deepseek"; config: KanaDeepSeekProviderConfig }
   | { provider: "openai-codex"; config: KanaOpenAICodexProviderConfig }
-  | { provider: "custom" };
+  | { provider: KanaCustomModelProvider };
 
 export type CreateKanaModelOptions = {
   env?: NodeJS.ProcessEnv;
@@ -84,7 +86,7 @@ export function selectKanaProviderConfig(
       return { provider, config: config.deepseek };
     case "openai-codex":
       return { provider, config: config["openai-codex"] };
-    case "custom":
+    default:
       return { provider };
   }
 }
@@ -158,12 +160,14 @@ export function createKanaModel(
         logger: options.logger,
       });
     }
-    case "custom": {
-      const paths = getKanaConfigPaths(env);
+    default: {
+      const id = providerConfig.provider;
       try {
-        const provider = options.customProviderSnapshot
-          ? requireCustomProvider(options.customProviderSnapshot)
-          : loadKanaCustomProvider(paths.customProviderPath);
+        const { provider, error, filePath } = getKanaCustomProviderEntry(
+          options.customProviderSnapshot ?? loadKanaCustomProviderSnapshot(env),
+          id,
+        );
+        if (error) throw error;
         const model = getKanaCustomProviderModel(provider, modelConfig.name);
         const reasoningEffort = resolveKanaModelReasoning(
           model.metadata.reasoning,
@@ -173,12 +177,12 @@ export function createKanaModel(
         const apiKey = provider.apiKeyEnv ? env[provider.apiKeyEnv] : undefined;
         if (provider.apiKeyEnv && !apiKey) {
           throw new Error(
-            `Missing ${provider.apiKeyEnv}. Set it in your environment or update ${paths.customProviderPath}.`,
+            `Missing ${provider.apiKeyEnv}. Set it in your environment or update ${filePath}.`,
           );
         }
 
         const config = {
-          provider: "custom",
+          provider: id,
           model: model.name,
           baseUrl: provider.baseUrl,
           apiKey,
@@ -198,19 +202,14 @@ export function createKanaModel(
           component: "custom_provider",
           phase: "initialize",
           errorCode: "CUSTOM_PROVIDER_INITIALIZATION_ERROR",
+          provider: id,
+          model: modelConfig.name,
           error,
         });
         throw error;
       }
     }
   }
-}
-
-function requireCustomProvider(snapshot: KanaCustomProviderSnapshot) {
-  if (snapshot.error) {
-    throw snapshot.error;
-  }
-  return snapshot.provider;
 }
 
 export function resolveKanaModelReasoning(

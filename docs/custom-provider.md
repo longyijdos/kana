@@ -1,15 +1,15 @@
 # Custom OpenAI-compatible provider
 
-Kana exposes one static `custom` provider slot for user-managed OpenAI-compatible models. Each configured model selects the built-in Chat Completions or Responses adapter; the slot is not a runtime plugin system and does not discover arbitrary provider IDs. Keeping the product provider set closed avoids spreading dynamic-provider handling through Agent, session, memory, and frontend composition while still supporting a local server or hosted compatible endpoint.
+Kana can use multiple user-managed OpenAI-compatible endpoints. Each Custom provider has its own endpoint, credentials, request settings, and model list. Models use the built-in Chat Completions or Responses adapter; Custom providers do not load runtime plugins.
 
 ## Install and select
 
-`kana install` creates `<KANA_HOME>/providers/custom.example.toml` as generated reference material. Copy it to `custom.toml`; Kana never reads the example at runtime.
+`kana install` generates `<KANA_HOME>/providers/custom.example.toml`. Copy it to a separate `<name>.toml` in the same directory for each endpoint, such as `local.toml` or `openrouter.toml`. Names start with a lowercase ASCII letter or digit and use up to 64 lowercase letters, digits, underscores, or hyphens. For example, `custom.toml` has the ID `custom:custom` and appears as `Custom · custom` in `/model`. Kana never reads the example at runtime.
 
 The minimum provider definition is:
 
 ```toml
-# ~/.kana/providers/custom.toml
+# ~/.kana/providers/local.toml
 base_url = "http://127.0.0.1:8080/v1"
 
 [[models]]
@@ -23,11 +23,13 @@ Select one of those model names in the main configuration:
 ```toml
 # ~/.kana/config.toml
 [agent.model]
-provider = "custom"
+provider = "custom:local"
 name = "local-model"
 ```
 
-`/model` exposes Custom alongside the built-in providers. Kana loads this file once at process startup, and `/model`, conversation Agents, and memory-consolidation Agents share that snapshot; direct edits require a restart. The command persists only the main Agent's `provider`, `name`, and optional reasoning effort under `[agent.model]`, and hot-switches through the same candidate-Agent validation used by built-ins. Its configured `max_output_tokens` and `context_limit` remain unchanged, and `[memory.agent.model]` keeps overriding only the fields it sets, so memory consolidation otherwise follows the new selection. A missing or invalid startup snapshot is shown as an explicit error; Kana never falls back to another provider or model.
+In `/model`, choose `Custom · local` and then a model. Model names can repeat across providers without ambiguity. Kana loads provider definitions at startup and shares the snapshot across `/model`, conversation Agents, subagents, and memory consolidation. You can switch between loaded endpoints without restarting; adding, removing, or editing a provider file requires a restart. An invalid file only makes that provider unavailable. Kana reports an error if you select a missing or invalid definition and never silently falls back.
+
+The command validates the candidate Agent and persists the main Agent's `provider`, `name`, and optional reasoning effort under `[agent.model]`. Its `max_output_tokens` and `context_limit` remain unchanged. `[memory.agent.model]` overrides only the fields it sets; a subagent profile can select a named model with `model: custom:local/local-model`.
 
 ## Provider fields
 

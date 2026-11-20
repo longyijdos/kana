@@ -16,6 +16,8 @@ import {
   createKanaConversationHost,
   createKanaSession,
   createKanaSessionJournal,
+  getKanaConfigPaths,
+  type KanaModelProvider,
   KanaSessionInUseError,
   type KanaTodoItem,
   type MemoryConsolidationActivity,
@@ -212,6 +214,88 @@ describe("Kana conversation host", () => {
     }
   });
 
+  test("switches between startup-loaded Custom providers and restores the choice on restart", async () => {
+    const env = createTempEnv();
+    const paths = getKanaConfigPaths(env);
+    const providerFile = (name: string) => path.join(paths.providersDirectory, `${name}.toml`);
+    const writeProvider = (name: string, contextWindow: number, baseUrl: string) =>
+      writeFileSync(
+        providerFile(name),
+        `base_url = "${baseUrl}"\n[[models]]\nname = "shared-model"\ncontext_window = ${contextWindow}\nmax_output_tokens = 4096\n`,
+      );
+    mkdirSync(paths.providersDirectory);
+    writeProvider("custom", 32768, "http://127.0.0.1:8080/v1");
+    writeProvider("gateway", 65536, "https://gateway.example.com/v1");
+    writeFileSync(providerFile("broken"), 'base_url = "https://broken.example.com/v1"\n');
+    writeFileSync(paths.customProviderExamplePath, "ignored example");
+    writeFileSync(
+      paths.configPath,
+      '[agent.model]\nprovider = "custom:custom"\nname = "shared-model"\n',
+    );
+
+    const host = createKanaConversationHost<KanaModelProvider>({
+      env,
+      session: { type: "none" },
+      applyAgentConfiguration: (draft, provider) => {
+        draft.agent.model.provider = provider;
+      },
+    });
+    const runtime = createRuntime(host);
+    try {
+      writeProvider("gateway", 131072, "https://gateway.example.com/v1");
+      writeProvider("later", 32768, "https://later.example.com/v1");
+      const management = host.getModelManagement();
+      expect(management.providers.map(({ value }) => value)).toEqual([
+        "deepseek",
+        "openai-codex",
+        "custom:broken",
+        "custom:custom",
+        "custom:gateway",
+      ]);
+      expect(management.providers).toContainEqual({
+        value: "custom:gateway",
+        label: "Custom · gateway",
+      });
+      expect(management.providers).toContainEqual({
+        value: "custom:custom",
+        label: "Custom · custom",
+      });
+      expect(management.model["custom:broken"]?.error).toContain(providerFile("broken"));
+      expect(runtime.state.model.metadata).toMatchObject({
+        provider: "custom:custom",
+        contextWindow: 32768,
+      });
+      expect(() => runtime.reconfigure("custom:broken")).toThrow(providerFile("broken"));
+      expect(host.config.agent.model.provider).toBe("custom:custom");
+
+      runtime.reconfigure("custom:gateway");
+      expect(runtime.state.model.metadata).toMatchObject({
+        provider: "custom:gateway",
+        model: "shared-model",
+        contextWindow: 65536,
+      });
+      expect(host.getModelManagement().activeProvider).toBe("custom:gateway");
+    } finally {
+      await runtime.close();
+      await host.close();
+    }
+
+    const restarted = createKanaConversationHost({ env, session: { type: "none" } });
+    try {
+      expect(restarted.createAgent({}).state.model.metadata).toMatchObject({
+        provider: "custom:gateway",
+        model: "shared-model",
+        contextWindow: 131072,
+      });
+      expect(restarted.getModelManagement().providers).toContainEqual({
+        value: "custom:later",
+        label: "Custom · later",
+      });
+    } finally {
+      await restarted.close();
+    }
+  });
+
   test("applies model changes atomically through the shared config store", async () => {
     const env = createTempEnv();
     const seenModels: string[] = [];
@@ -255,7 +339,7 @@ describe("Kana conversation host", () => {
         env,
         configOverrides: [
           `agent.codemode="${codemode}"`,
-          'memory.agent.model.provider="custom"',
+          'memory.agent.model.provider="custom:custom"',
           'memory.agent.model.name="missing-model"',
         ],
         createAgent: (config, options = {}) =>
@@ -319,7 +403,7 @@ describe("Kana conversation host", () => {
         expect(failures[0]).toMatchObject({ type: "failed", scope: "project" });
         expect(
           (failures[0] as Extract<MemoryConsolidationEvent, { type: "failed" }>).error,
-        ).toContain("Custom provider configuration was not found");
+        ).toContain('Custom provider configuration for "custom:custom" was not found');
         const saved = readOwnedSession(host.resumeSessionId!, env);
         expect(
           saved.messages

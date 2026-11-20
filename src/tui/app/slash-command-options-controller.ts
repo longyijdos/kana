@@ -286,13 +286,11 @@ export class SlashCommandOptionsController {
   }
 
   private showModelName(provider: KanaModelProvider, defaultValue?: string): void {
-    const settings = this.options.getModelSettings?.();
-    if (!settings) {
+    const modelSettings = this.options.getModelSettings?.().model[provider];
+    if (!modelSettings) {
       this.close();
       return;
     }
-
-    const modelSettings = settings.model[provider];
     if (modelSettings.error) {
       this.options.showError?.(new Error(modelSettings.error));
       this.close();
@@ -313,13 +311,11 @@ export class SlashCommandOptionsController {
   }
 
   private showReasoningEffort(provider: KanaModelProvider, model: string): void {
-    const settings = this.options.getModelSettings?.();
-    if (!settings) {
+    const current = this.options.getModelSettings?.().model[provider];
+    if (!current) {
       this.close();
       return;
     }
-
-    const current = settings.model[provider];
     const reasoning = current.available.find((candidate) => candidate.name === model)?.reasoning;
     if (!reasoning) {
       this.options.onModelSelect?.({ provider, model });

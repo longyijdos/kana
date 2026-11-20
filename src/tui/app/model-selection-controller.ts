@@ -73,7 +73,7 @@ export function formatStatusModel(metadata: ModelMetadata, settings?: TuiModelSe
   }
 
   const model = settings.model[settings.activeProvider];
-  if (model.name !== metadata.model || model.reasoningEffort === undefined) {
+  if (model?.name !== metadata.model || model.reasoningEffort === undefined) {
     return metadata.model;
   }
   return `${metadata.model} · ${model.reasoningEffort === "none" ? "off" : model.reasoningEffort}`;

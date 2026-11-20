@@ -1,11 +1,14 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { type Static, Type } from "typebox";
 import type { ModelMetadata, ModelReasoningMetadata } from "@/core";
 import {
   OPENAI_COMPATIBLE_MANAGED_REQUEST_FIELDS,
   OPENAI_RESPONSES_MANAGED_REQUEST_FIELDS,
 } from "@/providers";
-import { parseWithSchema, positiveInteger, strictObject } from "@/utils";
+import { formatError, parseWithSchema, positiveInteger, strictObject } from "@/utils";
+import { isKanaCustomModelProvider, type KanaCustomModelProvider } from "./config/contracts";
+import { getKanaConfigPaths } from "./path";
 
 export type KanaCustomProviderModel = {
   name: string;
@@ -23,9 +26,16 @@ export type KanaCustomProvider = {
   models: readonly KanaCustomProviderModel[];
 };
 
-export type KanaCustomProviderSnapshot =
-  | { provider: KanaCustomProvider; error?: never }
-  | { provider?: never; error: Error };
+type KanaCustomProviderEntry = { readonly filePath: string } & (
+  | { readonly provider: KanaCustomProvider; readonly error?: never }
+  | { readonly provider?: never; readonly error: Error }
+);
+
+export type KanaCustomProviderSnapshot = {
+  readonly entries: ReadonlyMap<KanaCustomModelProvider, KanaCustomProviderEntry>;
+  readonly directory: string;
+  readonly directoryError?: Error;
+};
 
 const trimmedString = () =>
   Type.String({
@@ -78,26 +88,67 @@ const CUSTOM_PROVIDER_SCHEMA = strictObject({
   }),
 });
 
-export function loadKanaCustomProviderSnapshot(filePath: string): KanaCustomProviderSnapshot {
+export function loadKanaCustomProviderSnapshot(
+  env: NodeJS.ProcessEnv = process.env,
+): KanaCustomProviderSnapshot {
+  const { providersDirectory: directory } = getKanaConfigPaths(env);
+  const entries = new Map<KanaCustomModelProvider, KanaCustomProviderEntry>();
+
   try {
-    return { provider: loadKanaCustomProvider(filePath) };
+    const files = readdirSync(directory, { withFileTypes: true })
+      .filter((entry) => (entry.isFile() || entry.isSymbolicLink()) && entry.name.endsWith(".toml"))
+      .map((entry) => entry.name)
+      .sort();
+    for (const file of files) {
+      const id = `custom:${path.basename(file, ".toml")}`;
+      if (isKanaCustomModelProvider(id)) {
+        entries.set(id, loadProviderEntry(path.join(directory, file)));
+      }
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      const directoryError = new Error(
+        `Could not read Custom providers at ${directory}: ${formatError(error)}`,
+        {
+          cause: error,
+        },
+      );
+      return { entries, directory, directoryError };
+    }
+  }
+
+  return { entries, directory };
+}
+
+export function getKanaCustomProviderEntry(
+  snapshot: KanaCustomProviderSnapshot,
+  id: KanaCustomModelProvider,
+): KanaCustomProviderEntry {
+  const entry = snapshot.entries.get(id);
+  if (entry) return entry;
+  const filePath = path.join(snapshot.directory, `${id.slice("custom:".length)}.toml`);
+  return {
+    filePath,
+    error:
+      snapshot.directoryError ??
+      new Error(
+        `Custom provider configuration for "${id}" was not found at ${filePath}. Copy custom.example.toml there and configure it, then restart Kana.`,
+      ),
+  };
+}
+
+function loadProviderEntry(filePath: string): KanaCustomProviderEntry {
+  try {
+    return { filePath, provider: loadKanaCustomProvider(filePath) };
   } catch (error) {
     return {
-      error:
-        error instanceof Error
-          ? error
-          : new Error("Could not load Custom provider configuration.", { cause: error }),
+      filePath,
+      error: error instanceof Error ? error : new Error(formatError(error), { cause: error }),
     };
   }
 }
 
-export function loadKanaCustomProvider(filePath: string): KanaCustomProvider {
-  if (!existsSync(filePath)) {
-    throw new Error(
-      `Custom provider configuration was not found at ${filePath}. Copy custom.example.toml to custom.toml and configure it.`,
-    );
-  }
-
+function loadKanaCustomProvider(filePath: string): KanaCustomProvider {
   let parsed: unknown;
   try {
     parsed = Bun.TOML.parse(readFileSync(filePath, "utf8")) as unknown;
@@ -107,7 +158,13 @@ export function loadKanaCustomProvider(filePath: string): KanaCustomProvider {
     });
   }
 
-  return parseKanaCustomProvider(parsed);
+  try {
+    return parseKanaCustomProvider(parsed);
+  } catch (error) {
+    throw new Error(`Invalid Custom provider configuration at ${filePath}: ${formatError(error)}`, {
+      cause: error,
+    });
+  }
 }
 
 export function parseKanaCustomProvider(rawConfig: unknown): KanaCustomProvider {
@@ -149,7 +206,8 @@ export function getKanaCustomProviderModel(
 export function serializeKanaCustomProviderExample(): string {
   return [
     "# OpenAI-compatible Custom provider example.",
-    "# Copy this file to custom.toml and replace the example values.",
+    "# Copy this file to <name>.toml in the providers directory and replace the values.",
+    '# Select Custom · <name> in /model, or set provider = "custom:<name>" in config.toml.',
     'base_url = "https://api.example.com/v1"',
     'api_key_env = "CUSTOM_API_KEY"',
     "timeout_ms = 60000",

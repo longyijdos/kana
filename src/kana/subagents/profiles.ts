@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { formatError } from "@/utils";
-import { KANA_MODEL_PROVIDERS, type KanaModelProvider } from "../config";
+import { isKanaModelProvider, type KanaModelProvider } from "../config/contracts";
 import {
   type FrontmatterFields,
   isKanaResourceName,
@@ -162,9 +162,9 @@ function parseModel(
     return undefined;
   }
   const separator = value.indexOf("/");
-  const provider = value.slice(0, separator) as KanaModelProvider;
+  const provider = value.slice(0, separator);
   const name = value.slice(separator + 1);
-  if (separator <= 0 || !name || !KANA_MODEL_PROVIDERS.includes(provider)) {
+  if (separator <= 0 || !name || !isKanaModelProvider(provider)) {
     throw new Error("model must be inherit or <provider>/<name>");
   }
   return {

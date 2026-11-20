@@ -57,28 +57,34 @@ describe("TUI model selection", () => {
     ]);
   });
 
-  test("renders provider and model choices supplied by the product layer", () => {
-    const settings = structuredClone(DEFAULT_KANA_CONFIG);
-    const management = getKanaModelManagement(settings);
+  test("renders and selects named Custom providers supplied by the product layer", () => {
+    const management = getKanaModelManagement(DEFAULT_KANA_CONFIG);
+    const selections: TuiModelSelection[] = [];
     const app = new KanaTuiApp(
-      () =>
-        createAgentStub({
+      ({ modelSelection }) => {
+        if (modelSelection) selections.push(modelSelection);
+        return createAgentStub({
           messages: [],
-          provider: "deepseek",
-          model: "deepseek-v4-pro",
-        }) as never,
+          provider: modelSelection?.provider ?? "deepseek",
+          model: modelSelection?.model ?? "deepseek-v4-pro",
+        }) as never;
+      },
       createTerminal(),
       {
         ...createOptions(),
         models: {
           getSettings: () => ({
             ...management,
-            providers: [{ value: "deepseek", label: "Product DeepSeek" }],
+            providers: [
+              { value: "deepseek", label: "DeepSeek" },
+              { value: "custom:local", label: "Custom · local" },
+            ],
             model: {
               ...management.model,
-              deepseek: {
-                ...management.model.deepseek,
-                available: [{ name: "product-model", supportsImageInput: false }],
+              "custom:local": {
+                name: "local-model",
+                available: [{ name: "local-model", supportsImageInput: false }],
+                imageInputEnabled: false,
               },
             },
           }),
@@ -88,9 +94,12 @@ describe("TUI model selection", () => {
     const internal = app as unknown as AppInternals;
 
     openModel(internal);
-    expect(renderLayout(internal)).toContain("Product DeepSeek");
+    expect(renderLayout(internal)).toContain("Custom · local");
+    press(internal, "\x1b[B");
     press(internal, "\r");
-    expect(renderLayout(internal)).toContain("product-model");
+    expect(renderLayout(internal)).toContain("local-model");
+    press(internal, "\r");
+    expect(selections).toEqual([{ provider: "custom:local", model: "local-model" }]);
   });
 
   test("switches provider, model, and reasoning while preserving conversation state", () => {
@@ -207,10 +216,10 @@ describe("TUI model selection", () => {
         models: {
           getSettings: () => ({
             ...management,
-            providers: [{ value: "custom", label: "Custom" }],
+            providers: [{ value: "custom:custom", label: "Custom · custom" }],
             model: {
               ...management.model,
-              custom: {
+              "custom:custom": {
                 available: [
                   {
                     name: "reasoning-model",
@@ -237,7 +246,7 @@ describe("TUI model selection", () => {
     press(internal, "\r");
 
     expect(selections).toEqual([
-      { provider: "custom", model: "reasoning-model", reasoningEffort: "high" },
+      { provider: "custom:custom", model: "reasoning-model", reasoningEffort: "high" },
     ]);
     expect(renderLayout(internal)).toContain("reasoning-model · high | Idle");
   });
@@ -262,10 +271,10 @@ describe("TUI model selection", () => {
         models: {
           getSettings: () => ({
             ...management,
-            providers: [{ value: "custom", label: "Custom" }],
+            providers: [{ value: "custom:custom", label: "Custom · custom" }],
             model: {
               ...management.model,
-              custom: {
+              "custom:custom": {
                 available: [{ name: "local-model", supportsImageInput: false }],
                 name: "local-model",
                 imageInputEnabled: false,
@@ -281,7 +290,7 @@ describe("TUI model selection", () => {
     press(internal, "\r");
     press(internal, "\r");
 
-    expect(selections).toEqual([{ provider: "custom", model: "local-model" }]);
+    expect(selections).toEqual([{ provider: "custom:custom", model: "local-model" }]);
     expect(internal.slashCommandOptions.active).toBe(false);
     expect(renderLayout(internal)).toContain("local-model | Idle");
   });

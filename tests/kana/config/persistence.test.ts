@@ -36,7 +36,6 @@ describe("Kana config persistence", () => {
       themesDirectory: "/home/kana/.kana/themes",
       skillsConfigPath: "/home/kana/.kana/skills/skills.toml",
       providersDirectory: "/home/kana/.kana/providers",
-      customProviderPath: "/home/kana/.kana/providers/custom.toml",
       customProviderExamplePath: "/home/kana/.kana/providers/custom.example.toml",
       subagentProfileExamplePath: "/home/kana/.kana/agents/profile.md.example",
     });

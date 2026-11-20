@@ -252,7 +252,7 @@ describe("Kana config parser", () => {
         "image_input = false",
         "",
         "[agent.model]",
-        'provider = "custom"',
+        'provider = "custom:custom"',
         'name = "local-model"',
         'reasoning_effort = "high"',
         "max_output_tokens = 16384",
@@ -265,7 +265,7 @@ describe("Kana config parser", () => {
       webSearch: false,
       imageInput: false,
       model: {
-        provider: "custom",
+        provider: "custom:custom",
         name: "local-model",
         reasoningEffort: "high",
         maxOutputTokens: 16_384,
@@ -426,12 +426,13 @@ describe("Kana config parser", () => {
 
   test("rejects unsupported providers", () => {
     const env = createTempEnv();
-    const { home } = getKanaConfigPaths(env);
-    writeFileSync(path.join(home, "config.toml"), '[agent.model]\nprovider = "mock"\n');
-
-    expect(() => loadKanaConfig(env)).toThrow(
-      "agent.model.provider must be one of: deepseek, openai-codex, custom.",
-    );
+    const { configPath } = getKanaConfigPaths(env);
+    for (const provider of ["mock", "custom", "custom:", "custom:../local"]) {
+      writeFileSync(configPath, `[agent.model]\nprovider = "${provider}"\n`);
+      expect(() => loadKanaConfig(env)).toThrow(
+        "agent.model.provider must be deepseek, openai-codex, or custom:<name>.",
+      );
+    }
   });
 
   test("rejects unsupported notification backends", () => {

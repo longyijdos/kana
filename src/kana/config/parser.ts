@@ -4,7 +4,8 @@ import { DEFAULT_TIMEOUT_MS, SHELL_MAX_TIMEOUT_LIMIT_MS } from "@/tools";
 import { isRecord, parseWithSchema } from "@/utils";
 import { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tools/names";
 import {
-  KANA_MODEL_PROVIDERS,
+  KANA_BUILT_IN_MODEL_PROVIDERS,
+  KANA_CUSTOM_MODEL_PROVIDER_PATTERN,
   KANA_NOTIFICATION_BACKENDS,
   KANA_TOOL_APPROVAL_MODES,
   KANA_TUI_THEME_NAME_PATTERN,
@@ -31,7 +32,13 @@ const maxTurns = () =>
 
 const modelTable = () =>
   table({
-    provider: Type.Enum([...KANA_MODEL_PROVIDERS]),
+    provider: Type.Union(
+      [
+        Type.Enum([...KANA_BUILT_IN_MODEL_PROVIDERS]),
+        Type.String({ pattern: KANA_CUSTOM_MODEL_PROVIDER_PATTERN }),
+      ],
+      { errorMessage: "must be deepseek, openai-codex, or custom:<name>" },
+    ),
     name: text(),
     reasoning_effort: text(),
     max_output_tokens: positiveInteger(),

@@ -25,7 +25,7 @@ describe("Kana subagent profiles", () => {
         "tools:",
         "  - read",
         "  - github_create_issue",
-        "model: custom/local-worker",
+        "model: custom:custom/local-worker",
         "reasoning_effort: high",
         "---",
         "Follow the delegated task and return evidence.",
@@ -43,7 +43,7 @@ describe("Kana subagent profiles", () => {
       description: "A focused custom worker",
       instructions: "Follow the delegated task and return evidence.",
       tools: ["read", "github_create_issue"],
-      model: { provider: "custom", name: "local-worker", reasoningEffort: "high" },
+      model: { provider: "custom:custom", name: "local-worker", reasoningEffort: "high" },
       sourcePath: path.join(directory, "worker.md"),
     });
     expect(worker?.digest).toHaveLength(64);

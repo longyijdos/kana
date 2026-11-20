@@ -1,15 +1,15 @@
 # 自定义 OpenAI-compatible 提供商
 
-Kana 提供一个静态的 `custom` 供应商槽位，用于用户自己管理的 OpenAI-compatible 模型。每个已配置模型可选择内置 Chat Completions 或 Responses 适配器；该槽位不是运行时插件系统，也不会动态发现任意 provider ID。保持产品层供应商集合封闭，可以避免 Agent、session、memory 和前端装配都承担动态供应商逻辑，同时仍可接入本地服务或托管的兼容 endpoint。
+Kana 可以接入多个由用户管理的 OpenAI-compatible endpoint。每个 Custom 供应商独立配置 endpoint、凭据、请求选项和模型列表。模型使用内置的 Chat Completions 或 Responses 适配器，不加载运行时插件。
 
 ## 安装与选择
 
-`kana install` 会创建 `<KANA_HOME>/providers/custom.example.toml` 作为生成的配置参考。将它复制为 `custom.toml` 后再修改；运行时不会读取 example 文件。
+`kana install` 会生成 `<KANA_HOME>/providers/custom.example.toml`。为每个 endpoint 将示例复制到同目录下单独的 `<name>.toml`，例如 `local.toml` 或 `openrouter.toml`。名称须以 ASCII 小写字母或数字开头，仅可包含小写字母、数字、下划线和连字符，最长 64 个字符。例如，`custom.toml` 的 ID 为 `custom:custom`，在 `/model` 中显示为 `Custom · custom`。运行时不会读取示例文件。
 
 最小供应商定义为：
 
 ```toml
-# ~/.kana/providers/custom.toml
+# ~/.kana/providers/local.toml
 base_url = "http://127.0.0.1:8080/v1"
 
 [[models]]
@@ -23,11 +23,13 @@ max_output_tokens = 4096
 ```toml
 # ~/.kana/config.toml
 [agent.model]
-provider = "custom"
+provider = "custom:local"
 name = "local-model"
 ```
 
-`/model` 会在内置供应商之外显示 Custom。Kana 在进程启动时只加载一次该文件，`/model`、对话 Agent 和记忆压缩 Agent 共用这份快照；直接编辑需要重启才会生效。该命令只在 `[agent.model]` 下持久化主 Agent 的 `provider`、`name` 和可选推理强度，并通过与内置供应商相同的候选 Agent 校验完成热切换。已有 `max_output_tokens` 和 `context_limit` 保持不变，`[memory.agent.model]` 只覆盖自身填写的字段，其余随新选择变化。启动快照缺失或无效时会显示明确错误；Kana 不会静默回退到其他供应商或模型。
+在 `/model` 中选择 `Custom · local`，再选择模型。不同供应商可以使用同一个模型名，选择时不会混淆。Kana 在启动时加载供应商定义，`/model`、对话 Agent、subagent 和记忆压缩共用这份快照。切换已加载的 endpoint 不需要重启；添加、删除或编辑供应商文件仍需重启。一份配置无效只会让该供应商不可用。选择缺失或无效的配置时，Kana 会报错，不会静默回退。
+
+该命令会校验候选 Agent，并在 `[agent.model]` 中持久化主 Agent 的 `provider`、`name` 和可选推理强度。已有的 `max_output_tokens` 和 `context_limit` 保持不变。`[memory.agent.model]` 只覆盖自身填写的字段；subagent 角色卡可以用 `model: custom:local/local-model` 选择命名供应商的模型。
 
 ## 供应商字段
 

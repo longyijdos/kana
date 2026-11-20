@@ -75,7 +75,8 @@ on_approval_required = false
 模型选择完全保留在 Kana 现有配置 schema 中。所有内置 provider、Agent 与运行时设置见
 [配置与安装](configuration.zh-CN.md)。
 
-要使用 Custom OpenAI-compatible endpoint，在 `config.toml` 中选择 `custom`：
+要使用 Custom OpenAI-compatible endpoint，请使用支持命名供应商的 Kana 版本，并在
+`config.toml` 中选择 `custom:custom`。workflow 会将传入的供应商文件放到 `providers/custom.toml`：
 
 ```toml
 # .github/kana/config.toml
@@ -83,7 +84,7 @@ on_approval_required = false
 goal_max_rounds = 3
 
 [agent.model]
-provider = "custom"
+provider = "custom:custom"
 name = "coding-plan-model"
 
 [memory]

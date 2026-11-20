@@ -1,8 +1,12 @@
 import type { ModelReasoningMetadata } from "@/core";
 import { DEEPSEEK_MODELS, OPENAI_CODEX_MODELS } from "@/providers";
-import { KANA_MODEL_PROVIDERS, type KanaConfig, type KanaModelProvider } from "./config";
-import { type KanaCustomProviderSnapshot, loadKanaCustomProviderSnapshot } from "./custom-provider";
-import { getKanaConfigPaths } from "./path";
+import type { KanaConfig, KanaModelProvider } from "./config";
+import { KANA_BUILT_IN_MODEL_PROVIDERS, type KanaCustomModelProvider } from "./config/contracts";
+import {
+  getKanaCustomProviderEntry,
+  type KanaCustomProviderSnapshot,
+  loadKanaCustomProviderSnapshot,
+} from "./custom-provider";
 
 type KanaManagedModel = {
   name: string;
@@ -27,10 +31,9 @@ export type KanaModelManagement = {
   model: Record<KanaModelProvider, KanaManagedProvider>;
 };
 
-const KANA_MODEL_PROVIDER_OPTIONS = KANA_MODEL_PROVIDERS.map((provider) => ({
+const KANA_MODEL_PROVIDER_OPTIONS = KANA_BUILT_IN_MODEL_PROVIDERS.map((provider) => ({
   value: provider,
-  label:
-    provider === "deepseek" ? "DeepSeek" : provider === "openai-codex" ? "OpenAI Codex" : "Custom",
+  label: provider === "deepseek" ? "DeepSeek" : "OpenAI Codex",
 }));
 
 export function getKanaModelManagement(
@@ -38,31 +41,41 @@ export function getKanaModelManagement(
   env: NodeJS.ProcessEnv = process.env,
   customProviderSnapshot?: KanaCustomProviderSnapshot,
 ): KanaModelManagement {
-  const customProviderPath = getKanaConfigPaths(env).customProviderPath;
-  const customProvider =
-    customProviderSnapshot ?? loadKanaCustomProviderSnapshot(customProviderPath);
-
-  const selection = config.agent.model;
-  const models: Record<KanaModelProvider, KanaManagedModel[]> = {
-    deepseek: toManagedModels(DEEPSEEK_MODELS),
-    "openai-codex": toManagedModels(OPENAI_CODEX_MODELS),
-    custom:
-      customProvider.provider?.models.map((model) => ({
-        name: model.name,
-        reasoning: model.metadata.reasoning,
-        supportsImageInput: model.metadata.supportsImageInput,
-      })) ?? [],
+  const snapshot = customProviderSnapshot ?? loadKanaCustomProviderSnapshot(env);
+  const activeProvider = config.agent.model.provider;
+  const providers: KanaModelManagement["providers"][number][] = [...KANA_MODEL_PROVIDER_OPTIONS];
+  const model: KanaModelManagement["model"] = {
+    deepseek: createManagedProvider("deepseek", toManagedModels(DEEPSEEK_MODELS), config),
+    "openai-codex": createManagedProvider(
+      "openai-codex",
+      toManagedModels(OPENAI_CODEX_MODELS),
+      config,
+    ),
   };
+  const customIds = new Set(snapshot.entries.keys());
+  if (activeProvider !== "deepseek" && activeProvider !== "openai-codex") {
+    customIds.add(activeProvider);
+  }
+  for (const id of customIds) {
+    providers.push({ value: id, label: `Custom · ${id.slice("custom:".length)}` });
+    model[id] = createManagedCustomProvider(id, config, snapshot);
+  }
+  return { activeProvider, providers, model };
+}
 
-  return {
-    activeProvider: selection.provider,
-    providers: KANA_MODEL_PROVIDER_OPTIONS,
-    model: {
-      deepseek: createManagedProvider("deepseek", models.deepseek, config),
-      "openai-codex": createManagedProvider("openai-codex", models["openai-codex"], config),
-      custom: createManagedProvider("custom", models.custom, config, customProvider.error?.message),
-    },
-  };
+function createManagedCustomProvider(
+  id: KanaCustomModelProvider,
+  config: KanaConfig,
+  snapshot: KanaCustomProviderSnapshot,
+): KanaManagedProvider {
+  const { provider, error } = getKanaCustomProviderEntry(snapshot, id);
+  const available =
+    provider?.models.map((model) => ({
+      name: model.name,
+      reasoning: model.metadata.reasoning,
+      supportsImageInput: model.metadata.supportsImageInput,
+    })) ?? [];
+  return createManagedProvider(id, available, config, error?.message);
 }
 
 function createManagedProvider(

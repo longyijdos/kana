@@ -267,7 +267,7 @@ describe("Kana Custom provider", () => {
       const paths = getKanaConfigPaths();
       mkdirSync(paths.providersDirectory, { recursive: true });
       writeFileSync(
-        paths.customProviderPath,
+        path.join(paths.providersDirectory, "custom.toml"),
         [
           `base_url = "http://127.0.0.1:${server.port}/v1"`,
           'api_key_env = "KANA_CUSTOM_TEST_KEY"',
@@ -292,16 +292,16 @@ describe("Kana Custom provider", () => {
         ...DEFAULT_KANA_CONFIG,
         agent: {
           ...DEFAULT_KANA_CONFIG.agent,
-          model: { provider: "custom", name: "local-model", reasoningEffort: "high" },
+          model: { provider: "custom:custom", name: "local-model", reasoningEffort: "high" },
         },
       };
       const management = getKanaModelManagement(config);
       const model = createKanaModel(
         config.agent.model,
-        selectKanaProviderConfig(config.provider, "custom"),
+        selectKanaProviderConfig(config.provider, "custom:custom"),
       );
 
-      expect(management.model.custom).toMatchObject({
+      expect(management.model["custom:custom"]).toMatchObject({
         name: "local-model",
         reasoningEffort: "high",
         available: [
@@ -317,7 +317,7 @@ describe("Kana Custom provider", () => {
       });
 
       expect(model.metadata).toMatchObject({
-        provider: "custom",
+        provider: "custom:custom",
         model: "local-model",
         protocol: "chat-completions",
         contextWindow: 32_768,
@@ -341,13 +341,15 @@ describe("Kana Custom provider", () => {
     }
   });
 
-  test("creates a Responses Custom model with hosted web search", async () => {
+  test("uses the named provider's endpoint, credentials, and Responses model when another provider offers the same model", async () => {
     let requestPath = "";
+    let authorization = "";
     let requestBody: Record<string, unknown> = {};
     const server = Bun.serve({
       port: 0,
       async fetch(request) {
         requestPath = new URL(request.url).pathname;
+        authorization = request.headers.get("authorization") ?? "";
         requestBody = (await request.json()) as Record<string, unknown>;
         return new Response(
           [
@@ -363,13 +365,18 @@ describe("Kana Custom provider", () => {
     });
 
     try {
-      const env = { KANA_HOME: createTempDir() };
+      const env = { KANA_HOME: createTempDir(), KANA_NAMED_TEST_KEY: "vertex-key" };
       const paths = getKanaConfigPaths(env);
       mkdirSync(paths.providersDirectory, { recursive: true });
       writeFileSync(
-        paths.customProviderPath,
+        path.join(paths.providersDirectory, "custom.toml"),
+        customProviderToml("responses-model"),
+      );
+      writeFileSync(
+        path.join(paths.providersDirectory, "vertex.toml"),
         [
           `base_url = "http://127.0.0.1:${server.port}/v1"`,
+          'api_key_env = "KANA_NAMED_TEST_KEY"',
           "max_retries = 0",
           "",
           "[[models]]",
@@ -385,8 +392,8 @@ describe("Kana Custom provider", () => {
         ].join("\n"),
       );
       const model = createKanaModel(
-        { provider: "custom", name: "responses-model" },
-        selectKanaProviderConfig(DEFAULT_KANA_CONFIG.provider, "custom"),
+        { provider: "custom:vertex", name: "responses-model" },
+        selectKanaProviderConfig(DEFAULT_KANA_CONFIG.provider, "custom:vertex"),
         { env },
       );
       const message = await model.generate({
@@ -395,12 +402,13 @@ describe("Kana Custom provider", () => {
       });
 
       expect(model.metadata).toMatchObject({
-        provider: "custom",
+        provider: "custom:vertex",
         model: "responses-model",
         protocol: "responses",
         supportsHostedWebSearch: true,
       });
       expect(requestPath).toBe("/v1/responses");
+      expect(authorization).toBe("Bearer vertex-key");
       expect(requestBody).toMatchObject({
         model: "responses-model",
         prompt_cache_key: "kana",
@@ -419,24 +427,33 @@ describe("Kana Custom provider", () => {
     const env = { KANA_HOME: createTempDir() };
     const paths = getKanaConfigPaths(env);
     mkdirSync(paths.providersDirectory, { recursive: true });
-    writeFileSync(paths.customProviderPath, customProviderToml("startup-model"));
-    const snapshot = loadKanaCustomProviderSnapshot(paths.customProviderPath);
-    writeFileSync(paths.customProviderPath, customProviderToml("later-model"));
+    writeFileSync(
+      path.join(paths.providersDirectory, "custom.toml"),
+      customProviderToml("startup-model"),
+    );
+    const snapshot = loadKanaCustomProviderSnapshot(env);
+    writeFileSync(
+      path.join(paths.providersDirectory, "custom.toml"),
+      customProviderToml("later-model"),
+    );
     const config: KanaConfig = {
       ...DEFAULT_KANA_CONFIG,
-      agent: { ...DEFAULT_KANA_CONFIG.agent, model: { provider: "custom", name: "startup-model" } },
+      agent: {
+        ...DEFAULT_KANA_CONFIG.agent,
+        model: { provider: "custom:custom", name: "startup-model" },
+      },
     };
 
     const management = getKanaModelManagement(config, env, snapshot);
     const model = createKanaModel(
       config.agent.model,
-      selectKanaProviderConfig(config.provider, "custom"),
+      selectKanaProviderConfig(config.provider, "custom:custom"),
       { env, customProviderSnapshot: snapshot },
     );
 
-    expect(management.model.custom.available.map((candidate) => candidate.name)).toEqual([
-      "startup-model",
-    ]);
+    expect(management.model["custom:custom"]?.available.map((candidate) => candidate.name)).toEqual(
+      ["startup-model"],
+    );
     expect(model.metadata.model).toBe("startup-model");
   });
 });
