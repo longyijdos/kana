@@ -20,12 +20,29 @@ describe("shell tool", () => {
     const deadlineMs = shell.execution?.deadlineMs;
 
     expect(deadlineMs).toBe(301_000);
+    expect(shell.parameters.properties.timeoutMs).toMatchObject({
+      description: expect.stringContaining("Defaults to 30000"),
+    });
     expect(() => validateToolArguments(shell, { command: "echo hi", timeoutMs: 301_000 })).toThrow(
       "must be <= 300000",
     );
     expect(validateToolArguments(shell, { command: "echo hi", timeoutMs: 300_000 })).toMatchObject({
       timeoutMs: 300_000,
     });
+  });
+
+  test("uses a configured timeout ceiling for both validation and execution", async () => {
+    const shell = createShellTool({ maxTimeoutMs: 1_800_000 });
+    const command = "printf built; exit 7";
+    expect(shell.execution?.deadlineMs).toBe(1_801_000);
+    expect(() => validateToolArguments(shell, { command, timeoutMs: 1_800_001 })).toThrow(
+      "must be <= 1800000",
+    );
+    const args = validateToolArguments(shell, { command, timeoutMs: 1_800_000 });
+    const result = await shell.execute(args, createToolContext());
+
+    expectToolResult(result);
+    expect(result.result).toMatchObject({ exitCode: 7, stdout: "built", timedOut: false });
   });
 
   test("runs a command inside the workspace", async () => {

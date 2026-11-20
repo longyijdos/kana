@@ -35,6 +35,13 @@ const invalidScalarConfigs: InvalidConfigCase[] = [
     invalidPositiveIntegerConfig("agent.background_jobs", "max_concurrent", value),
     invalidPositiveIntegerConfig("agent.subagents", "max_live", value),
   ]),
+  ...[0, 29_999, 30_000.5, 3_600_001].map(
+    (value): InvalidConfigCase => [
+      `agent.shell_max_timeout_ms = ${value}`,
+      `[agent]\nshell_max_timeout_ms = ${value}\n`,
+      "agent.shell_max_timeout_ms must be an integer between 30000 and 3600000 (inclusive).",
+    ],
+  ),
   invalidBooleanConfig("agent", "parallel_tool_calls"),
   invalidBooleanConfig("agent", "tool_result_artifacts"),
   invalidBooleanConfig("tui", "smooth_text_streaming"),
@@ -69,6 +76,7 @@ describe("Kana config parser", () => {
         "max_turns = 4",
         "goal_max_rounds = 12",
         "tool_deadline_ms = 120000",
+        "shell_max_timeout_ms = 3600000",
         "parallel_tool_calls = false",
         "max_parallel_tool_calls = 2",
         "tool_result_artifacts = false",
@@ -145,6 +153,7 @@ describe("Kana config parser", () => {
         maxTurns: 4,
         goalMaxRounds: 12,
         toolDeadlineMs: 120_000,
+        shellMaxTimeoutMs: 3_600_000,
         parallelToolCalls: false,
         maxParallelToolCalls: 2,
         model: {
@@ -205,6 +214,14 @@ describe("Kana config parser", () => {
         level: "debug",
       },
     });
+  });
+
+  test("accepts a shell timeout ceiling equal to the default command timeout", () => {
+    const env = createTempEnv();
+    const { configPath } = getKanaConfigPaths(env);
+    writeFileSync(configPath, "[agent]\nshell_max_timeout_ms = 30000\n");
+
+    expect(loadKanaConfig(env).agent.shellMaxTimeoutMs).toBe(30_000);
   });
 
   test("loads static Agent policy and Custom model selection", () => {

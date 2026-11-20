@@ -75,7 +75,7 @@ hook 返回 `return` 时提供正常 `ToolResult`，跳过 `execute` 及其 dead
 
 每个并行组使用有界滚动池。调用按模型顺序 claim 并串行进入审批，同时运行的调用 body 不超过 `maxParallelToolCalls`。Start、update 和 end event 都按 `toolCallId` 关联并遵循物理时间，因此后面的快速调用可能先显示完成。独立 result slot 会等待模型顺序后才写入 journal 并进入下一请求，保证 replay 确定性。
 
-有效 deadline 优先使用 `tool.execution.deadlineMs`，否则使用 Agent 默认值。可复用 runtime 与 Kana 的 `agent.tool_deadline_ms` 均默认 300000 ms；`shell` 自行声明 301000 ms deadline，使其五分钟的 command ceiling 仍通过 shell 自身的超时处理结束。`shell.timeoutMs` 等调用参数可以在这个外层边界内施加更窄的操作限制。
+有效 deadline 优先使用 `tool.execution.deadlineMs`，否则使用 Agent 默认值。可复用 runtime 与 Kana 的 `agent.tool_deadline_ms` 均默认 300000 ms；`shell` 自行声明比配置的命令超时上限多 1000 ms 的 deadline，以便自行报告超时结果。`shell.timeoutMs` 等调用参数可以在这个外层边界内施加更窄的操作限制。
 
 普通工具在审批结束后才启动 deadline。对于 `run_code`，等待内部 `beforeToolExecution` hook（包括串行审批队列）时，暂停外层 deadline、显示计时和记录的执行耗时。多个审批等待重叠时共用一次暂停；最后一个等待结束后，外层 deadline 按剩余额度恢复。已经执行的内部工具仍使用各自的 deadline。Runtime 为外层调用发布 `tool_execution_pause` 和 `tool_execution_resume`，并标记 `reason: "approval"`；这些事件不创建历史消息。
 
@@ -195,7 +195,9 @@ Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回
 
 `view_image` 与用户附件共用 decoder 和大小限制。支持的 JPEG、PNG 与 WebP 保持 provider-ready；其它解码格式变成静态 PNG，动画输入使用解码后的首帧。
 
-`shell` 接受文件名为 `sh`、`bash` 或 `zsh` 的可执行程序名称或路径。`$SHELL` 在支持范围内时使用它，否则回退到 `bash`。这些 shell 支持注入的函数语法，用于把 `sudo` 替换为 `sudo -n`，避免密码提示占用 TUI 输入；stdin 断开。前台调用默认 command timeout 为 30000 ms，最大接受 300000 ms，大约每 100 ms 发布一次有界 stdout/stderr 尾部快照；完整最终 stream 仍进入通用结果策略。
+`shell` 接受文件名为 `sh`、`bash` 或 `zsh` 的可执行程序名称或路径。`$SHELL` 在支持范围内时使用它，否则回退到 `bash`。这些 shell 支持注入的函数语法，用于把 `sudo` 替换为 `sudo -n`，避免密码提示占用 TUI 输入；stdin 断开。前台调用默认命令超时为 30000 ms，大约每 100 ms 发布一次有界 stdout/stderr 尾部快照；完整的最终输出仍进入通用结果策略。
+
+主 Agent 和 Subagent 显式传入的 `timeoutMs` 受 [`agent.shell_max_timeout_ms`](configuration.zh-CN.md#其他配置表) 限制。例如，配置为 `3600000` 后，直接调用时可以传入 `timeoutMs: 1800000`。通过 `run_code` 调用仍受其独立的 15 分钟 deadline 限制。
 
 每条命令在独立进程组中运行。前台执行等待整个进程组，而不只是顶层 shell，因此裸 `command &` 不会逃过正常取消或 timeout；显式 daemonize 到另一个 process session 仍可能离开该边界。非 0 exit code 是已完成命令结果，不是工具基础设施错误；timeout 使用 `null` exit code 与 `isError: true`。
 

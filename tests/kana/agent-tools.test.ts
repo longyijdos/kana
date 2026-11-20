@@ -80,6 +80,22 @@ describe("Kana Agent tools", () => {
     expect(unsupportedModel.state.tools.some((tool) => tool.name === "view_image")).toBe(false);
   });
 
+  test("shares the configured foreground shell ceiling with subagents", () => {
+    const config = testConfig();
+    config.agent = { ...config.agent, toolDeadlineMs: 120_000, shellMaxTimeoutMs: 3_600_000 };
+    const parent = withKanaAgentEnvironment(() => createAgentForTest(config));
+    const child = withKanaAgentEnvironment(() =>
+      createAgentForTest(config, { subagentProfile: { ...subagentProfile(), tools: ["shell"] } }),
+    );
+
+    for (const agent of [parent, child]) {
+      expect(agent.state.tools.find((tool) => tool.name === "shell")).toMatchObject({
+        parameters: { properties: { timeoutMs: { maximum: 3_600_000 } } },
+        execution: { deadlineMs: 3_601_000 },
+      });
+    }
+  });
+
   test.each(["mixed", "only"] as const)(
     "applies %s mode within configured and role-card tool limits",
     (codemode) => {

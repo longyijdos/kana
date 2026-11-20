@@ -166,6 +166,7 @@ image_input = true
 max_turns = -1
 goal_max_rounds = 8
 tool_deadline_ms = 300000
+shell_max_timeout_ms = 300000
 parallel_tool_calls = true
 max_parallel_tool_calls = 4
 tool_result_artifacts = true
@@ -271,6 +272,7 @@ Custom 在 `config.toml` 中与内置模型使用完全相同的 Agent model 结
 | `agent.max_turns` | `-1` 或正整数 | `-1` | 一次用户运行中模型—工具回合的最大数；达到上限且仍需继续时以 `turn_limit` 结束。 |
 | `agent.goal_max_rounds` | 正整数 | `8` | 单个 `/goal` 最多允许的完整 Agent run 数，包含首次 run。 |
 | `agent.tool_deadline_ms` | 正整数 | `300000` | 未声明 `execution.deadlineMs` 的工具每次调用的默认 deadline（毫秒）；工具自身声明的值优先。 |
+| `agent.shell_max_timeout_ms` | `30000` 到 `3600000` 之间的整数（含边界） | `300000` | 主 Agent 和有权调用 `shell` 的 Subagent 执行前台命令时，`timeoutMs` 的上限（毫秒）。省略调用参数时，超时仍为 30 秒。 |
 | `agent.parallel_tool_calls` | 布尔值 | `true` | 是否允许模型提出并实际并发执行安全的工具调用；所选模型 metadata 不支持时始终关闭。 |
 | `agent.max_parallel_tool_calls` | 正整数 | `4` | 一个相邻并行安全组内可同时执行的工具调用 body 上限。 |
 | `agent.tool_result_artifacts` | 布尔值 | `true` | 将超大的非 `read` 文本结果保存为私有 session artifact，并给模型提供有界、可取回的预览。 |

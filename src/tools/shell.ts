@@ -6,12 +6,8 @@ import type { Tool } from "./tool";
 import { resolveWorkspaceDirectory } from "./workspace-path";
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
-// Builds and benchmark workloads can legitimately run for minutes, while a ceiling
-// keeps one model-issued command from occupying the foreground indefinitely.
-const MAX_TIMEOUT_MS = 5 * 60 * 1000;
-// Shell owns a deadline just above its ceiling so it can terminate the process group
-// and report its own timeout result instead of being cancelled by ToolRuntime.
-const TOOL_DEADLINE_MS = MAX_TIMEOUT_MS + 1_000;
+export const DEFAULT_SHELL_MAX_TIMEOUT_MS = 5 * 60 * 1000;
+export const SHELL_MAX_TIMEOUT_LIMIT_MS = 60 * 60 * 1000;
 const MAX_PARTIAL_OUTPUT_CHARS = 20_000;
 const PARTIAL_UPDATE_INTERVAL_MS = 100;
 
@@ -20,24 +16,26 @@ type ShellOutputSnapshot = {
   stderr: string;
 };
 
-export const shellParameters = strictObject({
-  command: Type.String({
-    description: "Command to execute.",
-  }),
-  cwd: Type.Optional(
-    Type.String({
-      default: ".",
-      description: "Working directory, relative to the workspace root or absolute.",
+function createShellParameters(maxTimeoutMs: number) {
+  return strictObject({
+    command: Type.String({
+      description: "Command to execute.",
     }),
-  ),
-  timeoutMs: Type.Optional(
-    Type.Integer({
-      minimum: 1,
-      maximum: MAX_TIMEOUT_MS,
-      description: "Command timeout in milliseconds. Defaults to 30000; maximum 300000.",
-    }),
-  ),
-});
+    cwd: Type.Optional(
+      Type.String({
+        default: ".",
+        description: "Working directory, relative to the workspace root or absolute.",
+      }),
+    ),
+    timeoutMs: Type.Optional(
+      Type.Integer({
+        minimum: 1,
+        maximum: maxTimeoutMs,
+        description: `Command timeout in milliseconds. Defaults to ${DEFAULT_TIMEOUT_MS}; maximum ${maxTimeoutMs}.`,
+      }),
+    ),
+  });
+}
 
 export type ShellToolResult = {
   exitCode: number | null;
@@ -49,26 +47,29 @@ export type ShellToolResult = {
 export type ShellToolOptions = {
   root?: string;
   shell?: string;
+  maxTimeoutMs?: number;
 };
 
 export function createShellTool(
   options: ShellToolOptions = {},
-): Tool<typeof shellParameters, ShellToolResult> {
+): Tool<ReturnType<typeof createShellParameters>, ShellToolResult> {
   const root = path.resolve(options.root ?? process.cwd());
   const shell = resolveShell(options.shell);
+  const maxTimeoutMs = options.maxTimeoutMs ?? DEFAULT_SHELL_MAX_TIMEOUT_MS;
 
   return {
     name: "shell",
     description:
       "Run a foreground command with the current shell. Waits for the complete process group and returns stdout, stderr, and exit status.",
-    parameters: shellParameters,
+    parameters: createShellParameters(maxTimeoutMs),
     outputSchema: Type.Object({
       exitCode: Type.Union([Type.Number(), Type.Null()]),
       stdout: Type.String(),
       stderr: Type.String(),
       timedOut: Type.Boolean(),
     }),
-    execution: { deadlineMs: TOOL_DEADLINE_MS },
+    // Give shell time to clean up the process group and report its own timeout.
+    execution: { deadlineMs: maxTimeoutMs + 1_000 },
     execute: async (args, context) => {
       if (context.signal?.aborted) {
         throw new Error("Command aborted.");

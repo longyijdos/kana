@@ -15,7 +15,12 @@ export { encodeUserImage, loadUserImageFile } from "./image-input";
 export { createListTool, DEFAULT_LIST_LIMIT } from "./list";
 export { createReadTool, DEFAULT_READ_LIMIT } from "./read";
 export { normalizeToolResult } from "./result";
-export { createShellTool, DEFAULT_TIMEOUT_MS } from "./shell";
+export {
+  createShellTool,
+  DEFAULT_SHELL_MAX_TIMEOUT_MS,
+  DEFAULT_TIMEOUT_MS,
+  SHELL_MAX_TIMEOUT_LIMIT_MS,
+} from "./shell";
 export { strictObject } from "./strict-object";
 export type {
   Tool,

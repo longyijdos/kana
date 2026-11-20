@@ -23,6 +23,7 @@ export function serializeKanaConfigExample(config: KanaConfig): string {
     `max_turns = ${config.agent.maxTurns}`,
     `goal_max_rounds = ${config.agent.goalMaxRounds}`,
     `tool_deadline_ms = ${config.agent.toolDeadlineMs}`,
+    `shell_max_timeout_ms = ${config.agent.shellMaxTimeoutMs}`,
     `parallel_tool_calls = ${config.agent.parallelToolCalls}`,
     `max_parallel_tool_calls = ${config.agent.maxParallelToolCalls}`,
     `tool_result_artifacts = ${config.agent.toolResultArtifacts}`,

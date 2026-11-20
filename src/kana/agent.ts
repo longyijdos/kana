@@ -152,6 +152,7 @@ export function createKanaAgent(
     }),
     createShellTool({
       root: cwd,
+      maxTimeoutMs: config.shellMaxTimeoutMs,
     }),
   ]);
   const subagentProfiles = options.subagentProfiles ?? [];

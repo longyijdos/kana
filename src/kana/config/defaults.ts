@@ -1,4 +1,5 @@
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from "@/agent";
+import { DEFAULT_SHELL_MAX_TIMEOUT_MS } from "@/tools";
 import { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tools/names";
 import type { KanaConfig } from "./contracts";
 
@@ -26,6 +27,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
     imageInput: true,
     maxTurns: -1,
     goalMaxRounds: 8,
+    shellMaxTimeoutMs: DEFAULT_SHELL_MAX_TIMEOUT_MS,
     toolDeadlineMs: DEFAULT_KANA_AGENT_TOOL_DEADLINE_MS,
     parallelToolCalls: true,
     maxParallelToolCalls: DEFAULT_MAX_PARALLEL_TOOL_CALLS,

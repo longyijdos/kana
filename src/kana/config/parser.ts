@@ -1,5 +1,6 @@
 import { type TObject, type TSchema, Type } from "typebox";
 import { LOG_LEVELS } from "@/logging";
+import { DEFAULT_TIMEOUT_MS, SHELL_MAX_TIMEOUT_LIMIT_MS } from "@/tools";
 import { isRecord, parseWithSchema } from "@/utils";
 import { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tools/names";
 import {
@@ -69,6 +70,11 @@ const KANA_CONFIG_FILE_SCHEMA = table({
     codemode: Type.Enum(["off", "mixed", "only"]),
     ...agentRuntimeFields(),
     goal_max_rounds: positiveInteger(),
+    shell_max_timeout_ms: Type.Integer({
+      minimum: DEFAULT_TIMEOUT_MS,
+      maximum: SHELL_MAX_TIMEOUT_LIMIT_MS,
+      errorMessage: `must be an integer between ${DEFAULT_TIMEOUT_MS} and ${SHELL_MAX_TIMEOUT_LIMIT_MS} (inclusive)`,
+    }),
     tool_result_artifacts: Type.Boolean(),
     max_tool_content_tokens: positiveInteger(),
     model: modelTable(),

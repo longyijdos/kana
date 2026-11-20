@@ -59,6 +59,7 @@ export type KanaAgentConfig = KanaAgentRuntimeConfig & {
   readonly model: KanaModelConfig;
   readonly tools: readonly KanaConfigurableBuiltInToolName[];
   readonly goalMaxRounds: number;
+  readonly shellMaxTimeoutMs: number;
   readonly toolResultArtifacts: boolean;
   readonly maxToolContentTokens: number;
   readonly backgroundJobs: KanaBackgroundJobsConfig;
