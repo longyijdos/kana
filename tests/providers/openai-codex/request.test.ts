@@ -133,7 +133,6 @@ describe("buildOpenAICodexRequest", () => {
       prompt_cache_key: "a45c7acb-90ce-4d49-9a9f-65b706e9f0f7",
       instructions: "system",
       include: ["reasoning.encrypted_content"],
-      text: { verbosity: "low" },
       reasoning: {
         effort: "medium",
         summary: "auto",
@@ -160,6 +159,7 @@ describe("buildOpenAICodexRequest", () => {
         { type: "web_search" },
       ],
     });
+    expect(request).not.toHaveProperty("text");
     expect(request).not.toHaveProperty("max_output_tokens");
     expect(request.reasoning).not.toHaveProperty("context");
     expect(request.input).toEqual([

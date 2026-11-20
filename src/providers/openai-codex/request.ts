@@ -29,7 +29,6 @@ export function buildOpenAICodexRequest(
       stateless: true,
       namespace: TOOL_NAMESPACE,
     }),
-    text: { verbosity: "low" },
     include: ["reasoning.encrypted_content"],
     tools,
     tool_choice: "auto",
