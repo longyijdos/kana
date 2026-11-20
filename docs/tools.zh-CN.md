@@ -43,9 +43,9 @@ Kana 内置工具的 `args` 承载操作意图、输入正文和选择条件；�
 
 ## 调用管线
 
-`ToolRuntime.invoke(toolCall, { signal?, onAbortRun?, onExecutionEnd? })` 执行单次调用，与模型提出的调用共用参数校验、审批、取消、deadline、规范化和事件管线。它返回 `{ toolCall, result, isError, durationMs, abortRun? }`，其中 `result` 是完整的规范化 `ToolResult`。它不应用结果策略、不限制 content、不创建 artifact，也不提交消息。`ToolRuntime.execute()` 负责批量调度和历史消息处理；`invoke()` 的调用方负责调度，并须处理 `abortRun`，或提供 `onAbortRun` 以立即收到中止通知。
+`ToolRuntime.invoke(toolCall, { signal?, onAbortRun?, onExecutionEnd? })` 执行单次调用，与模型提出的调用共用参数校验、审批、取消、deadline、规范化和事件管线。它返回 `{ toolCall, result, isError, durationMs, cancelled?, abortRun? }`，其中 `result` 是完整的规范化 `ToolResult`。它不应用结果策略、不限制 content、不创建 artifact，也不提交消息。`ToolRuntime.execute()` 负责批量调度和历史消息处理；`invoke()` 的调用方负责调度，并须处理 `abortRun`，或提供 `onAbortRun` 以立即收到中止通知。
 
-Runtime 从进入工具的 `execute()` 开始计算 `durationMs`，在执行结束或 Runtime 中断调用时停止。调度、校验、审批、结果处理，以及中断后的取消清理均不计入；未执行的调用记录为零。耗时作为执行元数据放在 `tool_execution_end` 和历史工具消息上，与工具的业务 `result` 分开。可选的 `onExecutionEnd` 回调在执行结束或中断时立即收到耗时，早于结果发布。
+Runtime 从进入工具的 `execute()` 开始计算 `durationMs`，在执行结束或 Runtime 中断调用时停止。调度、校验、审批、结果处理，以及中断后的取消清理均不计入；未执行的调用记录为零。耗时和 Runtime 的 `cancelled: true` 标记作为执行元数据放在 `tool_execution_end` 和历史工具消息上，与工具的业务 `result` 分开。可选的 `onExecutionEnd` 回调在执行结束或中断时立即收到耗时，早于结果发布。
 
 只有名为 `run_code` 的工具收到 `CodemodeToolContext`，它在普通 context 的基础上增加 `invokeTool(name, args, { signal?, onExecutionEnd? })`。普通工具的 context 类型和运行时对象均没有这个字段。内部调用通过 `invoke()` 返回完整的规范化 `ToolResult`，不生成历史消息。每个 codemode 调用持有自己的队列，遵守 runtime 的并发开关和数量上限，exclusive 调用形成 barrier。内部调用的审批共用 runtime 的串行 hook 队列。内部调用要求 `abortRun` 时会中断 codemode；仅取消子调用的 signal 不会。内部调用发布通常的执行事件，并用 `parentToolCallId` 标明外层调用，但不会成为独立的历史工具消息。`invoke()` 接受这个可选事件字段；普通调用不带该字段。TUI 渲染工具 block 和状态时跳过这些内部事件，审批保持原有行为。
 
@@ -205,11 +205,11 @@ Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回
 
 通用 manager 不依赖 Kana Agent 构造。Owner 把 Job 绑定到一个 session 实例，执行并发上限，并在 dispose 时停止全部所属进程组。每个 Job 在内存中最多保留最新 1 MiB stdout/stderr。Metadata 只保存空白规范化且不超过 512 UTF-8 字节的命令 label；原始命令仍在 tool call 中。
 
-`job_output` 使用一个消费型 Agent cursor，并在一次调用中返回全部当前未读保留输出；`droppedBytes` 报告消费前已经淘汰的输出。TUI 使用另一条非消费 tail，最多 20 KiB。每个 owner 最多保留 32 个终态 Job，较旧条目会被裁剪。Job 与保留 buffer 永不持久化或恢复。
+`job_output` 使用一个消费型 Agent cursor，并在一次调用中返回全部当前未读保留输出；`droppedBytes` 报告消费前已经淘汰的输出。TUI 使用另一条非消费 tail，最多 20 KiB。每个 owner 最多保留 32 个终态 Job，较旧条目会被裁剪。Job 与保留 buffer 永不持久化或恢复。`job_output` 和 `job_kill` 在 Job ID 查不到时报告工具错误；已知 Job 的进程结果为 `unknown` 不算工具错误。
 
 Kana 把活动或尚未报告 Job 的身份、有界 label、cwd、状态和 exit code 投影到 runtime context，永不包含输出。完成 steering、排队 run 投递、确认与 session 切换顺序归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Subagent 启动时选择预定义角色卡并返回稳定 child ID；等待和取消返回所选 child 的操作结果。其能力交集、异步生命周期、持久化与 TUI 行为见 [Subagent](subagents.zh-CN.md)。
+Subagent 启动时选择预定义角色卡并返回稳定 child ID；等待和取消返回所选 child 的操作结果。子代理执行失败是 `wait_subagent` 的正常结果；查不到 child ID 才是工具错误。其能力交集、异步生命周期、持久化与 TUI 行为见 [Subagent](subagents.zh-CN.md)。
 
 ## Kana 自有状态工具
 

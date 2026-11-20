@@ -320,6 +320,7 @@ const MESSAGE_SCHEMA = Type.Union(
       images: Type.Optional(Type.Array(USER_IMAGE_SCHEMA)),
       artifact: Type.Optional(TOOL_RESULT_ARTIFACT_SCHEMA),
       isError: Type.Boolean(),
+      cancelled: Type.Optional(Type.Literal(true)),
     }),
   ],
   { errorMessage: "must be a valid user, assistant, or tool message" },

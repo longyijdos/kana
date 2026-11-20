@@ -37,6 +37,7 @@ export type ExecutedToolCall = {
   toolCall: ToolCallContent;
   result: ToolResult;
   isError: boolean;
+  cancelled?: true;
   durationMs: number;
   abortRun?: boolean;
 };

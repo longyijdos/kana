@@ -142,6 +142,7 @@ export type ToolResultMessage = MessageIdentity<
   readonly artifact?: ToolResultArtifact;
   readonly result?: unknown;
   readonly isError: boolean;
+  readonly cancelled?: true;
 };
 
 export type ToolResultArtifact = {

@@ -172,9 +172,10 @@ export class AgentEventRenderer {
           event.result,
           event.isError,
           event.durationMs,
+          event.cancelled,
         );
         this.activeTools.delete(event.toolCallId);
-        this.toolErrorCount += event.isError ? 1 : 0;
+        this.toolErrorCount += event.isError && !event.cancelled ? 1 : 0;
         this.updateToolStatus();
         break;
     }

@@ -81,6 +81,42 @@ describe("subagent tools", () => {
     expect(client.list()).toHaveLength(1);
     await manager.close();
   });
+
+  test("returns a failed subagent run as a successful read", async () => {
+    const manager = new KanaSubagentManager();
+    const client = manager.bind(
+      manager.createOwner({ sessionId: "session-1", cwd: process.cwd(), persistent: false }),
+      { maxLive: 1 },
+    );
+    const agent = client.start({
+      profile: profile(),
+      task: "Inspect the parser",
+      spawnToolCallId: "spawn",
+      run: async () => ({
+        status: "errored",
+        terminalReason: "error",
+        output: "Partial findings",
+        error: "Child run failed",
+        messages: [],
+      }),
+    });
+    const wait = createWaitSubagentTool(client);
+    const read = await wait.execute({ agentId: agent.id, timeoutMs: 100 }, createToolContext());
+    expectToolResult(read);
+    expect(read.isError).toBe(false);
+    expect(read.result).toEqual({
+      status: "errored",
+      terminalReason: "error",
+      output: "Partial findings",
+      error: "Child run failed",
+      waitTimedOut: false,
+    });
+
+    const missing = await wait.execute({ agentId: "missing" }, createToolContext());
+    expectToolResult(missing);
+    expect(missing.isError).toBe(true);
+    await manager.close();
+  });
 });
 
 function profile(): KanaSubagentProfile {

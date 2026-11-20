@@ -86,6 +86,7 @@ export type AgentEvent =
       readonly toolName: string;
       readonly result: unknown;
       readonly isError: boolean;
+      readonly cancelled?: true;
       readonly durationMs?: number;
     }
   | {

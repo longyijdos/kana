@@ -163,7 +163,7 @@ export function createWaitSubagentTool(
       return {
         content: formatWaitResult(result),
         result,
-        isError: result.status === "unknown" || result.status === "errored",
+        isError: result.status === "unknown",
       };
     },
   };

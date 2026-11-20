@@ -24,7 +24,8 @@ describe("BackgroundJobManager", () => {
     ).toThrow("Background Job limit reached (1/1).");
     expect(second.list()).toEqual([]);
     expect(second.peek(job.id).status).toBe("unknown");
-    expect((await second.kill(job.id, { source: "tool" })).status).toBe("unknown");
+    expect(await second.read(job.id)).toBeUndefined();
+    expect(await second.kill(job.id, { source: "tool" })).toBeUndefined();
 
     completion.resolve({ status: "completed", exitCode: 0 });
     await waitFor(() => first.list()[0]?.status === "completed");
@@ -89,7 +90,7 @@ describe("BackgroundJobManager", () => {
       droppedBytes: 2,
     });
     // The cursor prevents already-consumed output from being returned again.
-    expect((await jobs.read(job.id)).chunks).toEqual([]);
+    expect(await jobs.read(job.id)).toMatchObject({ chunks: [] });
 
     // New output is consumed in full; "kl" is evicted while unread, so the
     // cursor advances past it and its bytes are reported as dropped, while the
@@ -108,7 +109,7 @@ describe("BackgroundJobManager", () => {
       ],
       droppedBytes: 2,
     });
-    expect((await jobs.read(job.id)).chunks).toEqual([]);
+    expect(await jobs.read(job.id)).toMatchObject({ chunks: [] });
 
     completion.resolve({ status: "completed", exitCode: 0 });
     await waitFor(() => jobs.list()[0]?.status === "completed");
@@ -139,9 +140,9 @@ describe("BackgroundJobManager", () => {
     expect(text.endsWith(peekedText)).toBe(true);
 
     const read = await jobs.read(job.id);
-    expect(read.chunks.map((chunk) => chunk.text).join("")).toBe(text);
-    expect(read.droppedBytes).toBe(0);
-    expect((await jobs.read(job.id)).chunks).toEqual([]);
+    expect(read?.chunks.map((chunk) => chunk.text).join("")).toBe(text);
+    expect(read?.droppedBytes).toBe(0);
+    expect(await jobs.read(job.id)).toMatchObject({ chunks: [] });
     // Peek is non-consuming and still bounded after the read.
     expect(
       jobs
@@ -172,9 +173,9 @@ describe("BackgroundJobManager", () => {
     });
 
     const read = await jobs.read(job.id);
-    expect(read.chunks.map((chunk) => chunk.text).join("")).toBe(text.slice(64 * 1024));
-    expect(read.droppedBytes).toBe(64 * 1024);
-    expect((await jobs.read(job.id)).chunks).toEqual([]);
+    expect(read?.chunks.map((chunk) => chunk.text).join("")).toBe(text.slice(64 * 1024));
+    expect(read?.droppedBytes).toBe(64 * 1024);
+    expect(await jobs.read(job.id)).toMatchObject({ chunks: [] });
 
     completion.resolve({ status: "completed", exitCode: 0 });
     await waitFor(() => jobs.list()[0]?.status === "completed");

@@ -113,7 +113,9 @@ export class BackgroundJobManagerController {
       });
       this.refresh(`Stopping ${shortId(job.id)}...`);
       const result = await settlement;
-      this.refresh(`${shortId(result.id)} ${result.status}.`);
+      this.refresh(
+        result ? `${shortId(result.id)} ${result.status}.` : "Background Job no longer available.",
+      );
     } catch (error) {
       this.options.showError(error);
       this.refresh("Unable to stop Background Job.");

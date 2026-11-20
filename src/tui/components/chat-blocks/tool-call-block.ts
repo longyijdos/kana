@@ -59,12 +59,12 @@ export class ToolCallBlock implements Component {
     this.invalidate();
   }
 
-  updateResult(result: unknown, isError: boolean, durationMs?: number): void {
+  updateResult(result: unknown, isError: boolean, durationMs?: number, cancelled = false): void {
     this.result = result;
     this.hasResult = true;
     this.isError = isError;
     this.durationMs = durationMs;
-    this.cancelled = false;
+    this.cancelled = cancelled;
     this.partialResult = undefined;
     this.phaseTimer.stop();
     this.invalidate();
@@ -198,17 +198,12 @@ export class ToolCallBlock implements Component {
   }
 
   private currentState(): ToolState {
-    if (this.hasResult) {
-      if (isCancelledResult(this.result)) {
-        return "cancelled";
-      }
-      return this.isError ? "failed" : "done";
-    }
-
     if (this.cancelled) {
       return "cancelled";
     }
-
+    if (this.hasResult) {
+      return this.isError ? "failed" : "done";
+    }
     return "running";
   }
 
@@ -263,17 +258,6 @@ export class ToolCallBlock implements Component {
 
     return lines;
   }
-}
-
-function isCancelledResult(result: unknown): boolean {
-  if (!result || typeof result !== "object") {
-    return false;
-  }
-
-  const record = result as Record<string, unknown>;
-  return (
-    record.cancelled === true || (record.status === "cancelled" && record.reason === "run_aborted")
-  );
 }
 
 function colorTitleWithShortcutHint(

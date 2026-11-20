@@ -87,6 +87,7 @@ async function readJobToCompletion(
   let output = "";
   for (;;) {
     const snapshot = await jobs.read(jobId, { waitMs: 1_000 });
+    if (!snapshot) throw new Error(`Job ${jobId} not found.`);
     output += snapshot.chunks.map((chunk) => chunk.text).join("");
     if (snapshot.status !== "running" && snapshot.status !== "stopping") {
       return output;

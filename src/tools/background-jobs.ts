@@ -194,16 +194,16 @@ export function createJobOutputTool(
         signal: context.signal,
       });
       const result: JobOutputResult = {
-        status: snapshot.status,
-        chunks: snapshot.chunks,
-        droppedBytes: snapshot.droppedBytes,
-        waitTimedOut: snapshot.waitTimedOut,
-        exitCode: snapshot.exitCode,
+        status: snapshot?.status ?? "unknown",
+        chunks: snapshot?.chunks ?? [],
+        droppedBytes: snapshot?.droppedBytes ?? 0,
+        waitTimedOut: snapshot?.waitTimedOut ?? false,
+        exitCode: snapshot?.exitCode ?? null,
       };
       return {
         content: formatJobOutput(result),
         result,
-        isError: result.status === "unknown",
+        isError: snapshot === undefined,
       };
     },
   };
@@ -226,11 +226,14 @@ export function createJobKillTool(
         source: "tool",
         reason: args.reason,
       });
-      const result: JobKillResult = { status: summary.status, exitCode: summary.exitCode };
+      const result: JobKillResult = {
+        status: summary?.status ?? "unknown",
+        exitCode: summary?.exitCode ?? null,
+      };
       return {
         content: JSON.stringify(result, null, 2),
         result,
-        isError: result.status === "unknown",
+        isError: summary === undefined,
       };
     },
   };

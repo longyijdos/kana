@@ -94,13 +94,19 @@ export class ToolCallBlocks {
     this.pendingTools.get(toolCallId)?.updateTodoState(items);
   }
 
-  updateResult(toolCallId: string, result: unknown, isError: boolean, durationMs?: number): void {
+  updateResult(
+    toolCallId: string,
+    result: unknown,
+    isError: boolean,
+    durationMs?: number,
+    cancelled?: true,
+  ): void {
     this.finishPreparation();
     const toolCall = this.knownToolCalls.get(toolCallId);
     const block =
       this.pendingTools.get(toolCallId) ??
       (toolCall ? this.getOrCreate(toolCall.id, toolCall.name, toolCall.args) : undefined);
-    block?.updateResult(result, isError, durationMs);
+    block?.updateResult(result, isError, durationMs, cancelled);
     this.pendingTools.delete(toolCallId);
     this.knownToolCalls.delete(toolCallId);
   }

@@ -143,6 +143,7 @@ function addToolResult(
     message.result ?? message.artifact ?? message.content,
     message.isError,
     message.durationMs,
+    message.cancelled,
   );
   transcript.addChild(block);
 }

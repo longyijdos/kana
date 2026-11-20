@@ -109,7 +109,7 @@ describe("background Job manager controller", () => {
 
     controller.open();
     expect(stripAnsi(tui.getFocus()?.render(100).join("\n") ?? "")).toContain("server ready");
-    expect((await jobs.read(job.id)).chunks).toEqual([
+    expect((await jobs.read(job.id))?.chunks).toEqual([
       { stream: "stdout", text: "server ready\n" },
     ]);
 

@@ -235,6 +235,7 @@ describe("ToolRuntime invocation lifecycle", () => {
         isError: true,
       },
       isError: true,
+      cancelled: true,
       abortRun: true,
     });
     expect(approvalCount).toBe(1);
@@ -2047,15 +2048,17 @@ describe("ToolRuntime parallel failure containment", () => {
         reason: "deadline",
       },
     });
+    expect(result.toolResults[0]?.cancelled).toBeUndefined();
     expect(result.toolResults[1]).toMatchObject({
+      cancelled: true,
       result: {
         status: "cancelled",
         reason: "run_aborted",
       },
     });
     expect(result.toolResults.slice(2)).toEqual([
-      expect.objectContaining({ result: expect.objectContaining({ cancelled: true }) }),
-      expect.objectContaining({ result: expect.objectContaining({ cancelled: true }) }),
+      expect.objectContaining({ cancelled: true }),
+      expect.objectContaining({ cancelled: true }),
     ]);
   });
 });

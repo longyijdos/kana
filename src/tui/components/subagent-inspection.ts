@@ -42,6 +42,7 @@ export function createSubagentInspectionView(
             result.result ?? result.artifact ?? result.content,
             result.isError,
             result.durationMs,
+            result.cancelled,
           );
         } else if (inspection.status !== "running") {
           block.markCancelled();

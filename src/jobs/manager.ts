@@ -98,9 +98,9 @@ export type BackgroundJobClient = {
   read(
     jobId: string,
     options?: ReadBackgroundJobOutputOptions,
-  ): Promise<BackgroundJobOutputSnapshot>;
+  ): Promise<BackgroundJobOutputSnapshot | undefined>;
   peek(jobId: string): BackgroundJobPeekSnapshot;
-  kill(jobId: string, options: KillBackgroundJobOptions): Promise<BackgroundJobSummary>;
+  kill(jobId: string, options: KillBackgroundJobOptions): Promise<BackgroundJobSummary | undefined>;
   observe(jobId: string): void;
   subscribe(listener: BackgroundJobEventListener): () => void;
   close(source?: "session_disposal" | "shutdown"): Promise<void>;
@@ -231,11 +231,9 @@ export class BackgroundJobManager {
     owner: BackgroundJobOwner,
     jobId: string,
     options: ReadBackgroundJobOutputOptions = {},
-  ): Promise<BackgroundJobOutputSnapshot> {
+  ): Promise<BackgroundJobOutputSnapshot | undefined> {
     const job = this.registry.find(owner, jobId);
-    if (!job) {
-      return unknownOutputSnapshot(jobId);
-    }
+    if (!job) return undefined;
     const waitMs = options.waitMs ?? 0;
     const ready = () => hasUnreadOutput(job.state) || !isActive(job.summary.status);
     const waitTimedOut =
@@ -283,11 +281,9 @@ export class BackgroundJobManager {
     owner: BackgroundJobOwner,
     jobId: string,
     options: KillBackgroundJobOptions,
-  ): Promise<BackgroundJobSummary> {
+  ): Promise<BackgroundJobSummary | undefined> {
     const job = this.registry.find(owner, jobId);
-    if (!job) {
-      return unknownSummary(jobId);
-    }
+    if (!job) return undefined;
     await this.stop(job, options);
     // Only the model's own kill counts as having seen the completion; a TUI
     // kill still reports the outcome to the model.
@@ -396,29 +392,6 @@ function normalizeBackgroundJobLabel(value: string): string {
 
 function isActive(status: BackgroundJobStatus): status is "running" | "stopping" {
   return status === "running" || status === "stopping";
-}
-
-function unknownSummary(jobId: string): BackgroundJobSummary {
-  return {
-    id: jobId,
-    kind: "unknown",
-    label: "Unknown Background Job",
-    status: "unknown",
-    startedAt: new Date(0),
-    finishedAt: new Date(0),
-    exitCode: null,
-  };
-}
-
-function unknownOutputSnapshot(jobId: string): BackgroundJobOutputSnapshot {
-  return {
-    jobId,
-    status: "unknown",
-    chunks: [],
-    droppedBytes: 0,
-    waitTimedOut: false,
-    exitCode: null,
-  };
 }
 
 function splitByUtf8Bytes(value: string, maxBytes: number): string[] {

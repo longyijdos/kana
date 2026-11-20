@@ -52,12 +52,30 @@ describe("tool call block", () => {
         message: "Tool execution was cancelled because the agent run was aborted.",
       },
       true,
+      undefined,
+      true,
     );
 
     const rendered = block.render(80).map(stripAnsi);
 
     expect(rendered).toEqual(["◆ Cancelled reading", "  └ src/app.ts"]);
     expect(rendered.join("\n")).not.toContain("Failed");
+  });
+
+  test("does not infer call cancellation from a tool result", () => {
+    const block = new ToolCallBlock({
+      type: "tool_call",
+      id: "cancel-reminder",
+      name: "cancel_wake",
+      args: { id: "wake-1" },
+    });
+    block.updateResult({ cancelled: true }, false);
+    const rendered = block.render(80).map(stripAnsi);
+    expect(rendered[0]).not.toContain("Cancelled");
+    expect(rendered.join("\n")).toContain('"cancelled": true');
+
+    block.updateResult({ status: "cancelled", reason: "run_aborted" }, true);
+    expect(block.render(80).map(stripAnsi)[0]).toContain("Failed");
   });
 
   test("keeps artifact output compact while exposing retrieval metadata in the viewer", () => {
@@ -204,6 +222,8 @@ describe("tool call block", () => {
         reason: "run_aborted",
         message: "Tool execution was cancelled because the agent run was aborted.",
       },
+      true,
+      undefined,
       true,
     );
     expect(cancelled.render(80).map(stripAnsi)).toEqual(["◆ Cancelled updating todos"]);

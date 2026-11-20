@@ -312,6 +312,7 @@ export class ToolRuntime {
       ...(finalized.artifact === undefined ? {} : { artifact: finalized.artifact }),
       ...(finalized.persistResult ? { result: finalized.result } : {}),
       isError: executed.isError,
+      ...(executed.cancelled ? { cancelled: true } : {}),
     };
     await this.config.onMessageCommitted?.(message);
     toolResults.push(message);
@@ -320,7 +321,13 @@ export class ToolRuntime {
 }
 
 function cancelled(toolCall: ToolCallContent, message: string): ExecutedToolCall {
-  return { toolCall, result: createCancelledToolResult(message), isError: true, durationMs: 0 };
+  return {
+    toolCall,
+    result: createCancelledToolResult(message),
+    isError: true,
+    cancelled: true,
+    durationMs: 0,
+  };
 }
 
 function unknownOutcome(toolCall: ToolCallContent): ExecutedToolCall {

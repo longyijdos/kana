@@ -99,6 +99,40 @@ describe("Background Job tools", () => {
       exitCode: null,
     });
     expect(unknown.isError).toBe(true);
+
+    const missingKill = await killTool.execute({ jobId: "job_missing" }, createToolContext());
+    expectToolResult(missingKill);
+    expect(missingKill.result).toEqual({ status: "unknown", exitCode: null });
+    expect(missingKill.isError).toBe(true);
+    await manager.close();
+  });
+
+  test("returns a known Job with an unknown process outcome without a tool error", async () => {
+    const manager = new BackgroundJobManager();
+    const jobs = manager.bind(manager.createOwner("session-a"), { maxConcurrent: 1 });
+    const job = jobs.start({
+      kind: "test",
+      label: "unconfirmed outcome",
+      run: async ({ write }) => {
+        write("stderr", "Process group did not settle.\n");
+        return { status: "unknown", exitCode: 1 };
+      },
+    });
+    await waitFor(() => jobs.list()[0]?.status === "unknown");
+
+    const output = await createJobOutputTool(jobs).execute({ jobId: job.id }, createToolContext());
+    expectToolResult(output);
+    expect(output.isError).toBe(false);
+    expect(output.result).toMatchObject({
+      status: "unknown",
+      chunks: [{ stream: "stderr", text: "Process group did not settle.\n" }],
+      exitCode: 1,
+    });
+
+    const killed = await createJobKillTool(jobs).execute({ jobId: job.id }, createToolContext());
+    expectToolResult(killed);
+    expect(killed.isError).toBe(false);
+    expect(killed.result).toEqual({ status: "unknown", exitCode: 1 });
     await manager.close();
   });
 });

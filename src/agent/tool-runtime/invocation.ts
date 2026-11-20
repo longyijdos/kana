@@ -58,6 +58,7 @@ export class ToolInvoker {
       toolName: executed.toolCall.name,
       result: executed.result.result,
       isError: executed.isError,
+      ...(executed.cancelled ? { cancelled: true } : {}),
       ...(parentToolCallId === undefined ? {} : { parentToolCallId }),
       durationMs: executed.durationMs,
     });
@@ -67,12 +68,15 @@ export class ToolInvoker {
     const { config, events, logger, cancellationGraceMs } = this.settings;
     const { groupSignal, onAbortRun, parentToolCallId } = options;
     let durationMs = 0;
-    const finish = (result: ExecutedToolCall["result"], abortRun?: boolean): ExecutedToolCall => ({
+    const finish = (
+      result: ExecutedToolCall["result"],
+      lifecycle?: Pick<ExecutedToolCall, "abortRun" | "cancelled">,
+    ): ExecutedToolCall => ({
       toolCall,
       result,
       isError: result.isError ?? false,
       durationMs,
-      ...(abortRun === undefined ? {} : { abortRun }),
+      ...lifecycle,
     });
 
     const tool = findTool(options.tools ?? config.tools, toolCall.name);
@@ -92,11 +96,14 @@ export class ToolInvoker {
         if (shouldAbortRun) {
           onAbortRun?.();
         }
-        return finish(createCancelledToolResult(approval.message), shouldAbortRun);
+        return finish(createCancelledToolResult(approval.message), {
+          abortRun: shouldAbortRun,
+          cancelled: true,
+        });
       }
       if (executionSignal?.aborted) {
         onAbortRun?.();
-        return finish(createCancelledToolResult(), true);
+        return finish(createCancelledToolResult(), { abortRun: true, cancelled: true });
       }
       if (approval.type === "return") {
         return finish(normalizeToolResult(approval.result));
@@ -179,7 +186,10 @@ export class ToolInvoker {
             outcome.interruption,
             settlement ? undefined : cancellationGraceMs,
           ),
-          true,
+          {
+            abortRun: true,
+            ...(settlement && reason === "run_aborted" ? { cancelled: true } : {}),
+          },
         );
       }
 
@@ -187,7 +197,7 @@ export class ToolInvoker {
       acceptsUpdates = false;
       await events.drain();
       return outcome.settlement.type === "rejected"
-        ? finish(createErrorToolResult(formatError(outcome.settlement.error)), abortRun)
+        ? finish(createErrorToolResult(formatError(outcome.settlement.error)), { abortRun })
         : finish(normalizeToolResult(outcome.settlement.value));
     } catch (error) {
       acceptsUpdates = false;
@@ -197,7 +207,7 @@ export class ToolInvoker {
         () => error,
         (updateError: unknown) => updateError,
       );
-      return finish(createErrorToolResult(formatError(failure)), abortRun);
+      return finish(createErrorToolResult(formatError(failure)), { abortRun });
     }
   }
 
