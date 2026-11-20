@@ -50,7 +50,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 | 输入 | 行为 |
 | --- | --- |
-| `Ctrl+C` | MCP startup 或 reload 期间取消 MCP startup 或 reload；其它情况下，正在运行时中止本地 Shell、记忆压缩或 Agent。空闲且编辑器聚焦时，有文字/图片草稿则先清空，草稿为空才发起退出；存在自动记忆任务时需要确认，确认框或关闭等待期间再次按下会强制退出。 |
+| `Ctrl+C` | MCP startup 或 reload 期间取消 MCP startup 或 reload；其它情况下，若编辑器聚焦且有文字/图片草稿，则先清空草稿；无草稿（或编辑器未聚焦）时，若正在运行则中止本地 Shell、记忆压缩或 Agent，若空闲则发起退出（存在自动记忆任务时需要确认，确认框或关闭等待期间再次按下会强制退出）。 |
 | `Esc` | MCP startup 或 reload 期间取消 MCP startup 或 reload；其它情况下，先交给当前聚焦的 modal、view、picker 或嵌套 prompt 处理，工具审批提示会将它视为“拒绝”。焦点回到编辑器后，若 Agent 正在运行则中止本次 run；空闲时不产生作用。 |
 | `Shift+Tab` | 提示显示在普通工具审批的标题后。在无需二次确认的情况下允许当前调用，并把当前 session 设为 Never ask。队列中的普通工具审批随后自动通过；用户任务邀请仍需选择。 |
 | `Ctrl+O` | 在普通编辑器状态下打开最近一项工具调用的详情查看器；其它底部视图会消耗该输入并保持原样。`/tools` 从当前会话全部工具调用的可浏览历史中打开同一个查看器。打开期间按 `[` / `]` 切换到上/下一个工具调用，`Esc` 关闭。 |
