@@ -1,5 +1,5 @@
 import { isRecord } from "@/utils";
-import { getProviderErrorType, isAbortError, type ProviderRetryDetails } from "./lifecycle";
+import { isAbortError, type ProviderRetryDetails } from "./lifecycle";
 
 export const MAX_PROVIDER_HTTP_ERROR_BODY_LENGTH = 16_384;
 
@@ -15,11 +15,18 @@ export class ProviderHttpError extends Error {
     body: string,
     readonly requestId?: string,
     describeCode?: (code: string | undefined) => string,
+    contentType?: string,
   ) {
     const boundedBody = boundProviderHttpErrorBody(body);
     const details = readErrorDetails(body);
+    const message =
+      details.message ??
+      (contentType?.split(";")[0]?.trim().toLowerCase() === "text/plain"
+        ? boundedBody.trimStart().split(/\r?\n/, 1)[0]
+        : undefined);
     super(
-      `${label} request failed with ${status} ${statusText}: ${boundedBody}` +
+      `${label} request failed with ${status} ${statusText}` +
+        (message ? `: ${boundProviderHttpErrorBody(message)}` : "") +
         (describeCode?.(details.code) ?? "") +
         (requestId ? ` Request ID: ${requestId}.` : ""),
     );
@@ -88,6 +95,7 @@ export async function fetchWithRetries(
           response.headers.get("openai-request-id") ??
           undefined,
         options.describeCode,
+        response.headers.get("content-type") ?? undefined,
       );
     }
 
@@ -103,10 +111,13 @@ export async function fetchWithRetries(
     options.onRetry?.({
       attempt: attempt + 1,
       delayMs,
+      error: failure,
       errorCode:
         failure instanceof ProviderHttpError ? "PROVIDER_HTTP_ERROR" : "PROVIDER_NETWORK_ERROR",
-      errorType: getProviderErrorType(failure),
-      ...(failure instanceof ProviderHttpError ? { httpStatus: failure.status } : {}),
+
+      ...(failure instanceof ProviderHttpError
+        ? { httpStatus: failure.status, providerCode: failure.providerCode }
+        : {}),
     });
     await waitForProviderRetry(delayMs, request.signal);
   }
@@ -224,11 +235,14 @@ export function waitForProviderRetry(delayMs: number, signal?: AbortSignal | nul
   });
 }
 
-function readErrorDetails(body: string): { code?: string; param?: string } {
+function readErrorDetails(body: string): { code?: string; param?: string; message?: string } {
   try {
     const value: unknown = JSON.parse(body);
-    const error = isRecord(value) && isRecord(value.error) ? value.error : {};
+    const root = isRecord(value) ? value : {};
+    const error = isRecord(root.error) ? root.error : root;
+    const message = error.message ?? root.error_description ?? root.error;
     return {
+      ...(typeof message === "string" ? { message } : {}),
       ...(typeof error.code === "string" ? { code: error.code } : {}),
       ...(typeof error.param === "string" ? { param: error.param } : {}),
     };

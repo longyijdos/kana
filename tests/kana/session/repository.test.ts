@@ -261,19 +261,22 @@ describe("Kana session repository", () => {
     const journal = createKanaSessionJournal(session);
 
     journal.startTurn("turn-partial", [
-      { ...messageIdentityForTest("user"), role: "user", content: "Hello" },
+      { ...messageIdentityForTest("user"), role: "user", content: "你好" },
     ]);
     const validContent = readFileSync(session.path, "utf8");
-    writeFileSync(session.path, `${validContent}{"type":"message","id":`);
+    const tail = '{"type":"消息","id":';
+    writeFileSync(session.path, `${validContent}${tail}`);
 
     const loaded = loadKanaSession(session.id, { env, cwd });
 
-    expect(loaded.recoveredIncompleteTail).toBe(true);
+    expect(loaded.truncatedTailBytes).toBe(Buffer.byteLength(tail));
     expect(loaded.recoveredInterruptedTurn).toEqual({
       turnId: "turn-partial",
       unknownToolCallCount: 0,
     });
-    expect(readFileSync(session.path, "utf8")).not.toContain('{"type":"message","id":\n');
+    const repaired = readFileSync(session.path, "utf8");
+    expect(repaired.startsWith(validContent)).toBe(true);
+    expect(repaired).not.toContain(tail);
     expect(loaded.timeline.at(-1)).toMatchObject({
       type: "turn_end",
       outcome: "interrupted",

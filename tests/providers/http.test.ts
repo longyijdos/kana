@@ -77,7 +77,10 @@ describe("shared provider HTTP primitives", () => {
       fetch() {
         requestCount += 1;
         return requestCount === 1
-          ? new Response("busy", { status: 429, headers: { "retry-after": "0" } })
+          ? new Response("busy\ninternal proxy details", {
+              status: 429,
+              headers: { "retry-after": "0" },
+            })
           : new Response("ok");
       },
     });
@@ -92,12 +95,12 @@ describe("shared provider HTTP primitives", () => {
 
       expect(await response.text()).toBe("ok");
       expect(requestCount).toBe(2);
-      expect(retries).toEqual([
+      expect(retries).toMatchObject([
         {
           attempt: 1,
           delayMs: 0,
           errorCode: "PROVIDER_HTTP_ERROR",
-          errorType: "ProviderHttpError",
+          error: expect.objectContaining({ message: expect.stringMatching(/: busy$/) }),
           httpStatus: 429,
         },
       ]);
@@ -119,7 +122,7 @@ describe("shared provider HTTP primitives", () => {
     ).catch((caught) => caught);
 
     expect(error).toBe(reason);
-    expect(retries).toEqual([]);
+    expect(retries).toMatchObject([]);
   });
 
   test("retries a 401 once with refreshed credentials before failing", async () => {
@@ -158,13 +161,18 @@ describe("shared provider HTTP primitives", () => {
       "Test API",
       400,
       "Bad Request",
-      JSON.stringify({ error: { code: "bad_param", param: "model" } }),
+      JSON.stringify({
+        error: { code: "bad_param", param: "model", message: "Unknown model" },
+        context: "do not log this field",
+      }),
       "req_1",
       (code) => (code ? ` Hint for ${code}.` : ""),
     );
 
     expect(error.providerCode).toBe("bad_param");
     expect(error.providerParam).toBe("model");
+    expect(error.message).toContain("Unknown model");
+    expect(error.message).not.toContain("do not log this field");
     expect(error.message).toEndWith(" Hint for bad_param. Request ID: req_1.");
 
     const long = new ProviderHttpError(

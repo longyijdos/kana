@@ -6,7 +6,6 @@ import {
 } from "@/core";
 import { createNoopLogger, type Logger } from "@/logging";
 import type { ToolConcurrency } from "@/tools";
-import { errorFields } from "@/utils";
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS, DEFAULT_TOOL_DEADLINE_MS } from "../settings";
 import type { ToolResultPolicy } from "../tool-result-policy";
 import { ToolInvoker } from "./invocation";
@@ -284,7 +283,7 @@ export class ToolRuntime {
       cancelledBeforeStartCount: toolCount - outcome.startedCount,
       unknownOutcomeCount,
       outcome: result,
-      ...(outcome.failure ? errorFields(outcome.failure.error) : {}),
+      ...(outcome.failure ? { error: outcome.failure.error } : {}),
     };
     if (result !== "completed") {
       const level = outcome.failure || unknownOutcomeCount > 0 ? "warn" : "info";

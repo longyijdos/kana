@@ -23,7 +23,7 @@ cwd: /Users/alice/project
 <KANA_HOME>/logs/<encoded-workspace>/<session-id>.jsonl
 ```
 
-每行是一个分级 JSON 记录，包含时间、级别、稳定事件名、session ID 和安全的元数据。session 是日志文件边界：恢复同一 session 会追加原文件，`/new`、`/fork` 或恢复另一 session 会写入新文件。日志不是会话历史，不保存 prompt、助手文本、完整工具参数或输出；其配置和级别见[配置与安装](configuration.zh-CN.md)。
+每行是一个分级 JSON 记录，包含时间、级别、稳定事件名、session ID 和安全的元数据。session 是日志文件边界：恢复同一 session 会追加原文件，`/new`、`/fork` 或恢复另一 session 会写入新文件。日志不是会话历史，不保存 prompt、助手文本、完整工具参数或输出；其配置和级别见[配置与安装](configuration.zh-CN.md)。失败记录可能包含错误消息及原因；分享本地日志前请先检查。
 
 Clean 模式仍在进程内分配 session ID 供 runtime 关联状态，但使用 no-op logger，不创建上述日志文件。
 

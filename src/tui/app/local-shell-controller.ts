@@ -1,6 +1,6 @@
 import type { Logger } from "@/logging";
 import { createShellTool, normalizeToolResult } from "@/tools";
-import { formatError } from "@/utils";
+import { formatError, isRecord } from "@/utils";
 import { type Editor, type StatusLineState, ToolCallBlock, type Transcript } from "../components";
 import type { Tui } from "../runtime";
 import { AuxiliaryRun } from "./auxiliary-run";
@@ -73,7 +73,12 @@ export class LocalShellController {
         const result = normalizeToolResult(executed);
         block.updateResult(result.result, result.isError ?? false);
         if (result.isError) {
-          logger.warn("local_shell.failed");
+          const status = isRecord(result.result) ? result.result : {};
+          logger.warn("local_shell.failed", {
+            aborted: signal.aborted,
+            exitCode: status.exitCode,
+            timedOut: status.timedOut,
+          });
           return "error";
         }
         logger.debug("local_shell.ended");

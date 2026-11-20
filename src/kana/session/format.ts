@@ -140,7 +140,7 @@ export type LoadKanaSessionResult = {
     readonly turnId: string;
     readonly unknownToolCallCount: number;
   };
-  readonly recoveredIncompleteTail?: boolean;
+  readonly truncatedTailBytes?: number;
 };
 
 export type AppendCompactionOptions = {

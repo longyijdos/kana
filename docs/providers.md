@@ -42,11 +42,11 @@ Provider-specific behavior remains in [DeepSeek](deepseek-provider.md), [OpenAI 
 
 ## Lifecycle diagnostics
 
-Network adapters use one diagnostic vocabulary for request start, HTTP retry, authentication refresh, Responses stream recovery, completion, and failure. Every record includes provider, model, protocol, phase, and outcome. Retry and failure records add only safe fields such as attempt, delay, HTTP status, fixed Kana `errorCode`, safe `errorType`, stream event type, or bounded upstream `providerCode`.
+Network adapters use one diagnostic vocabulary for request start, HTTP retry, authentication refresh, Responses stream recovery, completion, and failure. Every record includes provider, model, protocol, phase, and outcome. Retry and failure records include the error message, available causes, and applicable fields such as HTTP status, Kana error code, upstream error code, or stream event type.
 
 Phases are `validation`, `authentication`, `request_build`, `http_request`, and `response_stream`. Stable error codes distinguish cancellation, inactivity timeout, validation, authentication, request construction, HTTP/network failure, stream failure, transient stream failure, and context-window exhaustion.
 
-Diagnostics never contain API keys, account IDs, request headers, endpoint URLs, prompts, model output, tool arguments, response bodies, or error messages. Logger failures are contained and cannot alter provider control flow.
+HTTP diagnostics use the JSON error message or the first non-empty line of a `text/plain` response rather than dumping the full response or request. Upstream messages can echo sensitive information; review logs before sharing them. Logger failures are contained and cannot alter provider control flow.
 
 ## Cancellation, inactivity, and HTTP retry primitives
 

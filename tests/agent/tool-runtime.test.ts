@@ -1503,7 +1503,7 @@ describe("ToolRuntime parallel scheduling", () => {
         cancelledBeforeStartCount: 1,
         unknownOutcomeCount: 1,
         outcome: "failed",
-        errorType: "Error",
+        error: commitError,
       },
     });
   });
@@ -1929,7 +1929,7 @@ describe("ToolRuntime result finalization and policy", () => {
     const policy: ToolResultPolicy = {
       source: "failing_policy",
       finalize: () => {
-        throw new Error("secret policy failure");
+        throw new Error("result policy unavailable");
       },
     };
     const runtime = new ToolRuntime(
@@ -1960,7 +1960,7 @@ describe("ToolRuntime result finalization and policy", () => {
         metadata: {
           policySource: "failing_policy",
           toolName: "safe",
-          errorType: "Error",
+          error: expect.objectContaining({ message: "result policy unavailable" }),
         },
       },
     ]);

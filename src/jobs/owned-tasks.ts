@@ -1,5 +1,4 @@
 import { createNoopLogger, type Logger } from "@/logging";
-import { errorFields } from "@/utils";
 
 // Owners are compared by identity: each binding creates a fresh owner object.
 export type TaskOwner = { readonly sessionId: string };
@@ -217,7 +216,7 @@ export class OwnedTaskRegistry<TOwner extends TaskOwner, TSummary extends TaskSu
           task.logger.warn(`${this.options.logPrefix}.cleanup_failed`, {
             id: task.summary.id,
             phase: source,
-            ...errorFields(error),
+            error,
           });
         }),
       ),
@@ -267,7 +266,7 @@ export class OwnedTaskRegistry<TOwner extends TaskOwner, TSummary extends TaskSu
       } catch (error) {
         this.tasks.get(event.task.id)?.logger.warn(`${this.options.logPrefix}.listener_failed`, {
           eventType: event.type,
-          ...errorFields(error),
+          error,
         });
       }
     }

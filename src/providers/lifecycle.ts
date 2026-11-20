@@ -31,18 +31,19 @@ export type ProviderErrorCode =
   | "PROVIDER_CONTEXT_WINDOW_EXCEEDED";
 
 export type ProviderRetryDetails = {
+  error: unknown;
   attempt: number;
   delayMs: number;
   errorCode: "PROVIDER_HTTP_ERROR" | "PROVIDER_NETWORK_ERROR";
-  errorType: string;
   httpStatus?: number;
+  providerCode?: string;
 };
 
 export type ProviderFailureMetadata = {
+  error: unknown;
   phase: ProviderRequestPhase;
   outcome: "failed" | "aborted" | "timed_out";
   errorCode: ProviderErrorCode;
-  errorType: string;
   httpStatus?: number;
   eventType?: string;
   providerCode?: string;
@@ -62,16 +63,16 @@ export type ProviderDiagnostics = {
     details:
       | { outcome: "refreshed" | "unauthorized" }
       | {
+          error: unknown;
           outcome: "failed";
           errorCode: "PROVIDER_AUTHENTICATION_ERROR";
-          errorType: string;
         },
   ): void;
   streamRecoveryStarted(details: {
+    error: unknown;
     attempt: number;
     delayMs: number;
     errorCode: "PROVIDER_STREAM_TRANSIENT_ERROR";
-    errorType: string;
     eventType: string;
     providerCode?: string;
   }): void;
@@ -158,7 +159,6 @@ export function formatProviderFailure(
     signal?: AbortSignal;
     timedOut?: boolean;
     errorCode?: ProviderErrorCode;
-    errorType?: string;
     httpStatus?: number;
     eventType?: string;
     providerCode?: string;
@@ -174,25 +174,14 @@ export function formatProviderFailure(
       : (options.errorCode ?? defaultErrorCode(options.phase));
 
   return {
+    error,
     phase: options.phase,
     outcome,
     errorCode,
-    errorType: options.errorType ?? getProviderErrorType(error),
     ...(options.httpStatus === undefined ? {} : { httpStatus: options.httpStatus }),
     ...(options.eventType === undefined ? {} : { eventType: options.eventType }),
     ...(options.providerCode === undefined ? {} : { providerCode: options.providerCode }),
   };
-}
-
-export function getProviderErrorType(error: unknown): string {
-  if (error instanceof DOMException) {
-    return error.name;
-  }
-  if (error instanceof Error) {
-    const constructorName = error.constructor.name;
-    return constructorName === "Error" ? error.name : constructorName;
-  }
-  return typeof error;
 }
 
 export function isAbortError(error: unknown): boolean {

@@ -42,11 +42,11 @@ Provider 专属行为分别见 [DeepSeek](deepseek-provider.zh-CN.md)、[OpenAI 
 
 ## 生命周期诊断
 
-网络 adapter 使用统一诊断词汇描述 request start、HTTP retry、authentication refresh、Responses stream recovery、完成与失败。每条记录都有 provider、model、protocol、phase 和 outcome；重试与失败只增加 attempt、delay、HTTP status、Kana 固定 `errorCode`、安全 `errorType`、stream event type 或有界上游 `providerCode` 等安全字段。
+网络 adapter 使用统一诊断词汇描述 request start、HTTP retry、authentication refresh、Responses stream recovery、完成与失败。每条记录都有 provider、model、protocol、phase 和 outcome。重试与失败记录也包含错误消息、可用的 `cause` 链，以及 HTTP 状态、Kana 错误码、上游错误码或流式事件类型等适用字段。
 
 Phase 包括 `validation`、`authentication`、`request_build`、`http_request` 与 `response_stream`。稳定 error code 区分取消、无活动 timeout、校验、认证、request 构造、HTTP/network 失败、stream 失败、临时 stream 失败和 context-window 超限。
 
-诊断不会包含 API key、account ID、request header、endpoint URL、prompt、模型输出、工具参数、response body 或错误消息。Logger 失败会被隔离，不能改变 provider 控制流。
+HTTP 诊断提取 JSON 中的错误消息，或 `text/plain` 响应的首个非空行，不转储完整响应体或请求。上游错误消息可能回显敏感内容；分享日志前请检查。Logger 失败会被隔离，不能改变 provider 控制流。
 
 ## 取消、无活动 timeout 与 HTTP 重试 primitive
 

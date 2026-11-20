@@ -23,7 +23,7 @@ Runtime logs use the same workspace encoding and live at:
 <KANA_HOME>/logs/<encoded-workspace>/<session-id>.jsonl
 ```
 
-Each line is a leveled JSON record with a timestamp, stable event name, session ID, and safe metadata. A session is the log-file boundary: resuming it appends to the existing file, while `/new`, `/fork`, or resuming another session writes to a new file. Logs are not conversation history and do not retain prompts, assistant text, complete tool arguments, or output; see [Configuration and installation](configuration.md) for configuration and levels.
+Each line is a leveled JSON record with a timestamp, stable event name, session ID, and safe metadata. A session is the log-file boundary: resuming it appends to the existing file, while `/new`, `/fork`, or resuming another session writes to a new file. Logs are not conversation history and do not retain prompts, assistant text, complete tool arguments, or output; see [Configuration and installation](configuration.md) for configuration and levels. Failure records can include error messages and causes; review local logs before sharing them.
 
 Clean mode still allocates an in-process session ID for runtime state correlation, but uses a no-op logger and creates no log file at this path.
 

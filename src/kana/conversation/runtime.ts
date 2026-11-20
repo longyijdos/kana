@@ -289,7 +289,12 @@ export class ConversationRuntime<TConfiguration = never> {
     try {
       const checkpoint = await this.agent.compact();
       this.emit({ type: "run_end", source: "compaction" });
-      this.getLogger().info("conversation.compaction_completed");
+      this.getLogger().info("conversation.compaction_completed", {
+        reason: checkpoint.reason,
+        beforeTokens: checkpoint.beforeTokens,
+        estimatedAfterTokens: checkpoint.estimatedAfterTokens,
+        compactedMessageCount: checkpoint.compactedMessageCount,
+      });
       return checkpoint;
     } catch (error) {
       this.emit({ type: "run_error", source: "compaction", error });
@@ -306,7 +311,8 @@ export class ConversationRuntime<TConfiguration = never> {
     this.assertIdle("reconfigure the conversation");
     this.replaceAgent(this.agent.state.messages, this.agent.state.contextCheckpoint, configuration);
     this.inputCoordinator.discardGoal("agent_reconfigured");
-    this.getLogger().info("conversation.agent_reconfigured");
+    const { provider, model } = this.agent.state.model.metadata;
+    this.getLogger().info("conversation.agent_reconfigured", { provider, model });
   }
 
   async startNewSession(): Promise<ConversationSessionSnapshot> {

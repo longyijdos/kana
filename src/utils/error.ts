@@ -8,12 +8,3 @@ export function errorCode(error: unknown): string | undefined {
   }
   return typeof error.code === "string" ? error.code : undefined;
 }
-
-// Safe log metadata: the error class and fixed-format code, never the message.
-export function errorFields(error: unknown): { errorType: string; errorCode?: string } {
-  const code = errorCode(error);
-  return {
-    errorType: error instanceof Error ? error.name : typeof error,
-    ...(code === undefined ? {} : { errorCode: code }),
-  };
-}

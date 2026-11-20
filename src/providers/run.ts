@@ -63,7 +63,9 @@ export function streamProviderRequest(
           signal: context.signal,
           timedOut: isProviderInactivityTimeout(error),
           errorCode: classifyProviderError(error, normalized),
-          ...(error instanceof ProviderHttpError ? { httpStatus: error.status } : {}),
+          ...(error instanceof ProviderHttpError
+            ? { httpStatus: error.status, providerCode: error.providerCode }
+            : {}),
           ...(error instanceof ResponsesStreamError
             ? {
                 eventType: error.eventType,

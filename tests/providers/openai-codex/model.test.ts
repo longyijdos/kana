@@ -258,7 +258,7 @@ describe("OpenAI Codex model", () => {
     });
   });
 
-  test("records authentication refresh failure without logging its message", async () => {
+  test("records the authentication refresh error", async () => {
     const logs: RecordedLog[] = [];
     const model = new OpenAICodexModel({
       provider: "openai-codex",
@@ -268,7 +268,7 @@ describe("OpenAI Codex model", () => {
           return { accessToken: "expired-token", accountId: "account-id" };
         },
         async refreshCredentials() {
-          throw new Error("refresh secret");
+          throw new Error("refresh endpoint unavailable");
         },
       },
       maxRetries: 0,
@@ -277,7 +277,7 @@ describe("OpenAI Codex model", () => {
         new Response("", { status: 401 })) as typeof globalThis.fetch,
     });
 
-    await expect(model.generate(createInput())).rejects.toThrow("refresh secret");
+    await expect(model.generate(createInput())).rejects.toThrow("refresh endpoint unavailable");
 
     expect(logs.map((record) => record.event)).toEqual([
       "provider.request_started",
@@ -295,10 +295,10 @@ describe("OpenAI Codex model", () => {
         phase: "authentication",
         outcome: "failed",
         errorCode: "PROVIDER_AUTHENTICATION_ERROR",
-        errorType: "Error",
+        error: expect.objectContaining({ message: "refresh endpoint unavailable" }),
       },
     });
-    expect(JSON.stringify(logs)).not.toContain("refresh secret");
+    expect(logs.at(-1)?.metadata?.error).toMatchObject({ message: "refresh endpoint unavailable" });
   });
 
   test("retries a transient Responses overload before output starts", async () => {
@@ -337,7 +337,7 @@ describe("OpenAI Codex model", () => {
       attempt: 1,
       delayMs: 0,
       errorCode: "PROVIDER_STREAM_TRANSIENT_ERROR",
-      errorType: "ResponsesStreamError",
+      error: expect.objectContaining({ name: "ResponsesStreamError" }),
       eventType: "error",
       providerCode: "server_error",
     });
@@ -395,7 +395,7 @@ describe("OpenAI Codex model", () => {
 
     await expect(model.generate(createInput())).rejects.toThrow("The request is invalid.");
     expect(requestCount).toBe(1);
-    expect(logs.at(-1)).toEqual({
+    expect(logs.at(-1)).toMatchObject({
       level: "error",
       event: "provider.request_failed",
       metadata: {
@@ -405,12 +405,14 @@ describe("OpenAI Codex model", () => {
         phase: "response_stream",
         outcome: "failed",
         errorCode: "PROVIDER_STREAM_ERROR",
-        errorType: "ResponsesStreamError",
+        error: expect.objectContaining({
+          name: "ResponsesStreamError",
+          message: expect.stringContaining("The request is invalid."),
+        }),
         eventType: "error",
         providerCode: "invalid_request_error",
       },
     });
-    expect(JSON.stringify(logs)).not.toContain("The request is invalid.");
   });
 
   test("shares the retry budget between HTTP and stream failures", async () => {

@@ -1,7 +1,6 @@
 import type { ModelMetadata, UserImage } from "@/core";
 import type { Logger } from "@/logging";
 import { loadUserImageFile } from "@/tools";
-import { errorFields } from "@/utils";
 import { readClipboardImage } from "../clipboard-image";
 import type { Editor } from "../components";
 import type { Tui } from "../runtime";
@@ -43,25 +42,17 @@ export class ImageAttachmentController {
         throw availabilityError;
       }
       this.options.editor.attachImage(image);
-      try {
-        this.options.getLogger().debug("tui.clipboard_paste_completed", {
-          contentType: "image",
-          mimeType: image.mimeType,
-          width: image.width,
-          height: image.height,
-        });
-      } catch {
-        // Clipboard diagnostics must not change attachment behavior.
-      }
+      this.options.getLogger().debug("tui.clipboard_paste_completed", {
+        contentType: "image",
+        mimeType: image.mimeType,
+        width: image.width,
+        height: image.height,
+      });
     } catch (error) {
-      try {
-        this.options.getLogger().warn("tui.clipboard_paste_failed", {
-          platform: process.platform,
-          ...errorFields(error),
-        });
-      } catch {
-        // Clipboard diagnostics must not replace the user-facing failure.
-      }
+      this.options.getLogger().warn("tui.clipboard_paste_failed", {
+        platform: process.platform,
+        error,
+      });
       this.options.showError(error);
     } finally {
       this.clipboardReadActive = false;
@@ -83,23 +74,15 @@ export class ImageAttachmentController {
       const image = await loadUserImageFile(path);
       this.options.editor.attachImage(image);
       this.options.editor.setText("");
-      try {
-        this.options.getLogger().debug("tui.image_file_attach_completed", {
-          mimeType: image.mimeType,
-          width: image.width,
-          height: image.height,
-        });
-      } catch {
-        // Image diagnostics must not change attachment behavior.
-      }
+      this.options.getLogger().debug("tui.image_file_attach_completed", {
+        mimeType: image.mimeType,
+        width: image.width,
+        height: image.height,
+      });
     } catch (error) {
-      try {
-        this.options.getLogger().warn("tui.image_file_attach_failed", {
-          ...errorFields(error),
-        });
-      } catch {
-        // Image diagnostics must not replace the user-facing failure.
-      }
+      this.options.getLogger().warn("tui.image_file_attach_failed", {
+        error,
+      });
       this.options.showError(error);
     } finally {
       this.fileAttachActive = false;

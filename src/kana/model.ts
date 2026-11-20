@@ -10,7 +10,6 @@ import {
   OpenAICompatibleModel,
   OpenAIResponsesModel,
 } from "@/providers";
-import { errorFields } from "@/utils";
 import { KanaOpenAICodexAuth } from "./auth/openai-codex";
 import type {
   KanaAgentRuntimeConfig,
@@ -199,7 +198,7 @@ export function createKanaModel(
           component: "custom_provider",
           phase: "initialize",
           errorCode: "CUSTOM_PROVIDER_INITIALIZATION_ERROR",
-          ...errorFields(error),
+          error,
         });
         throw error;
       }

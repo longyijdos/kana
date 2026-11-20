@@ -3,7 +3,7 @@ import path from "node:path";
 import type { ToolResultPolicy, ToolResultPolicyResult } from "@/agent";
 import type { ToolCallContent, ToolResultArtifact } from "@/core";
 import type { Logger } from "@/logging";
-import { errorFields, sliceUtf8Prefix, sliceUtf8Suffix } from "@/utils";
+import { sliceUtf8Prefix, sliceUtf8Suffix } from "@/utils";
 import type { KanaSessionArtifactStore } from "./store";
 
 const TOOL_RESULT_ARTIFACT_POLICY_SOURCE = "session_artifact";
@@ -68,14 +68,14 @@ export function createKanaToolResultArtifactPolicy(
           await options.store.discard(artifact).catch((cleanupError) => {
             options.logger?.warn("tool.result_artifact_cleanup_failed", {
               phase: "save_rollback",
-              ...errorFields(cleanupError),
+              error: cleanupError,
             });
           });
         }
         options.logger?.warn("tool.result_artifact_save_failed", {
           toolName: input.toolCall.name,
           phase: artifact ? "preview" : "write",
-          ...errorFields(error),
+          error,
         });
         return undefined;
       }
