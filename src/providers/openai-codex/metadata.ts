@@ -3,6 +3,48 @@ import type { ModelMetadata } from "@/core";
 export type OpenAICodexModelMetadata = ModelMetadata;
 
 export const OPENAI_CODEX_MODELS = {
+  "gpt-6.2-sol": {
+    provider: "openai-codex",
+    model: "gpt-6.2-sol",
+    protocol: "responses",
+    contextWindow: 872_000,
+    maxOutputTokens: 128_000,
+    supportsParallelToolCalls: true,
+    supportsHostedWebSearch: true,
+    supportsImageInput: true,
+    reasoning: {
+      efforts: ["low", "medium", "high", "xhigh", "max"],
+      defaultEffort: "low",
+    },
+  },
+  "gpt-6.2-astra": {
+    provider: "openai-codex",
+    model: "gpt-6.2-astra",
+    protocol: "responses",
+    contextWindow: 872_000,
+    maxOutputTokens: 128_000,
+    supportsParallelToolCalls: true,
+    supportsHostedWebSearch: true,
+    supportsImageInput: true,
+    reasoning: {
+      efforts: ["low", "medium", "high", "xhigh", "max"],
+      defaultEffort: "low",
+    },
+  },
+  "gpt-6.1-terra": {
+    provider: "openai-codex",
+    model: "gpt-6.1-terra",
+    protocol: "responses",
+    contextWindow: 872_000,
+    maxOutputTokens: 128_000,
+    supportsParallelToolCalls: true,
+    supportsHostedWebSearch: true,
+    supportsImageInput: true,
+    reasoning: {
+      efforts: ["low", "medium", "high", "xhigh", "max"],
+      defaultEffort: "low",
+    },
+  },
   "gpt-6.1-sol": {
     provider: "openai-codex",
     model: "gpt-6.1-sol",
@@ -98,20 +140,6 @@ export const OPENAI_CODEX_MODELS = {
     supportsImageInput: true,
     reasoning: {
       efforts: ["low", "medium", "high", "xhigh", "max"],
-      defaultEffort: "medium",
-    },
-  },
-  "gpt-5.5": {
-    provider: "openai-codex",
-    model: "gpt-5.5",
-    protocol: "responses",
-    contextWindow: 272_000,
-    maxOutputTokens: 128_000,
-    supportsParallelToolCalls: true,
-    supportsHostedWebSearch: true,
-    supportsImageInput: true,
-    reasoning: {
-      efforts: ["low", "medium", "high", "xhigh"],
       defaultEffort: "medium",
     },
   },

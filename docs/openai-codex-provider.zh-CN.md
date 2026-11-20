@@ -47,6 +47,9 @@ Kana 静态维护模型目录。上下文上限和推理控制遵循 SIWC/Codex 
 
 | 模型 | 上下文上限 | 默认推理强度 |
 | --- | --- | --- |
+| `gpt-6.2-sol` | 872,000 | `low` |
+| `gpt-6.2-astra` | 872,000 | `low` |
+| `gpt-6.1-terra` | 872,000 | `low` |
 | `gpt-6.1-sol` | 872,000 | `low` |
 | `gpt-6-astra` | 872,000 | `low` |
 | `gpt-6-sol` | 872,000 | `medium` |
@@ -54,9 +57,8 @@ Kana 静态维护模型目录。上下文上限和推理控制遵循 SIWC/Codex 
 | `gpt-5.6-sol` | 872,000 | `low` |
 | `gpt-5.6-terra` | 872,000 | `medium` |
 | `gpt-5.6-luna` | 872,000 | `medium` |
-| `gpt-5.5` | 272,000 | `medium` |
 
-表中所有模型均支持图片输入、并行函数调用和托管网页搜索，输出上限按公开[模型参考文档](https://developers.openai.com/api/docs/models/gpt-6.1-sol)设为 128,000 token。推理强度为 `low`、`medium`、`high`、`xhigh` 和 `max`，但 GPT-5.5 最高为 `xhigh`。Ultra 是客户端编排能力，不作为 wire reasoning effort。目录中的隐藏条目不纳入模型列表。
+表中所有模型均支持图片输入、并行函数调用和托管网页搜索，输出上限按公开[模型参考文档](https://developers.openai.com/api/docs/models/gpt-6.2-sol)设为 128,000 token。推理强度为 `low`、`medium`、`high`、`xhigh` 和 `max`。Ultra 是客户端编排能力，不作为 wire reasoning effort。目录中的隐藏条目不纳入模型列表。
 
 ## 请求转换
 

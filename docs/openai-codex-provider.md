@@ -47,6 +47,9 @@ Kana maintains a static model catalog. Context ceilings and reasoning controls f
 
 | Model | Context ceiling | Default reasoning effort |
 | --- | --- | --- |
+| `gpt-6.2-sol` | 872,000 | `low` |
+| `gpt-6.2-astra` | 872,000 | `low` |
+| `gpt-6.1-terra` | 872,000 | `low` |
 | `gpt-6.1-sol` | 872,000 | `low` |
 | `gpt-6-astra` | 872,000 | `low` |
 | `gpt-6-sol` | 872,000 | `medium` |
@@ -54,9 +57,8 @@ Kana maintains a static model catalog. Context ceilings and reasoning controls f
 | `gpt-5.6-sol` | 872,000 | `low` |
 | `gpt-5.6-terra` | 872,000 | `medium` |
 | `gpt-5.6-luna` | 872,000 | `medium` |
-| `gpt-5.5` | 272,000 | `medium` |
 
-All listed models support image input, parallel function calls, and hosted web search, with a 128,000-token output ceiling from the public [model reference](https://developers.openai.com/api/docs/models/gpt-6.1-sol). Reasoning efforts are `low`, `medium`, `high`, `xhigh`, and `max`, except GPT-5.5 stops at `xhigh`. Ultra is client orchestration and is not a wire reasoning effort. Hidden catalog entries are not included.
+All listed models support image input, parallel function calls, and hosted web search, with a 128,000-token output ceiling from the public [model reference](https://developers.openai.com/api/docs/models/gpt-6.2-sol). Reasoning efforts are `low`, `medium`, `high`, `xhigh`, and `max`. Ultra is client orchestration and is not a wire reasoning effort. Hidden catalog entries are not included.
 
 ## Request conversion
 

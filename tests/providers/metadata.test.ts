@@ -8,6 +8,9 @@ describe("provider model metadata", () => {
       true,
     ]);
     expect(Object.keys(OPENAI_CODEX_MODELS)).toEqual([
+      "gpt-6.2-sol",
+      "gpt-6.2-astra",
+      "gpt-6.1-terra",
       "gpt-6.1-sol",
       "gpt-6-astra",
       "gpt-6-sol",
@@ -15,7 +18,6 @@ describe("provider model metadata", () => {
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
-      "gpt-5.5",
     ]);
     for (const model of Object.values(OPENAI_CODEX_MODELS)) {
       expect(model.supportsParallelToolCalls).toBe(true);
@@ -69,6 +71,18 @@ describe("provider model metadata", () => {
         efforts: ["low", "medium", "high", "xhigh", "max"],
         defaultEffort: "medium",
       },
+      "gpt-6.2-sol": {
+        efforts: ["low", "medium", "high", "xhigh", "max"],
+        defaultEffort: "low",
+      },
+      "gpt-6.2-astra": {
+        efforts: ["low", "medium", "high", "xhigh", "max"],
+        defaultEffort: "low",
+      },
+      "gpt-6.1-terra": {
+        efforts: ["low", "medium", "high", "xhigh", "max"],
+        defaultEffort: "low",
+      },
       "gpt-6.1-sol": {
         efforts: ["low", "medium", "high", "xhigh", "max"],
         defaultEffort: "low",
@@ -85,7 +99,6 @@ describe("provider model metadata", () => {
         efforts: ["low", "medium", "high", "xhigh", "max"],
         defaultEffort: "medium",
       },
-      "gpt-5.5": { efforts: ["low", "medium", "high", "xhigh"], defaultEffort: "medium" },
     });
   });
 
@@ -97,6 +110,9 @@ describe("provider model metadata", () => {
         maxOutputTokens: model.maxOutputTokens,
       })),
     ).toEqual([
+      { model: "gpt-6.2-sol", contextWindow: 872_000, maxOutputTokens: 128_000 },
+      { model: "gpt-6.2-astra", contextWindow: 872_000, maxOutputTokens: 128_000 },
+      { model: "gpt-6.1-terra", contextWindow: 872_000, maxOutputTokens: 128_000 },
       { model: "gpt-6.1-sol", contextWindow: 872_000, maxOutputTokens: 128_000 },
       { model: "gpt-6-astra", contextWindow: 872_000, maxOutputTokens: 128_000 },
       { model: "gpt-6-sol", contextWindow: 872_000, maxOutputTokens: 128_000 },
@@ -104,7 +120,6 @@ describe("provider model metadata", () => {
       { model: "gpt-5.6-sol", contextWindow: 872_000, maxOutputTokens: 128_000 },
       { model: "gpt-5.6-terra", contextWindow: 872_000, maxOutputTokens: 128_000 },
       { model: "gpt-5.6-luna", contextWindow: 872_000, maxOutputTokens: 128_000 },
-      { model: "gpt-5.5", contextWindow: 272_000, maxOutputTokens: 128_000 },
     ]);
   });
 });

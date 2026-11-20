@@ -428,7 +428,10 @@ function openModel(internal: AppInternals): void {
 function chooseCodexLunaHigh(internal: AppInternals): void {
   press(internal, "\x1b[B");
   press(internal, "\r");
-  for (let index = 0; index < 6; index += 1) {
+  const models = getKanaModelManagement(DEFAULT_KANA_CONFIG).model["openai-codex"].available;
+  const modelIndex = models.findIndex((model) => model.name === "gpt-5.6-luna");
+  expect(modelIndex).toBeGreaterThanOrEqual(0);
+  for (let index = 0; index < modelIndex; index += 1) {
     press(internal, "\x1b[B");
   }
   press(internal, "\r");
