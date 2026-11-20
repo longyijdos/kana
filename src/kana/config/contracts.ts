@@ -56,6 +56,7 @@ export type KanaAgentRuntimeConfig = {
 
 export type KanaAgentConfig = KanaAgentRuntimeConfig & {
   readonly codemode: NonNullable<AgentConfig["codemode"]>;
+  readonly runCodeDeadlineMs: number;
   readonly model: KanaModelConfig;
   readonly tools: readonly KanaConfigurableBuiltInToolName[];
   readonly goalMaxRounds: number;

@@ -1,5 +1,5 @@
 import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from "@/agent";
-import { DEFAULT_SHELL_MAX_TIMEOUT_MS } from "@/tools";
+import { DEFAULT_RUN_CODE_DEADLINE_MS, DEFAULT_SHELL_MAX_TIMEOUT_MS } from "@/tools";
 import { KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES } from "../tools/names";
 import type { KanaConfig } from "./contracts";
 
@@ -22,6 +22,7 @@ export const DEFAULT_KANA_CONFIG: KanaConfig = {
   },
   agent: {
     codemode: "off",
+    runCodeDeadlineMs: DEFAULT_RUN_CODE_DEADLINE_MS,
     tools: [...KANA_CONFIGURABLE_BUILT_IN_TOOL_NAMES],
     webSearch: true,
     imageInput: true,

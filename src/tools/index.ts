@@ -6,7 +6,11 @@ export {
   createJobStartTool,
 } from "./background-jobs";
 export { createCodemodeSandbox } from "./codemode";
-export { type CodemodeToolContext, createCodemodeTool } from "./codemode/tool";
+export {
+  type CodemodeToolContext,
+  createCodemodeTool,
+  DEFAULT_RUN_CODE_DEADLINE_MS,
+} from "./codemode/tool";
 export { resolveShell } from "./command-process";
 export { createEditTool } from "./edit";
 export { createGlobTool, DEFAULT_GLOB_LIMIT } from "./glob";

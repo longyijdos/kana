@@ -323,6 +323,7 @@ export function createKanaAgent(
     model,
     promptAssembly,
     codemode: config.codemode,
+    runCodeDeadlineMs: config.runCodeDeadlineMs,
     maxTurns: config.maxTurns,
     toolDeadlineMs: config.toolDeadlineMs,
     webSearch: runtime.webSearch,

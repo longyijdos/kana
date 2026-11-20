@@ -35,6 +35,13 @@ const invalidScalarConfigs: InvalidConfigCase[] = [
     invalidPositiveIntegerConfig("agent.background_jobs", "max_concurrent", value),
     invalidPositiveIntegerConfig("agent.subagents", "max_live", value),
   ]),
+  ...[0, 1.5, 7_200_001].map(
+    (value): InvalidConfigCase => [
+      `agent.run_code_deadline_ms = ${value}`,
+      `[agent]\nrun_code_deadline_ms = ${value}\n`,
+      "agent.run_code_deadline_ms must be an integer between 1 and 7200000 (inclusive).",
+    ],
+  ),
   ...[0, 29_999, 30_000.5, 3_600_001].map(
     (value): InvalidConfigCase => [
       `agent.shell_max_timeout_ms = ${value}`,
@@ -71,6 +78,7 @@ describe("Kana config parser", () => {
         "[agent]",
         'tools = ["read", "shell", "job_start"]',
         'codemode = "mixed"',
+        "run_code_deadline_ms = 7200000",
         "web_search = false",
         "image_input = false",
         "max_turns = 4",
@@ -148,6 +156,7 @@ describe("Kana config parser", () => {
         ...DEFAULT_KANA_CONFIG.agent,
         tools: ["read", "shell", "job_start"],
         codemode: "mixed",
+        runCodeDeadlineMs: 7_200_000,
         webSearch: false,
         imageInput: false,
         maxTurns: 4,
@@ -214,6 +223,14 @@ describe("Kana config parser", () => {
         level: "debug",
       },
     });
+  });
+
+  test("accepts a run_code deadline as short as 1 ms", () => {
+    const env = createTempEnv();
+    const { configPath } = getKanaConfigPaths(env);
+    writeFileSync(configPath, "[agent]\nrun_code_deadline_ms = 1\n");
+
+    expect(loadKanaConfig(env).agent.runCodeDeadlineMs).toBe(1);
   });
 
   test("accepts a shell timeout ceiling equal to the default command timeout", () => {

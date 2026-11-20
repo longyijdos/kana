@@ -47,6 +47,8 @@ const agentRuntimeFields = () => ({
   max_parallel_tool_calls: positiveInteger(),
 });
 
+const MAX_RUN_CODE_DEADLINE_MS = 2 * 60 * 60 * 1000;
+
 const REMINDER_THRESHOLDS_MESSAGE =
   "must contain strictly increasing integers greater than or equal to 2";
 
@@ -68,6 +70,11 @@ const KANA_CONFIG_FILE_SCHEMA = table({
       uniqueItems: true,
     }),
     codemode: Type.Enum(["off", "mixed", "only"]),
+    run_code_deadline_ms: Type.Integer({
+      minimum: 1,
+      maximum: MAX_RUN_CODE_DEADLINE_MS,
+      errorMessage: `must be an integer between 1 and ${MAX_RUN_CODE_DEADLINE_MS} (inclusive)`,
+    }),
     ...agentRuntimeFields(),
     goal_max_rounds: positiveInteger(),
     shell_max_timeout_ms: Type.Integer({

@@ -52,6 +52,7 @@ export type AgentConfig = {
   inbox?: AgentInboxSnapshot;
   tools?: Tool[];
   codemode?: "off" | "mixed" | "only";
+  runCodeDeadlineMs?: number;
   // Prevents accidental infinite tool loops. Use -1 to run without a turn limit.
   maxTurns?: number;
   toolDeadlineMs?: number;
@@ -126,6 +127,7 @@ export class Agent {
   private readonly logger: Logger;
   private readonly promptAssembly: PromptAssembly;
   private readonly codemode: NonNullable<AgentConfig["codemode"]>;
+  private readonly runCodeDeadlineMs?: number;
   private readonly toolResultPolicies: readonly ToolResultPolicy[];
   private readonly beforeToolExecution?: BeforeToolExecutionHook;
   private readonly onRunCommitted?: AgentRunCommittedHook;
@@ -155,6 +157,7 @@ export class Agent {
         tools: options.tools === undefined ? [] : [{ name: "agent", tools: options.tools }],
       });
     this.codemode = options.codemode ?? "off";
+    this.runCodeDeadlineMs = options.runCodeDeadlineMs;
     this.system = this.promptAssembly.initialSystem;
     this.callableTools = this.promptAssembly.initialTools;
     this.tools = this.modelTools(this.callableTools);
@@ -535,7 +538,11 @@ export class Agent {
 
   private modelTools(tools: readonly Tool[]): readonly Tool[] {
     if (this.codemode === "off") return tools;
-    const runCode = createCodemodeTool({ tools, mode: this.codemode });
+    const runCode = createCodemodeTool({
+      tools,
+      mode: this.codemode,
+      deadlineMs: this.runCodeDeadlineMs,
+    });
     return this.codemode === "mixed" ? [...tools, runCode] : [runCode];
   }
 

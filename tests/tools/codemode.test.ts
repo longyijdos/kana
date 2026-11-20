@@ -416,32 +416,37 @@ describe("codemode tool", () => {
     expect(afterCount).toBe(0);
   });
 
-  test("owns a 15-minute deadline and terminates a running script through the runtime", async () => {
-    let started = false;
-    const ready = {
+  test("defaults to a 15-minute deadline independent of the default tool deadline", () => {
+    expect(createCodemodeTool({ tools: [] }).execution.deadlineMs).toBe(900_000);
+  });
+
+  test.each([
+    ["running JavaScript", "await tools.child({}); while (true) {}", false],
+    ["waiting for a nested tool", "await tools.child({});", true],
+  ] as const)("enforces the configured deadline while %s", async (_label, code, wait) => {
+    let childSignal: AbortSignal | undefined;
+    const child = {
       ...read,
-      name: "ready",
-      execute: () => {
-        started = true;
+      name: "child",
+      execute: async (_args, { signal }) => {
+        childSignal = signal;
+        if (wait) {
+          await new Promise<void>((resolve) => signal!.addEventListener("abort", () => resolve()));
+        }
         return true;
       },
-    };
-    const codemode = createCodemodeTool({ tools: [ready] });
-    expect(codemode.execution.deadlineMs).toBe(900_000);
-    codemode.execution.deadlineMs = 200;
+    } satisfies Tool;
+    const codemode = createCodemodeTool({ tools: [child], deadlineMs: 200 });
     const runtime = new ToolRuntime(
-      { tools: [codemode, ready], defaultDeadlineMs: 1_000 },
+      { tools: [codemode, child], defaultDeadlineMs: 1_000 },
       () => {},
     );
     const result = await runtime.execute([
-      {
-        type: "tool_call",
-        id: "code",
-        name: "run_code",
-        args: { code: "await tools.ready({}); while (true) {}" },
-      },
+      { type: "tool_call", id: "code", name: "run_code", args: { code } },
     ]);
-    expect(started).toBe(true);
+
+    expect(childSignal).toBeDefined();
+    if (wait) expect(childSignal?.aborted).toBe(true);
     expect(result.abortRun).toBe(true);
     expect(result.toolResults[0]).toMatchObject({
       isError: true,

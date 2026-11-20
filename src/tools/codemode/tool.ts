@@ -11,6 +11,8 @@ import { strictObject } from "../strict-object";
 import type { Tool, ToolContext, ToolResult } from "../tool";
 import { createCodemodeSandbox } from "./index";
 
+export const DEFAULT_RUN_CODE_DEADLINE_MS = 15 * 60 * 1000;
+
 const codemodeParameters = strictObject({ code: Type.String() });
 
 export type CodemodeToolContext = ToolContext & {
@@ -21,7 +23,11 @@ export type CodemodeToolContext = ToolContext & {
   ): Promise<ToolResult>;
 };
 
-export function createCodemodeTool(options: { tools: readonly Tool[]; mode?: "mixed" | "only" }) {
+export function createCodemodeTool(options: {
+  tools: readonly Tool[];
+  mode?: "mixed" | "only";
+  deadlineMs?: number;
+}) {
   const tools = options.tools.filter((tool) => tool.name !== "run_code");
   const definitions = tools.map((tool) => ({
     name: tool.name,
@@ -53,7 +59,10 @@ export function createCodemodeTool(options: { tools: readonly Tool[]; mode?: "mi
       declarations,
     ].join("\n\n"),
     parameters: codemodeParameters,
-    execution: { concurrency: "exclusive", deadlineMs: 15 * 60 * 1000 },
+    execution: {
+      concurrency: "exclusive",
+      deadlineMs: options.deadlineMs ?? DEFAULT_RUN_CODE_DEADLINE_MS,
+    },
     async execute({ code }: Static<typeof codemodeParameters>, context: CodemodeToolContext) {
       const invokeTool = context.invokeTool;
       const images: UserImage[] = [];

@@ -113,7 +113,7 @@ min(agent.max_tool_content_tokens, max(256, floor(promptBudget × 25%))) estimat
 
 Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回 `ok`、`value`、`output`、`calls` 和 `storeWrites`；失败时返回 `ok: false`、`error`、`output` 和 `calls`。Store 改动仅报告给调用方，不会自动持久化。这个 host API 不会注册模型可见工具。
 
-`createCodemodeTool({ tools, mode? })` 创建名为 `run_code` 的 exclusive 工具，输入为 `{ code: string }`。描述使用 Pi 的 TypeScript renderer：`mixed`（factory 默认值）只列返回类型，`only` 列工具描述、输入类型和返回类型。`only` 的输入属性注释还包含整数要求、数值上下界与倍数、字符串长度/正则/格式、数组长度/唯一性和声明的默认值，也包含数组元素上的约束。这些注释使用 Schema 副本，不改变运行时校验；它们并非 JSON Schema 的无损表示。外部 MCP 定义仍通过 `mcp_get_tool` 的结构化 result 查询。脚本中的工具通过 `context.invokeTool()` 执行，返回完整的 canonical `result`；失败调用会在脚本内抛错。外层工具不请求 Kana 审批，内部调用按各自规则审批。`run_code` 自行声明 900000 ms（15 分钟）的调用 deadline，排除内部审批等待；runtime 通过 signal 控制整个脚本。这个工具关闭沙箱独立的 timer。脚本不能调用 `tools.run_code()`。
+`createCodemodeTool({ tools, mode?, deadlineMs? })` 创建名为 `run_code` 的 exclusive 工具，输入为 `{ code: string }`。描述使用 Pi 的 TypeScript renderer：`mixed`（factory 默认值）只列返回类型，`only` 列工具描述、输入类型和返回类型。`only` 的输入属性注释还包含整数要求、数值上下界与倍数、字符串长度/正则/格式、数组长度/唯一性和声明的默认值，也包含数组元素上的约束。这些注释使用 Schema 副本，不改变运行时校验；它们并非 JSON Schema 的无损表示。外部 MCP 定义仍通过 `mcp_get_tool` 的结构化 result 查询。脚本中的工具通过 `context.invokeTool()` 执行，返回完整的 canonical `result`；失败调用会在脚本内抛错。外层工具不请求 Kana 审批，内部调用按各自规则审批。`run_code` 的调用 deadline 默认为 900000 ms（15 分钟），可通过 [`agent.run_code_deadline_ms`](configuration.zh-CN.md#其他配置表) 配置。它包含内部工具的执行时间，但排除内部审批等待；内部工具仍有各自的 deadline，runtime 通过 signal 控制整个脚本。这个工具关闭沙箱独立的 timer。脚本不能调用 `tools.run_code()`。
 
 工具的 `content` 包含显式文本输出，以及随后以 JSON 编码的返回值或脚本错误。内部工具返回的图片自动加入外层 `images`；显式 `image()` 输出转为带解码尺寸的视觉观察。结构化 `result` 保留包提供的 `CodemodeResult`，包括调用名称、状态和成功时的 store 改动；调用耗时替换为 Runtime 记录的执行耗时。Store 改动不会自动用于后续执行。实时前端收到内部执行事件；历史和 resume 后的 transcript 只保留外层结果，并遵守普通 result 保存上限。
 
@@ -197,7 +197,7 @@ Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回
 
 `shell` 接受文件名为 `sh`、`bash` 或 `zsh` 的可执行程序名称或路径。`$SHELL` 在支持范围内时使用它，否则回退到 `bash`。这些 shell 支持注入的函数语法，用于把 `sudo` 替换为 `sudo -n`，避免密码提示占用 TUI 输入；stdin 断开。前台调用默认命令超时为 30000 ms，大约每 100 ms 发布一次有界 stdout/stderr 尾部快照；完整的最终输出仍进入通用结果策略。
 
-主 Agent 和 Subagent 显式传入的 `timeoutMs` 受 [`agent.shell_max_timeout_ms`](configuration.zh-CN.md#其他配置表) 限制。例如，配置为 `3600000` 后，直接调用时可以传入 `timeoutMs: 1800000`。通过 `run_code` 调用仍受其独立的 15 分钟 deadline 限制。
+主 Agent 和 Subagent 显式传入的 `timeoutMs` 受 [`agent.shell_max_timeout_ms`](configuration.zh-CN.md#其他配置表) 限制。例如，配置为 `3600000` 后，直接调用时可以传入 `timeoutMs: 1800000`。通过 `run_code` 调用还受它独立的 deadline 限制；设置 `agent.run_code_deadline_ms` 时要给整个脚本留足时间，而不是只考虑一条命令。
 
 每条命令在独立进程组中运行。前台执行等待整个进程组，而不只是顶层 shell，因此裸 `command &` 不会逃过正常取消或 timeout；显式 daemonize 到另一个 process session 仍可能离开该边界。非 0 exit code 是已完成命令结果，不是工具基础设施错误；timeout 使用 `null` exit code 与 `isError: true`。
 

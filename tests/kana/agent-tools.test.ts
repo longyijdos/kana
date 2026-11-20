@@ -100,7 +100,12 @@ describe("Kana Agent tools", () => {
     "applies %s mode within configured and role-card tool limits",
     (codemode) => {
       const config = testConfig();
-      config.agent = { ...config.agent, codemode, tools: ["read", "shell"] };
+      config.agent = {
+        ...config.agent,
+        codemode,
+        runCodeDeadlineMs: 1_800_000,
+        tools: ["read", "shell"],
+      };
       const parent = withKanaAgentEnvironment(() => createAgentForTest(config));
       const child = withKanaAgentEnvironment(() =>
         createAgentForTest(config, { subagentProfile: subagentProfile() }),
@@ -112,6 +117,13 @@ describe("Kana Agent tools", () => {
       expect(child.state.tools.map((tool) => tool.name)).toEqual(
         codemode === "mixed" ? ["read", "run_code"] : ["run_code"],
       );
+      for (const agent of [parent, child]) {
+        expect(agent.state.tools.find((tool) => tool.name === "run_code")?.execution).toMatchObject(
+          {
+            deadlineMs: 1_800_000,
+          },
+        );
+      }
       const description = child.state.tools.find((tool) => tool.name === "run_code")!.description;
       expect(description).toContain("read");
       expect(description).not.toContain("shell:");

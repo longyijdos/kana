@@ -18,6 +18,7 @@ export function serializeKanaConfigExample(config: KanaConfig): string {
     "[agent]",
     `tools = ${JSON.stringify(config.agent.tools)}`,
     `codemode = "${config.agent.codemode}"`,
+    `run_code_deadline_ms = ${config.agent.runCodeDeadlineMs}`,
     `web_search = ${config.agent.webSearch}`,
     `image_input = ${config.agent.imageInput}`,
     `max_turns = ${config.agent.maxTurns}`,
