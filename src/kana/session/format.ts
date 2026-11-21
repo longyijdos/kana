@@ -284,7 +284,11 @@ const USER_PROVENANCE_SCHEMA = Type.Union([
     round: positiveInteger,
   }),
   Type.Object({ kind: Type.Literal("job_completion"), jobId: nonEmptyString }),
-  Type.Object({ kind: Type.Literal("subagent_completion"), agentId: nonEmptyString }),
+  Type.Object({
+    kind: Type.Literal("subagent_completion"),
+    agentId: nonEmptyString,
+    runNumber: Type.Optional(positiveInteger),
+  }),
   Type.Object({ kind: Type.Literal("user_task_completion"), taskId: nonEmptyString }),
   Type.Object({
     kind: Type.Enum(["runtime_context", "tool_result_policy"]),
@@ -331,6 +335,8 @@ const SUBAGENT_PROFILE_SCHEMA = Type.Object({
   description: Type.String(),
   instructions: Type.String(),
   tools: Type.Array(Type.String()),
+  maxOutputTokens: Type.Optional(positiveInteger),
+  contextLimit: Type.Optional(positiveInteger),
   sourcePath: Type.Optional(Type.String()),
   digest: Type.String(),
   model: Type.Optional(

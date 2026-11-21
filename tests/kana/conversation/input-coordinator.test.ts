@@ -507,7 +507,11 @@ describe("ConversationInputCoordinator", () => {
       run: () => completion.promise,
     });
 
-    completion.resolve(subagentResult("Parser inspected."));
+    const next = deferred<KanaSubagentRunResult>();
+    completion.resolve({
+      ...subagentResult("Parser inspected."),
+      continuation: () => next.promise,
+    });
     await waitFor(() => harness.coordinator.queue.pending.length === 1);
 
     expect(harness.agent.inbox.nextStep).toHaveLength(1);
@@ -519,8 +523,20 @@ describe("ConversationInputCoordinator", () => {
       },
     ]);
 
-    subagents.observe(subagent.id);
-    await waitFor(() => harness.coordinator.queue.pending.length === 0);
+    const previous = harness.agent.inbox.nextStep[0]!.message;
+    subagents.continue(subagent.id, "Expand the parser finding");
+    expect(harness.agent.inbox.nextStep).toHaveLength(0);
+    next.resolve(subagentResult("Finding expanded."));
+    await waitFor(() => harness.agent.inbox.nextStep.length === 1);
+    expect(harness.agent.inbox.nextStep[0]?.message).toMatchObject({
+      provenance: { kind: "subagent_completion", agentId: subagent.id, runNumber: 2 },
+      content: expect.stringContaining("run 2 reached completed"),
+    });
+
+    harness.coordinator.observeRunInputs(previous);
+    expect(harness.agent.inbox.nextStep).toHaveLength(1);
+    await subagents.wait(subagent.id);
+    expect(harness.agent.inbox.nextStep).toHaveLength(0);
 
     harness.close();
     await manager.close();

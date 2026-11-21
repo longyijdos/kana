@@ -15,7 +15,7 @@ export type MessageProvenance =
   | { kind: "scheduled_input"; origin: "user" | "agent" }
   | { kind: "goal_continuation"; goalId: string; round: number }
   | { kind: "job_completion"; jobId: string }
-  | { kind: "subagent_completion"; agentId: string }
+  | { kind: "subagent_completion"; agentId: string; runNumber?: number }
   | { kind: "user_task_completion"; taskId: string }
   | { kind: "recovery" }
   | { kind: "model_output" }

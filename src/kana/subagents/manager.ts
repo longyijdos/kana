@@ -20,6 +20,7 @@ export type KanaSubagentOwner = Readonly<{
 
 export type KanaSubagentSummary = {
   readonly id: string;
+  readonly runNumber: number;
   readonly profile: string;
   readonly label: string;
   readonly status: KanaSubagentStatus;
@@ -47,16 +48,23 @@ export type KanaSubagentRunResult = {
   readonly model?: { provider: string; model: string };
   readonly terminalReason?: AgentEndReason;
   readonly error?: string;
+  readonly continuation?: KanaSubagentContinuation;
 };
 
-export type KanaSubagentRunContext = {
-  readonly agentId: string;
+type KanaSubagentRunInput = {
+  readonly message: string;
   readonly signal: AbortSignal;
+  setLiveSnapshot(read: () => Pick<KanaSubagentRunResult, "messages" | "model">): void;
+};
+
+type KanaSubagentContinuation = (input: KanaSubagentRunInput) => Promise<KanaSubagentRunResult>;
+
+export type KanaSubagentRunContext = KanaSubagentRunInput & {
+  readonly agentId: string;
   readonly profile: KanaSubagentProfile;
   readonly task: string;
   readonly spawnToolCallId: string;
   readonly owner: KanaSubagentOwner;
-  setLiveSnapshot(read: () => Pick<KanaSubagentRunResult, "messages" | "model">): void;
 };
 
 type StartKanaSubagentOptions = {
@@ -81,12 +89,13 @@ export type KanaSubagentEvent = OwnedTaskEvent<KanaSubagentOwner, KanaSubagentSu
 export type KanaSubagentClient = {
   readonly owner: KanaSubagentOwner;
   start(options: StartKanaSubagentOptions): KanaSubagentSummary;
+  continue(agentId: string, message: string): KanaSubagentSummary;
   list(): KanaSubagentSummary[];
   context(): KanaSubagentSummary[];
   wait(agentId: string, options?: WaitKanaSubagentOptions): Promise<KanaSubagentSnapshot>;
   inspect(agentId: string): KanaSubagentInspection | undefined;
   cancel(agentId: string, options: CancelKanaSubagentOptions): Promise<KanaSubagentSummary>;
-  observe(agentId: string): void;
+  observe(agentId: string, runNumber?: number): void;
   subscribe(listener: (event: KanaSubagentEvent) => void): () => void;
   close(source?: "session_disposal" | "shutdown"): Promise<void>;
 };
@@ -98,6 +107,7 @@ type SubagentState = {
   messages: readonly Message[];
   readLiveSnapshot?: () => Pick<KanaSubagentRunResult, "messages" | "model">;
   error?: string;
+  readonly continuation: KanaSubagentContinuation;
 };
 
 type Subagent = OwnedTask<KanaSubagentOwner, KanaSubagentSummary, SubagentState>;
@@ -130,12 +140,13 @@ export class KanaSubagentManager {
     return {
       owner,
       start: (startOptions) => this.start(owner, options.maxLive, logger, startOptions),
+      continue: (agentId, message) => this.continue(owner, options.maxLive, agentId, message),
       list: () => this.registry.list(owner),
       context: () => this.registry.context(owner),
       wait: (agentId, waitOptions) => this.wait(owner, agentId, waitOptions),
       inspect: (agentId) => this.inspect(owner, agentId),
       cancel: (agentId, cancelOptions) => this.cancel(owner, agentId, cancelOptions),
-      observe: (agentId) => this.registry.observe(owner, agentId),
+      observe: (agentId, runNumber) => this.observe(owner, agentId, runNumber),
       subscribe: (listener) => this.registry.subscribe(owner, listener),
       close: (source = "session_disposal") =>
         this.registry.closeOwner(owner, source, (subagent) => this.stop(subagent, { source })),
@@ -156,44 +167,96 @@ export class KanaSubagentManager {
 
     const summary: KanaSubagentSummary = {
       id: `agent_${randomUUID()}`,
+      runNumber: 1,
       profile: options.profile.name,
       label: createLabel(options.profile.name, options.task),
       status: "running",
       startedAt: new Date(),
     };
+    const continuation: KanaSubagentContinuation = (input) =>
+      options.run({
+        ...input,
+        agentId: summary.id,
+        profile: options.profile,
+        task: options.task,
+        spawnToolCallId: options.spawnToolCallId,
+        owner,
+      });
     const subagent = this.registry.add(
       owner,
       summary,
-      { profile: options.profile, task: options.task, output: "", messages: [] },
+      { profile: options.profile, task: options.task, output: "", messages: [], continuation },
       logger,
     );
     logger.info("subagent.started", { agentId: summary.id, profile: options.profile.name });
 
+    this.run(subagent, options.task);
+    return summary;
+  }
+
+  private continue(
+    owner: KanaSubagentOwner,
+    maxLive: number,
+    agentId: string,
+    message: string,
+  ): KanaSubagentSummary {
+    const previous = this.registry.find(owner, agentId);
+    if (!previous) throw new Error(`Unknown subagent: ${agentId}`);
+    if (previous.summary.status === "running") {
+      throw new Error("Subagent is still running. Wait for it to finish before continuing.");
+    }
+    this.registry.admit(owner, maxLive, previous.logger, { agentId });
+
+    const summary: KanaSubagentSummary = {
+      id: agentId,
+      runNumber: previous.summary.runNumber + 1,
+      profile: previous.summary.profile,
+      label: previous.summary.label,
+      status: "running",
+      startedAt: new Date(),
+      model: previous.summary.model,
+    };
+    const subagent = this.registry.restart(previous, summary, {
+      profile: previous.state.profile,
+      task: previous.state.task,
+      messages: previous.state.messages,
+      output: "",
+      continuation: previous.state.continuation,
+    });
+    subagent.logger.info("subagent.continued", { agentId, runNumber: summary.runNumber });
+    this.run(subagent, message);
+    return summary;
+  }
+
+  private run(subagent: Subagent, message: string): void {
+    const { signal } = subagent.controller;
     void Promise.resolve()
-      .then(() =>
-        options.run({
-          agentId: summary.id,
-          signal: subagent.controller.signal,
-          profile: options.profile,
-          task: options.task,
-          spawnToolCallId: options.spawnToolCallId,
-          owner,
+      .then(() => {
+        signal.throwIfAborted();
+        return subagent.state.continuation({
+          message,
+          signal,
           setLiveSnapshot: (read) => {
             subagent.state.readLiveSnapshot = read;
           },
-        }),
-      )
+        });
+      })
       .then(
         (result) => this.finalize(subagent, result),
         (error) =>
           this.finalize(subagent, {
             status: "errored",
             output: "",
-            messages: [],
-            error: formatError(error),
+            messages: subagent.state.messages,
+            ...(signal.aborted ? { terminalReason: "aborted" } : { error: formatError(error) }),
           }),
       );
-    return summary;
+  }
+
+  private observe(owner: KanaSubagentOwner, agentId: string, runNumber?: number): void {
+    const subagent = this.registry.find(owner, agentId);
+    if (!subagent || (runNumber !== undefined && runNumber !== subagent.summary.runNumber)) return;
+    this.registry.observe(owner, agentId);
   }
 
   private async wait(
@@ -208,7 +271,7 @@ export class KanaSubagentManager {
     const waitTimedOut =
       waitMs > 0 && !(await this.registry.waitUntil(subagent, settled, waitMs, options.signal));
     const snapshot = snapshotOf(subagent, waitTimedOut);
-    if (snapshot.status !== "running") this.registry.observe(owner, agentId);
+    if (snapshot.status !== "running") this.observe(owner, agentId, snapshot.runNumber);
     return snapshot;
   }
 
@@ -234,7 +297,7 @@ export class KanaSubagentManager {
     if (!subagent) return unknownSummary(agentId);
     await this.stop(subagent, options);
     // Only the model's own cancel counts as having seen the completion.
-    if (options.source === "tool") this.registry.observe(owner, agentId);
+    if (options.source === "tool") this.observe(owner, agentId, subagent.summary.runNumber);
     return subagent.summary;
   }
 
@@ -259,6 +322,7 @@ export class KanaSubagentManager {
       messages: result.messages,
       readLiveSnapshot: undefined,
       error: result.error,
+      continuation: result.continuation ?? subagent.state.continuation,
     };
     this.registry.settle(subagent, {
       ...subagent.summary,
@@ -270,6 +334,7 @@ export class KanaSubagentManager {
     subagent.logger[status === "errored" ? "warn" : "info"]("subagent.settled", {
       agentId: subagent.summary.id,
       profile: subagent.state.profile.name,
+      runNumber: subagent.summary.runNumber,
       status,
       terminalReason: result.terminalReason,
     });
@@ -288,6 +353,7 @@ function snapshotOf(subagent: Subagent, waitTimedOut: boolean): KanaSubagentSnap
 function unknownSummary(id: string): KanaSubagentSummary {
   return {
     id,
+    runNumber: 0,
     profile: "unknown",
     label: "Unknown subagent",
     status: "unknown",

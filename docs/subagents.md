@@ -1,6 +1,6 @@
 # Subagents
 
-Kana supports bounded asynchronous one-shot subagents selected from predefined role-card profiles. The conversation Agent can delegate a task, continue working, and later inspect or wait for the child result. Arbitrary prompts cannot create an unrestricted role: every spawn must name a currently valid profile from the user's role cards.
+Kana supports bounded asynchronous subagents selected from predefined role-card profiles. The conversation Agent can delegate a task, continue working, and later inspect or wait for the child result. Arbitrary prompts cannot create an unrestricted role: every spawn must name a currently valid profile from the user's role cards.
 
 ## Profiles
 
@@ -16,6 +16,8 @@ tools:
   - shell
 model: openai-codex/gpt-5.6-terra
 reasoning_effort: high
+max_output_tokens: 8192
+context_limit: 65536
 ---
 Review the delegated migration. Report correctness risks with file references.
 Do not modify files.
@@ -25,30 +27,35 @@ Do not modify files.
 
 `description` and a non-empty instruction body are required. `tools` may also be an inline array. `model` is optional and defaults to `inherit`; an explicit value is `<provider>/<model>`. `reasoning_effort` is valid only with an explicit model. Unknown frontmatter fields and invalid values reject the complete card.
 
+`max_output_tokens` and `context_limit` are optional positive integers and override the child's budgets independently. An omitted budget follows the main Agent when `model` is omitted or `inherit`, and uses the selected model's metadata when `model` is explicit. Effective budgets are capped by the selected model's output limit and context window.
+
 An invalid card never loads: Kana reports a diagnostic, keeps that name unavailable, and leaves other cards unaffected. The product Host loads profiles and diagnostics once at startup; the main Agent's dynamic tool surface and `/agents` reuse that snapshot, so direct profile edits require a restart. A spawn also records the complete selected card and digest, so its journal retains the exact role used by the child.
 
 ## Capability and approval boundaries
 
-The host derives the child model and capability limits from the conversation's validated Agent configuration, but does not carry prompt content across. An explicit card model replaces only the model selection; otherwise the child inherits the current model. The card's tool list can only reduce effective capabilities:
+The host derives the child model and capability limits from the conversation's validated Agent configuration, but does not carry prompt content across. The card can override the model and its budgets as described above. The card's tool list can only reduce effective capabilities:
 
 - workspace tools must be enabled by both `agent.tools` and the card;
 - MCP gateways must be allowed by both `agent.tools` and the role card; `mcp_list_tools`, `mcp_get_tool`, and `mcp_call` cover all currently enabled, filtered MCP capabilities, without per-server or per-remote-tool permissions;
-- child Agents never receive `spawn_subagent`, `wait_subagent`, `cancel_subagent`, Background Job, todo, Goal, memory, or scheduled-wake tools;
+- child Agents never receive `spawn_subagent`, `wait_subagent`, `continue_subagent`, `cancel_subagent`, Background Job, todo, Goal, memory, or scheduled-wake tools;
 - children inherit `agent.tool_result_artifacts` and the result-size budget; oversized non-`read` text is saved in child-owned artifacts rather than the parent conversation's artifact directory. Storage and cleanup follow [Sessions and memory](sessions-and-memory.md).
 
 The card body is the child's complete system prompt, and the task is its user message. Its runtime-context section list is empty: it receives no default Kana prompt, environment context, AGENTS.md content, memory, Skills, live host state, parent conversation messages, or inherited checkpoint. The main Agent must include every task-specific fact, constraint, path, and expected result in the `task` argument. The child uses the ordinary approval hook, so cards cannot weaken `approval.mode` or Shell/MCP approval rules. The TUI serializes simultaneous main/child approval requests in FIFO order and labels child prompts with their exact profile and short Agent identity.
 
 ## Lifecycle and tools
 
-Each hosted session instance owns a `KanaSubagentClient`. `agent.subagents.max_live` limits its concurrently running children; terminal records do not count. The main Agent receives three parallel-safe control tools:
+Each hosted session instance owns a `KanaSubagentClient`. `agent.subagents.max_live` limits its concurrently running children; completed or otherwise terminal runs do not count. The main Agent receives four parallel-safe control tools:
 
 | Tool | Behavior |
 | --- | --- |
 | `spawn_subagent(profile, task)` | Validates the named profile, starts one child, and immediately returns an `agentId`. |
-| `wait_subagent(agentId, timeoutMs?)` | Returns current or terminal state and output; waits at most 30 seconds per call and never cancels on timeout. |
+| `wait_subagent(agentId, timeoutMs?)` | Returns the latest run number, state and output; waits at most 30 seconds per call and never cancels on timeout. |
+| `continue_subagent(agentId, message)` | Starts a new run of a retained child whose prior run has settled, using the same ID, committed history, and checkpoint. Returns immediately with the new run number. |
 | `cancel_subagent(agentId, reason?)` | Aborts an owned live child and waits for settlement. |
 
-Live and unobserved terminal child identity, profile, and state are projected into the parent runtime context, but task text and output are not. Completion, error, and cancellation enqueue a bounded notification for the parent like a Background Job completion; the parent uses `wait_subagent` to consume the result. A terminal `wait_subagent` call acknowledges the completion and removes a still-pending notification. `cancel_subagent` also acknowledges the result, while cancellation from the TUI does not. Child failures become an `errored` result rather than failing the parent automatically. Once spawn succeeds, the child is independent of the spawning tool invocation and parent turn. It continues until natural completion, explicit cancellation, session replacement or deletion, or shutdown; session disposal waits for every owned child to settle.
+Live and unobserved terminal child identity, run number, profile, and state are projected into the parent runtime context, but task text and output are not. Completion, error, and cancellation enqueue a bounded notification for the parent like a Background Job completion; the parent uses `wait_subagent` to consume the result. A terminal `wait_subagent` call acknowledges that run and removes its still-pending notification. Starting another run supersedes the previous run’s result and any pending notification for it. `cancel_subagent` also acknowledges the result, while cancellation from the TUI does not. Child failures become an `errored` result rather than failing the parent automatically. Once spawn succeeds, the child is independent of the spawning tool invocation and parent turn. It continues until natural completion, explicit cancellation, session replacement or deletion, or shutdown; session disposal waits for every owned child to settle.
+
+Only the same hosted session instance can continue a child, and the new run counts toward `max_live`. The manager retains up to 32 children whose latest runs have finished. `continue_subagent` accepts `completed`, `errored`, and `cancelled` runs, regardless of how cancellation was requested. It rejects running or no-longer-retained children. A follow-up never queues, retries automatically, or replays previous tool calls.
 
 ## Persistence, TUI, and accounting
 
@@ -58,9 +65,9 @@ In normal mode every child has an independent internal journal:
 <KANA_HOME>/sessions/<encoded-workspace>/.subagents/<parent-session-id>/<timestamp>_<child-id>.jsonl
 ```
 
-It uses the session turn record format but includes the parent ID, spawning tool-call ID, and complete profile snapshot in its header. These files are persistent logs for debugging, auditing, accounting, and possible future history views; they are not runtime manager state, ordinary resumable sessions, or entries in `/resume`. A new Kana process never restores them into `KanaSubagentManager`. Forking a parent copies neither child journals nor their artifacts. Deleting the parent removes both its complete child-journal directory and child-artifact subtree. Child artifacts remain available after the child settles or Kana exits.
+All runs of the child append to the same journal. It uses the session turn record format but includes the parent ID, spawning tool-call ID, and complete profile snapshot in its header. These files are persistent logs for debugging, auditing, accounting, and possible future history views; they are not runtime manager state, ordinary resumable sessions, or entries in `/resume`. A new Kana process never restores them into `KanaSubagentManager`. Forking a parent copies neither child journals nor their artifacts. Deleting the parent removes both its complete child-journal directory and child-artifact subtree. Child artifacts remain available after the child settles or Kana exits.
 
-`/agents` is available while the main Agent runs. It shows the startup profile snapshot and only the current hosted session instance's running and retained terminal records. Arrows select, `Enter` opens a current in-process progress snapshot, `K` cancels a live child without acknowledging its completion, and `R` refreshes the selected child's preview. `Esc` from detail returns to the list with its selection preserved; `Esc` from the list closes the manager. Startup profile diagnostics appear in the panel. Exiting Kana discards this runtime state; resuming the parent session in a later process does not repopulate it from child journals.
+`/agents` is available while the main Agent runs. It shows the startup profile snapshot and only the current hosted session instance's running and retained terminal records with their latest run number. Arrows select, `Enter` opens a current in-process progress snapshot, `K` cancels a live child without acknowledging its completion, and `R` refreshes the selected child's preview. `Esc` from detail returns to the list with its selection preserved; `Esc` from the list closes the manager. Startup profile diagnostics appear in the panel. Exiting Kana discards this runtime state; resuming the parent session in a later process does not repopulate it from child journals.
 
 Opening the manager, selecting a child, refreshing, or entering its detail view pulls an on-demand snapshot. Running children supply committed Agent messages plus any partially generated assistant message directly from memory; settled children use their retained final transcript. Existing child lifecycle events still refresh an open manager, but there are no per-token updates or polling. Detail and preview share the existing Markdown and tool components: thinking is hidden, tools show only their status and target, and tool arguments and output are omitted. Runtime errors appear at the end of the progress view, even when no assistant reply was produced. Snapshot tool rows have no live timers or abort shortcuts. The preview shows the last few visible lines of this same progress view. Inspecting a child does not acknowledge its completion or change `wait_subagent` output.
 

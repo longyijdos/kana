@@ -26,7 +26,7 @@ describe("subagent manager", () => {
 
     const rendered = stripAnsi(manager.render(100).join("\n"));
     expect(rendered).toContain("Profiles · explorer");
-    expect(rendered).toContain("complete · explorer · completed");
+    expect(rendered).toContain("complete · explorer · run 1 · completed");
     expect(rendered).toContain("review\ncomplete");
 
     manager.handleInput("K");
@@ -206,7 +206,7 @@ describe("subagent manager", () => {
       ],
     };
     const view = createSubagentInspectionView(inspection);
-    expect(view.title).toBe("Subagent explorer · running");
+    expect(view.title).toBe("Subagent explorer · run 1 · running");
     const detail = view.render(100);
     expect(detail.map(stripAnsi)).toEqual([
       "Task: Inspect the parser",
@@ -303,6 +303,7 @@ function subagent(id: string, status: KanaSubagentSummary["status"]): KanaSubage
   return {
     id,
     profile: "explorer",
+    runNumber: 1,
     label: "explorer: inspect parser",
     status,
     startedAt: new Date("2026-09-08T08:00:00.000Z"),

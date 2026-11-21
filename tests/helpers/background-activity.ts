@@ -41,6 +41,7 @@ export function subagentSummary(
   return {
     id,
     profile: "reviewer",
+    runNumber: 1,
     label,
     status,
     startedAt: new Date(Date.UTC(2026, 8, 13, 10, 0, 0)),

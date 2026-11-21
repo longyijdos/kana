@@ -6,6 +6,7 @@ import {
 } from "../../../src/kana/subagents";
 import {
   createCancelSubagentTool,
+  createContinueSubagentTool,
   createSpawnSubagentTool,
   createWaitSubagentTool,
 } from "../../../src/kana/tools";
@@ -45,7 +46,12 @@ describe("subagent tools", () => {
 
     const running = await wait.execute({ agentId: started.result.agentId }, createToolContext());
     expectToolResult(running);
-    expect(running.result).toEqual({ status: "running", output: "", waitTimedOut: false });
+    expect(running.result).toEqual({
+      status: "running",
+      runNumber: 1,
+      output: "",
+      waitTimedOut: false,
+    });
     expect(running.content).not.toContain("agentId:");
     expect(running.content).not.toContain("profile:");
 
@@ -57,6 +63,7 @@ describe("subagent tools", () => {
     expectToolResult(completed);
     expect(completed.result).toEqual({
       status: "completed",
+      runNumber: 1,
       output: "done",
       terminalReason: "stop",
       waitTimedOut: false,
@@ -79,6 +86,45 @@ describe("subagent tools", () => {
       ),
     ).toThrow("Subagent spawn was cancelled.");
     expect(client.list()).toHaveLength(1);
+    await manager.close();
+  });
+
+  test("starts a follow-up under the same ID and reports its new run separately", async () => {
+    const manager = new KanaSubagentManager();
+    const client = manager.bind(
+      manager.createOwner({ sessionId: "session-1", cwd: process.cwd(), persistent: false }),
+      { maxLive: 1 },
+    );
+    const { id } = client.start({
+      profile: profile(),
+      task: "Inspect the parser",
+      spawnToolCallId: "spawn",
+      run: async () => ({
+        ...result("first result"),
+        continuation: async ({ message }) => result(`Followed up: ${message}`),
+      }),
+    });
+    await client.wait(id, { waitMs: 100 });
+    const tool = createContinueSubagentTool(client);
+    expect(() => tool.execute({ agentId: id, message: "  " }, createToolContext())).toThrow(
+      "Subagent follow-up message is required.",
+    );
+    const continued = await tool.execute(
+      { agentId: id, message: " Explain the result " },
+      createToolContext(),
+    );
+    expectToolResult(continued);
+    expect(continued.result).toEqual({ agentId: id, runNumber: 2, status: "running" });
+    const read = await createWaitSubagentTool(client).execute(
+      { agentId: id, timeoutMs: 100 },
+      createToolContext(),
+    );
+    expectToolResult(read);
+    expect(read.result).toMatchObject({
+      runNumber: 2,
+      status: "completed",
+      output: "Followed up: Explain the result",
+    });
     await manager.close();
   });
 
@@ -106,6 +152,7 @@ describe("subagent tools", () => {
     expect(read.isError).toBe(false);
     expect(read.result).toEqual({
       status: "errored",
+      runNumber: 1,
       terminalReason: "error",
       output: "Partial findings",
       error: "Child run failed",

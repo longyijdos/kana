@@ -43,6 +43,7 @@ import type { KanaTodoItem, KanaTodoStateChange } from "./todo";
 import {
   createCancelSubagentTool,
   createCancelWakeTool,
+  createContinueSubagentTool,
   createDelegateUserTaskTool,
   createListWakesTool,
   createMcpTools,
@@ -219,6 +220,7 @@ export function createKanaAgent(
           ) => Promise<KanaSubagentRunResult>,
         }),
         createWaitSubagentTool(subagents),
+        createContinueSubagentTool(subagents),
         createCancelSubagentTool(subagents),
       ]);
     toolSections.push({

@@ -34,7 +34,10 @@ type SpawnSubagentResult = {
   status: KanaSubagentSummary["status"];
 };
 
+type ContinueSubagentResult = { agentId: string; runNumber: number; status: "running" };
+
 type WaitSubagentResult = {
+  runNumber?: number;
   status: KanaSubagentSummary["status"];
   output: string;
   error?: string;
@@ -65,9 +68,21 @@ const waitParameters = Type.Object(
         minimum: 0,
         maximum: MAX_WAIT_MS,
         default: 0,
-        description: "Wait up to this many milliseconds for a terminal state.",
+        description: "Wait up to this many milliseconds for the current run to finish.",
       }),
     ),
+  },
+  { additionalProperties: false },
+);
+
+const continueParameters = Type.Object(
+  {
+    agentId: Type.String({ minLength: 1, description: "ID of a retained, non-running subagent." }),
+    message: Type.String({
+      minLength: 1,
+      maxLength: MAX_TASK_CHARS,
+      description: "Follow-up instruction for the next run. The child keeps its own history.",
+    }),
   },
   { additionalProperties: false },
 );
@@ -94,7 +109,7 @@ export function createSpawnSubagentTool(
   return {
     name: "spawn_subagent",
     description: [
-      "Start one configured, session-owned one-shot subagent and return immediately with its stable ID.",
+      "Start a new configured, session-owned subagent and return immediately with its stable ID.",
       "The child continues independently after this call returns. Completion is delivered back to the parent Agent automatically; do not poll wait_subagent solely to detect completion.",
       "The child receives only its profile instructions and the task argument, so make the task self-contained.",
       "Choose only from these profiles:",
@@ -136,10 +151,11 @@ export function createWaitSubagentTool(
   return {
     name: "wait_subagent",
     description:
-      "Read a subagent's current or terminal result, optionally waiting for a bounded time. Completed subagents notify the parent Agent automatically, so normally wait for that notification instead of repeatedly polling a running subagent. Use timeoutMs only when explicitly blocking for a result is useful. A timeout does not cancel the subagent.",
+      "Read the current or latest run of a subagent, optionally waiting for a bounded time. Finished runs notify the parent Agent automatically, so normally wait for that notification instead of repeatedly polling. Use timeoutMs only when explicitly blocking for a result is useful. A timeout does not cancel the subagent.",
     parameters: waitParameters,
     outputSchema: Type.Object({
       status: subagentStatusSchema,
+      runNumber: Type.Optional(Type.Integer({ minimum: 1 })),
       output: Type.String(),
       error: Type.Optional(Type.String()),
       terminalReason: terminalReasonSchema,
@@ -153,6 +169,7 @@ export function createWaitSubagentTool(
       });
       const result: WaitSubagentResult = {
         status: snapshot.status,
+        ...(snapshot.status === "unknown" ? {} : { runNumber: snapshot.runNumber }),
         output: snapshot.output,
         ...(snapshot.error === undefined ? {} : { error: snapshot.error }),
         ...(snapshot.terminalReason === undefined
@@ -165,6 +182,38 @@ export function createWaitSubagentTool(
         result,
         isError: result.status === "unknown",
       };
+    },
+  };
+}
+
+export function createContinueSubagentTool(
+  subagents: KanaSubagentClient,
+): Tool<typeof continueParameters, ContinueSubagentResult> {
+  return {
+    name: "continue_subagent",
+    description: [
+      "Start another run of a retained subagent in this session after its prior run has completed, errored, or been cancelled. The new run uses the same ID and committed history; it does not replay tool calls.",
+      "Read the prior result with wait_subagent before continuing. After an interruption, tell the child to check what was already done before repeating work that may have side effects.",
+      "This does not send a message to a running subagent or restore one after a restart. It returns immediately, and the new run reports completion separately.",
+    ].join(" "),
+    parameters: continueParameters,
+    outputSchema: Type.Object({
+      agentId: Type.String(),
+      runNumber: Type.Integer({ minimum: 2 }),
+      status: Type.Literal("running"),
+    }),
+    execution: { concurrency: "parallel" },
+    execute: (args, context) => {
+      if (context.signal?.aborted) throw new Error("Subagent continuation was cancelled.");
+      const message = args.message.trim();
+      if (!message) throw new Error("Subagent follow-up message is required.");
+      const summary = subagents.continue(args.agentId, message);
+      const result: ContinueSubagentResult = {
+        agentId: summary.id,
+        runNumber: summary.runNumber,
+        status: "running",
+      };
+      return { content: JSON.stringify(result, null, 2), result };
     },
   };
 }
@@ -202,6 +251,7 @@ export function createCancelSubagentTool(
 function formatWaitResult(result: WaitSubagentResult): string {
   return [
     `status: ${result.status}`,
+    ...(result.runNumber === undefined ? [] : [`runNumber: ${result.runNumber}`]),
     `terminalReason: ${result.terminalReason ?? "n/a"}`,
     `waitTimedOut: ${result.waitTimedOut}`,
     ...(result.error ? [`error: ${result.error}`] : []),

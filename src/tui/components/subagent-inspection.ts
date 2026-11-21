@@ -59,7 +59,7 @@ export function createSubagentInspectionView(
   }
 
   return {
-    title: `Subagent ${inspection.profile} · ${inspection.status}`,
+    title: `Subagent ${inspection.profile} · run ${inspection.runNumber} · ${inspection.status}`,
     render: (width) => [`Task: ${inspection.task}`, "", ...transcript.render(width)],
   };
 }

@@ -43,7 +43,7 @@ describe("Kana subagent journal repository", () => {
     expect(header?.subagent).toMatchObject({
       parentSessionId: "session-1",
       spawnToolCallId: "call-spawn",
-      profile: { name: "explorer", tools: ["read"] },
+      profile: { name: "explorer", tools: ["read"], maxOutputTokens: 4096, contextLimit: 32768 },
     });
     expect(messages).toEqual([user, assistant]);
   });
@@ -115,6 +115,8 @@ function profile(): KanaSubagentProfile {
     description: "Explore",
     instructions: "Inspect only.",
     tools: ["read"],
+    maxOutputTokens: 4096,
+    contextLimit: 32768,
     digest: "profile-digest",
   };
 }

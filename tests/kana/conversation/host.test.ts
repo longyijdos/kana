@@ -28,6 +28,7 @@ import { loadKanaUsageSummary } from "../../../src/kana/accounting";
 import type { KanaAgentOptions } from "../../../src/kana/agent";
 import { createKanaToolResultArtifactPolicy } from "../../../src/kana/artifacts";
 import { getKanaSubagentArtifactParentDirectory } from "../../../src/kana/artifacts/store";
+import { createKanaAgentModelRuntime } from "../../../src/kana/model";
 import { getKanaSubagentDirectory } from "../../../src/kana/subagents";
 import { createRememberTool, createTodoWriteTool } from "../../../src/kana/tools";
 import { MockModel } from "../../../src/providers/mock";
@@ -625,6 +626,80 @@ describe("Kana conversation host", () => {
     await host.close();
   });
 
+  test("resolves child token budgets against the inherited or explicit model", async () => {
+    const env = { ...createTempEnv(), DEEPSEEK_API_KEY: "test" };
+    const directory = getKanaConfigPaths(env).agentsDirectory;
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      getKanaConfigPaths(env).configPath,
+      "[agent.model]\nmax_output_tokens = 4096\ncontext_limit = 32768\n",
+    );
+    const cards = {
+      inherited: [],
+      override: ["model: inherit", "max_output_tokens: 2048"],
+      explicit: ["model: deepseek/deepseek-v4-pro"],
+      mixed: ["model: deepseek/deepseek-v4-pro", "context_limit: 65536"],
+    };
+    for (const [name, fields] of Object.entries(cards)) {
+      writeFileSync(
+        path.join(directory, `${name}.md`),
+        ["---", "description: Focused work", ...fields, "---", "Review the parser."].join("\n"),
+      );
+    }
+    let runSubagent: KanaAgentOptions["runSubagent"];
+    const runtimes = new Map<string, ReturnType<typeof createKanaAgentModelRuntime>>();
+    const host = createKanaConversationHost({
+      env,
+      createAgent: (config, options = {}) => {
+        if (options.subagentProfile) {
+          runtimes.set(
+            options.subagentProfile.name,
+            createKanaAgentModelRuntime(config.agent, config.provider, { env }),
+          );
+        } else {
+          runSubagent = options.runSubagent;
+        }
+        return new Agent({ model: new MockModel({ provider: "mock", model: "mock" }) });
+      },
+    });
+    try {
+      const sessionId = host.initialSession!.metadata.id;
+      host.createAgent({ sessionId });
+      const client = host.runtimeOptions.getSubagents(sessionId)!;
+      for (const profile of host.loadSubagentProfiles().profiles) {
+        const { id } = client.start({
+          profile,
+          task: "Inspect",
+          spawnToolCallId: "spawn",
+          run: runSubagent!,
+        });
+        await expect(client.wait(id, { waitMs: 100 })).resolves.toMatchObject({
+          status: "completed",
+        });
+      }
+      expect(runtimes.get("inherited")).toMatchObject({
+        maxOutputTokens: 4096,
+        contextLimit: 32768,
+      });
+      expect(runtimes.get("override")).toMatchObject({
+        maxOutputTokens: 2048,
+        contextLimit: 32768,
+      });
+      const explicit = runtimes.get("explicit")!;
+      expect(explicit.model.metadata.model).toBe("deepseek-v4-pro");
+      expect(explicit).toMatchObject({
+        maxOutputTokens: explicit.model.metadata.maxOutputTokens,
+        contextLimit: explicit.model.metadata.contextWindow,
+      });
+      expect(runtimes.get("mixed")).toMatchObject({
+        maxOutputTokens: explicit.model.metadata.maxOutputTokens,
+        contextLimit: 65536,
+      });
+    } finally {
+      await host.close();
+    }
+  });
+
   test.each([true, false])(
     "inspects child progress and inherits tool_result_artifacts=%s",
     async (artifactsEnabled) => {
@@ -742,13 +817,135 @@ describe("Kana conversation host", () => {
         expect(inspection?.messages.at(-1)).toMatchObject({
           content: [{ type: "text", text: "Partial parser review" }],
         });
+        expect(client.continue(started.id, "Explain the first finding")).toMatchObject({
+          id: started.id,
+          runNumber: 2,
+          status: "running",
+        });
+        await waitFor(() => model.requests.length === 3);
+        expect(model.requests[2]?.context.messages).toContainEqual(
+          expect.objectContaining({
+            role: "assistant",
+            content: [{ type: "text", text: "Final parser review" }],
+          }),
+        );
+        expect(model.requests[2]?.context.messages.at(-1)).toMatchObject({
+          role: "user",
+          content: "Explain the first finding",
+        });
+        model.requests[2]!.complete("Here is the explanation.");
+        await expect(client.wait(started.id, { waitMs: 100 })).resolves.toMatchObject({
+          runNumber: 2,
+          status: "completed",
+          output: "Here is the explanation.",
+        });
+        expect(client.inspect(started.id)?.messages).toHaveLength(6);
+        expect(
+          loadKanaUsageSummary({ scope: "session", sessionId, env }).agents.subagent.runCount,
+        ).toBe(2);
+
         const journalDirectory = getKanaSubagentDirectory(process.cwd(), sessionId, env);
-        const journalPath = path.join(journalDirectory, readdirSync(journalDirectory)[0]!);
+        const files = readdirSync(journalDirectory);
+        expect(files).toHaveLength(1);
+        const journalPath = path.join(journalDirectory, files[0]!);
         const journal = readFileSync(journalPath, "utf8");
+        expect(journal).toContain("Final parser review");
+        expect(journal).toContain("Here is the explanation.");
         if (artifact) expect(journal).toContain(JSON.stringify(artifact.locator));
         await expect(host.runtimeOptions.deleteSession(sessionId)).resolves.toBe(true);
         expect(existsSync(journalPath)).toBe(false);
         if (artifact) expect(existsSync(artifact.locator)).toBe(false);
+      } finally {
+        await host.close();
+      }
+    },
+  );
+
+  test.each(["provider error", "tool", "tui"] as const)(
+    "continues an interrupted child after %s without replaying tools",
+    async (interruption) => {
+      const env = createTempEnv();
+      const directory = getKanaConfigPaths(env).agentsDirectory;
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(path.join(directory, "focused.md"), subagentProfile("Inspect the parser."));
+      const model = new ControlledModel();
+      let runSubagent: KanaAgentOptions["runSubagent"];
+      let childCount = 0;
+      let toolCalls = 0;
+      const host = createKanaConversationHost({
+        env,
+        createAgent: (_config, options = {}) => {
+          if (!options.subagentProfile) {
+            runSubagent = options.runSubagent;
+            return new Agent({ model: new MockModel({ provider: "mock", model: "mock" }) });
+          }
+          childCount += 1;
+          return new Agent({
+            model,
+            journal: options.journal,
+            onRunCommitted: options.onRunCommitted,
+            tools: [
+              {
+                name: "mark_work",
+                description: "Record the finished work",
+                parameters: { type: "object", properties: {} },
+                execute: () => {
+                  toolCalls += 1;
+                  return { content: "First step committed" };
+                },
+              },
+            ],
+          });
+        },
+      });
+      try {
+        const sessionId = host.initialSession!.metadata.id;
+        host.createAgent({ sessionId });
+        const client = host.runtimeOptions.getSubagents(sessionId)!;
+        const [profile] = host.loadSubagentProfiles().profiles;
+        const { id } = client.start({
+          profile: profile!,
+          task: "Start work",
+          spawnToolCallId: "spawn",
+          run: runSubagent!,
+        });
+        await waitFor(() => model.requests.length === 1);
+        model.requests[0]!.complete(
+          [{ type: "tool_call", id: "mark-first", name: "mark_work", args: {} }],
+          "toolUse",
+        );
+        await waitFor(() => model.requests.length === 2);
+        if (interruption === "provider error") {
+          model.requests[1]!.fail();
+        } else {
+          await client.cancel(id, { source: interruption });
+        }
+        await expect(client.wait(id, { waitMs: 100 })).resolves.toMatchObject({
+          runNumber: 1,
+          status: interruption === "provider error" ? "errored" : "cancelled",
+        });
+        expect(model.requests).toHaveLength(2);
+
+        expect(client.continue(id, "Continue after the committed step")).toMatchObject({
+          id,
+          runNumber: 2,
+        });
+        await waitFor(() => model.requests.length === 3);
+        expect(model.requests[2]?.context.messages).toContainEqual(
+          expect.objectContaining({
+            role: "tool",
+            toolCallId: "mark-first",
+            result: { content: "First step committed" },
+          }),
+        );
+        model.requests[2]!.complete("Resumed.");
+        await expect(client.wait(id, { waitMs: 100 })).resolves.toMatchObject({
+          status: "completed",
+          runNumber: 2,
+          output: "Resumed.",
+        });
+        expect(childCount).toBe(1);
+        expect(toolCalls).toBe(1);
       } finally {
         await host.close();
       }

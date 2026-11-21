@@ -103,6 +103,8 @@ export function serializeKanaSubagentProfileExample(): string {
     "  - shell",
     "# model: openai-codex/gpt-5.6-terra",
     "# reasoning_effort: high",
+    "# max_output_tokens: 8192",
+    "# context_limit: 65536",
     "---",
     "",
     "Review the delegated task.",
