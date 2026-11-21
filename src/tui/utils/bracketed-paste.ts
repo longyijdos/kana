@@ -11,10 +11,9 @@ export class BracketedPasteBuffer {
   private active = false;
 
   consume(data: string): BracketedPasteResult | undefined {
-    if (data.includes(PASTE_START)) {
+    if (!this.active && data.startsWith(PASTE_START)) {
       this.active = true;
-      this.buffer = "";
-      data = data.replace(PASTE_START, "");
+      data = data.slice(PASTE_START.length);
     }
 
     if (!this.active) {

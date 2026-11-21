@@ -34,7 +34,7 @@ The editor has a presentation-only loading state. It renders input in `muted`, a
 
 `ProcessTerminal` resolves terminal color output independently from the selected light or dark theme. It uses the TTY color depth when available, then conservative environment hints, and chooses `truecolor`, `ansi256`, or `uncolored`. The ANSI layer preserves RGB in truecolor mode, converts it to the nearest xterm-256 color in ANSI256 mode, and leaves foregrounds and backgrounds at terminal defaults in uncolored mode. No terminal query or startup wait is involved.
 
-Raw stdin chunks pass through a stateful framing buffer before `Tui` sees them. The buffer dispatches batched keys separately, reassembles fragmented CSI, SS3, OSC, DCS, and APC sequences, and delivers each bracketed paste as one complete event. Incomplete sequences wait briefly for their suffix; a lone `Esc` uses a longer reassembly window under SSH.
+Raw stdin chunks pass through a stateful framing buffer before `Tui` sees them. The buffer dispatches batched keys separately, reassembles fragmented CSI, SS3, OSC, DCS, and APC sequences, and delivers each bracketed paste as one complete event. Incomplete sequences wait briefly for their suffix; a lone `Esc` uses a longer reassembly window under SSH. Bracketed paste has no escaping or length field: the first end marker closes the paste, because Kana cannot distinguish a literal end marker from framing.
 
 Shutdown restores the prior raw state, pauses stdin, shows the cursor, pops enhanced keyboard reporting, disables bracketed paste, and clears Kana's visible frame and scrollback before exit information is printed. Application cleanup completes before this terminal restoration begins. A forced second interrupt also restores terminal state before default signal handling takes over.
 
@@ -61,6 +61,8 @@ Rendering helpers strip ANSI and terminal control sequences before measurement, 
 Content truncation, including final layout guards, uses `…` by default to indicate omitted text. A standalone `…` in output previews indicates omitted rows; a trailing `…` indicates horizontal truncation.
 
 `ContentViewer` soft-wraps remaining over-wide body rows before calculating its scrollable viewport, preserving ANSI styles and terminal links across rows. Markdown, tables, and diffs retain their own width-dependent layout. Callers that need single-line rows truncate them before passing them to the viewer; usage summaries do this to preserve token bars and aligned columns. Viewer titles remain single-line and truncate with `…`.
+
+The prompt editor, text prompts, and transcript user messages display tabs and other terminal control characters as printable symbols before wrapping. The editor computes cursor placement from the displayed text. Line breaks still split rows; the substitution does not change submitted or stored text.
 
 Untrusted tool and provider text is sanitized before display. Width-sensitive code must work in visible cells rather than JavaScript string length, and ANSI styles must be closed at line boundaries so repainting cannot leak presentation into later rows.
 

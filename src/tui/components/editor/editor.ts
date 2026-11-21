@@ -9,7 +9,6 @@ import {
   graphemeSegments,
   type HighlightedLineToken,
   normalizeLineEndings,
-  padRightAnsi,
   renderHighlightedLine,
   truncateToWidth,
   visibleWidth,
@@ -243,9 +242,9 @@ export class Editor implements Component {
   }
 
   render(width: number, availableHeight?: number): string[] {
-    const frameWidth = Math.max(width, 8);
-    const contentWidth = Math.max(1, frameWidth - 4);
-    const inputColumns = Math.max(1, contentWidth - visibleWidth(PROMPT));
+    const promptWidth = visibleWidth(PROMPT);
+    // Leave a cell for the hardware cursor after a full row.
+    const inputColumns = Math.max(1, width - promptWidth - 1);
     const paletteState = this.getPaletteState();
     const showPalette = !this.loading && paletteState.showPalette;
     const showStatus = !showPalette && (availableHeight === undefined || availableHeight >= 5);
@@ -275,15 +274,15 @@ export class Editor implements Component {
       preferredStartLine: this.inputViewportStartLine,
     });
     this.inputViewportStartLine = layout.startLine;
-    const lines = [`+${"-".repeat(frameWidth - 2)}+`];
+    const separator = "-".repeat(width);
+    const lines = [separator];
 
     if (this.images.length > 0) {
-      const summary = color(formatImageSummary(this.images), tuiTheme.command);
-      lines.push(`| ${padRightAnsi(truncateToWidth(summary, contentWidth), contentWidth)} |`);
+      lines.push(color(formatImageSummary(this.images), tuiTheme.command));
     }
 
     for (const [index, line] of layout.lines.entries()) {
-      const linePrompt = index === 0 ? PROMPT : " ".repeat(visibleWidth(PROMPT));
+      const linePrompt = index === 0 ? PROMPT : " ".repeat(promptWidth);
       const promptEnd = Math.max(0, display.value.length - line.startOffset);
       const tokens: HighlightedLineToken[] = this.loading
         ? [
@@ -297,18 +296,16 @@ export class Editor implements Component {
               renderText: (text, start) => this.renderInputTokens(text, start, display),
             }),
           ];
-      const content = renderHighlightedLine(tokens);
-
-      lines.push(`| ${padRightAnsi(content, contentWidth)} |`);
+      lines.push(renderHighlightedLine(tokens));
     }
 
-    lines.push(`+${"-".repeat(frameWidth - 2)}+`);
+    lines.push(separator);
     const commandPaletteHeight =
       availableHeight === undefined
         ? undefined
         : Math.max(1, Math.floor(availableHeight) - lines.length);
     if (showPalette) {
-      lines.push(...this.renderSuggestionPalette(frameWidth, commandPaletteHeight));
+      lines.push(...this.renderSuggestionPalette(width, commandPaletteHeight));
     }
 
     if (showStatus) {

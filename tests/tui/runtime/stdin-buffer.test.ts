@@ -3,7 +3,8 @@ import { Editor } from "../../../src/tui/components";
 import { StdinBuffer } from "../../../src/tui/runtime/stdin-buffer";
 import { resolveEscapeTimeoutMs } from "../../../src/tui/runtime/terminal";
 
-const PASTE = "\x1b[200~first\r\nsecond\x1b[201~";
+const PASTE_TEXT = "first\t\x1b[31m\r\n\x1b[200~second";
+const PASTE = `\x1b[200~${PASTE_TEXT}\x1b[201~`;
 const LOGICAL_INPUT = [
   "a",
   "界",
@@ -73,7 +74,7 @@ describe("stdin buffer", () => {
     }
 
     buffer.destroy();
-    expect(submitted).toEqual(["first\nsecond"]);
+    expect(submitted).toEqual([PASTE_TEXT.replace("\r\n", "\n")]);
   });
 
   test("uses distinct timeouts for a lone Escape and other incomplete sequences", () => {

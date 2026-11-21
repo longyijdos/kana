@@ -5,33 +5,34 @@ import { tuiTheme } from "../../../../src/tui/theme";
 import { messageIdentityForTest } from "../../../helpers/messages";
 
 describe("tui user message block", () => {
-  test("renders neutral text with an accent prefix inside an ASCII frame", () => {
+  test("renders the same borderless rows as the prompt editor", () => {
     const rendered = new UserMessageBlock("hello\nworld").render(20);
     const accent = `\x1b[38;2;${tuiTheme.user.join(";")}m`;
     const text = `\x1b[38;2;${tuiTheme.userMessageText.join(";")}m`;
 
     expect(rendered.map(stripAnsi)).toEqual([
-      "+------------------+",
-      "| > hello          |",
-      "|   world          |",
-      "+------------------+",
+      "--------------------",
+      "> hello",
+      "  world",
+      "--------------------",
     ]);
     expect(rendered.join("\n")).not.toContain("\x1b[48;");
     expect(rendered.join("\n")).not.toContain("\x1b[K");
     expect(rendered[1]).toContain(`${accent}> ${text}hello`);
   });
 
-  test("wraps content inside the prefix and frame", () => {
-    const rendered = new UserMessageBlock("abcdef").render(8);
+  test("wraps by cell width and aligns continuation rows with the text", () => {
+    const rendered = new UserMessageBlock("ab界cd").render(8);
 
-    expect(rendered.map(stripAnsi)).toEqual([
-      "+------+",
-      "| > ab |",
-      "|   cd |",
-      "|   ef |",
-      "+------+",
-    ]);
+    expect(rendered.map(stripAnsi)).toEqual(["--------", "> ab界c", "  d", "--------"]);
     expect(rendered.every((line) => visibleWidth(line) <= 8)).toBe(true);
+  });
+
+  test("displays control characters as text after a prompt is submitted", () => {
+    const rendered = new UserMessageBlock("A\t\x1b[31m\r\nB").render(20);
+
+    expect(rendered.slice(1, -1).map(stripAnsi)).toEqual(["> A␉␛[31m", "  B"]);
+    expect(rendered.join("\n")).not.toContain("\x1b[31m");
   });
 
   test("renders image attachment metadata without exposing encoded bytes", () => {

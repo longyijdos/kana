@@ -212,9 +212,12 @@ function cursorColumn(line: WrappedLine | undefined, cursorOffset: number): numb
       return column;
     }
 
-    if (glyph.endOffset <= cursorOffset) {
-      column += glyph.width;
+    if (glyph.endOffset > cursorOffset) {
+      // A combining mark can attach to the display symbol for a source control.
+      return column + visibleWidth(glyph.text.slice(0, cursorOffset - glyph.startOffset));
     }
+
+    column += glyph.width;
   }
 
   return column;

@@ -34,7 +34,7 @@ Editor 的 loading 状态只负责呈现：输入使用 `muted`，末尾追加 `
 
 `ProcessTerminal` 对终端色彩输出与所选深浅主题分别进行解析。它优先使用 TTY 提供的色深，否则读取保守的环境提示，并选择 `truecolor`、`ansi256` 或 `uncolored`。ANSI 层在 truecolor 模式保留 RGB，在 ANSI256 模式转换到最近的 xterm-256 色，在 uncolored 模式则使用终端默认前景与背景。这个过程不查询终端，也不会增加启动等待。
 
-原始 stdin chunk 会先经过有状态 framing buffer，再交给 `Tui`。该 buffer 会分别分发批量到达的按键，重组被拆分的 CSI、SS3、OSC、DCS 与 APC 序列，并把每次 bracketed paste 作为一个完整 event 投递。不完整序列会短暂等待后缀；单独的 `Esc` 在 SSH 环境下使用更长的重组窗口。
+原始 stdin chunk 会先经过有状态 framing buffer，再交给 `Tui`。该 buffer 会分别分发批量到达的按键，重组被拆分的 CSI、SS3、OSC、DCS 与 APC 序列，并把每次 bracketed paste 作为一个完整 event 投递。不完整序列会短暂等待后缀；单独的 `Esc` 在 SSH 环境下使用更长的重组窗口。Bracketed paste 没有转义或长度字段：第一个结束标记就会关闭粘贴，因为 Kana 无法区分正文里的字面标记和协议边界。
 
 关闭时会恢复原始 raw 状态、暂停 stdin、显示 cursor、弹出增强键盘上报、关闭 bracketed paste，并在打印退出信息前清除 Kana 的可见 frame 与 scrollback。应用清理必须在终端恢复前完成；第二次中断强制退出时，也会先恢复终端状态再交回默认 signal 行为。
 
@@ -61,6 +61,8 @@ Renderer 会缓存规范化文本行和 viewport 状态，并在终端支持时�
 内容截断（包括最终布局保护）默认使用 `…` 表示省略了文本。输出预览中独立一行的 `…` 表示省略了行，行尾的 `…` 表示横向截断。
 
 `ContentViewer` 在计算可滚动视口前，对仍然超宽的正文行软换行，并跨行保留 ANSI 样式和终端链接。Markdown、表格和 diff 继续使用各自依赖宽度的排版。需要保持单行的调用方在传给查看器前自行截断；用量摘要采用这种方式保留 token 条形图和对齐列。查看器标题仍保持单行，并用 `…` 截断。
+
+主编辑器、独立文本提示框和聊天记录里的用户消息会在折行前，将 Tab 等终端控制字符显示为可打印符号。编辑器按显示文本计算光标位置。换行仍然用于分行；显示替换不改变提交或存储的文本。
 
 不可信工具与供应商文本会在显示前清理。宽度敏感代码必须使用可见 cell，而不是 JavaScript 字符串长度；ANSI style 也必须在行边界闭合，避免重绘把样式泄漏到后续行。
 
