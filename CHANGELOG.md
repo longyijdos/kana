@@ -1,3 +1,31 @@
+## [0.16.0](https://github.com/longyijdos/kana/compare/v0.15.0...v0.16.0) (2026-11-21)
+
+Kana v0.16.0 lets you continue settled subagents in the same session, loads every `providers/*.toml` file as a separately named Custom provider, and makes the `run_code` and foreground `shell` time limits configurable. Memory consolidation now recovers interrupted batches from JSONL daily entries. Custom provider IDs and the memory daily-file format changed; read the upgrade notes before updating.
+
+### Features
+
+- Continue a settled subagent with `continue_subagent(agentId, message)` when its last run completed, errored, or was cancelled. The child keeps its ID, committed history, checkpoint, and journal, and nothing is retried or replayed automatically. Run numbers appear in `wait_subagent`, completion notifications, runtime context, and `/agents` so each follow-up has its own result. Role cards can also set `max_output_tokens` and `context_limit` to override the inherited model's budgets. Sending a message to a running child and restoring a child after restart remain unsupported.
+- Load each `providers/*.toml` file as an independent named Custom provider. `/model` switches between them, and the selection persists as `provider = "custom:<name>"`. A broken file only affects its own provider. Provider configuration is read at startup, so restart after editing one.
+- Set `agent.run_code_deadline_ms` to change the total wall-clock deadline for `run_code`, defaulting to 900000 ms (15 minutes) and accepting 1 to 7200000. The deadline includes nested tool execution but excludes nested approval waits.
+- Set `agent.shell_max_timeout_ms` to raise or lower the ceiling for an explicit `timeoutMs` on foreground `shell` calls by the main Agent and subagents, defaulting to 300000 ms and accepting 30000 to 3600000. Omitting the argument still gives a 30-second timeout, and calls through `run_code` remain subject to its own deadline.
+
+### Bug Fixes
+
+- Update the OpenAI Codex model catalog with `gpt-6.2-sol`, `gpt-6.2-astra`, and `gpt-6.1-terra`, dropping the retired `gpt-5.5` entry, and use the default text verbosity for Codex requests.
+- Recover pending memory entries when a Host first activates a persistent session and after `remember`, attributing recovery usage to the triggering session. Clean mode does not recover.
+- Commit compressed memory and its `[date, lastId]` checkpoint together, and only after the incremental Agent confirms every entry and ends normally. Failed or interrupted batches stay pending, and checkpoint headers accept both LF and CRLF.
+- Stage daily memory as JSONL so multiline and Markdown content cannot be mistaken for a record boundary. Only expired daily files that are fully confirmed are pruned.
+- Render user prompts with shared top and bottom separators, no side borders or trailing padding, and printable symbols for tabs and other terminal controls. Submitted and stored text is unchanged, and a literal paste-start marker inside a framed paste is preserved.
+- Clear a focused editor's draft on `Ctrl+C` before aborting an active run; a second press aborts as before.
+- Ignore incomplete streamed usage snapshots from OpenAI-compatible proxies that only fill `total_tokens` on the final chunk, instead of aborting the turn.
+- Report a tool error for an unavailable `job_output` or `job_kill` ID, and treat a known Job or subagent whose outcome is `unknown` or failed as a normal result rather than a tool error.
+- Keep error messages, codes, stacks, causes, and provider context in diagnostic logs without dumping complete requests or responses.
+
+### Upgrade Notes
+
+- Custom provider selections now use `provider = "custom:<name>"`. In `providers/custom.toml`, replace the previous `custom` ID with `custom:custom`. Update the main model, memory model, and any role card or script that names the old ID. Configuration files are not hot-reloaded.
+- Memory daily staging files are now `daily/YYYY-MM-DD.jsonl`. Former daily Markdown files are not read, so convert any entries you still need with their dates, order, and IDs preserved. Existing `memory.md` files and checkpoints still work, and recovery coordinates writes within one Host, not across processes.
+
 ## [0.15.0](https://github.com/longyijdos/kana/compare/v0.14.0...v0.15.0) (2026-11-13)
 
 Kana v0.15.0 adds the Responses protocol and endpoint-specific request options to Custom providers, brings repeating reminder controls to Agent tools and the TUI, and lets subagents save oversized tool output as retrievable artifacts. Tool-output context budgets are now configurable. Schedule cancellation only stops future timer triggers; read the upgrade notes if you use the HTTP API.
