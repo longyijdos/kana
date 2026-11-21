@@ -138,7 +138,8 @@ Source execution loads the local Worker and WASM. Bun executable builds list the
 | `job_output` | `jobId`, optional `waitMs` | Consumes all currently unread retained output from the Agent cursor and reports dropped bytes. |
 | `job_kill` | `jobId`, optional `reason` | Stops an owned Job and waits for its process group to settle. |
 | `spawn_subagent` | `profile`, `task` | Starts a predefined session-owned child and immediately returns its Agent ID. |
-| `wait_subagent` | `agentId`, optional `timeoutMs` | Reads or briefly waits for an owned child's state and final output. |
+| `wait_subagent` | `agentId`, optional `timeoutMs` | Reads or briefly waits for an owned child’s latest run. |
+| `continue_subagent` | `agentId`, `message` | Starts another run of a retained child after the prior run settles. |
 | `cancel_subagent` | `agentId`, optional `reason` | Cancels an owned child and waits for settlement. |
 | `todo_write` | Complete todo-item array | Atomically replaces or explicitly clears the session todo state. |
 | `delegate_user_task` | Concrete `task` text | Invites the user to work in parallel; acceptance creates a process-local task ID. |
@@ -151,7 +152,7 @@ Source execution loads the local Worker and WASM. Bun executable builds list the
 | `mcp_get_tool` | `server`, `tool` | Reads a remote tool's cached input and optional output schemas. |
 | `mcp_call` | `server`, `tool`, `arguments` | Validates the remote input schema and invokes the selected tool. |
 
-`list`, `glob`, `grep`, `read`, `view_image`, `mcp_list_tools`, `mcp_get_tool`, and the three subagent control tools declare `parallel`. Writes, Shell, memory, scheduling, Goal updates, and undeclared third-party/MCP tools are `exclusive`.
+`list`, `glob`, `grep`, `read`, `view_image`, `mcp_list_tools`, `mcp_get_tool`, and the subagent control tools declare `parallel`. Writes, Shell, memory, scheduling, Goal updates, and undeclared third-party/MCP tools are `exclusive`.
 
 The following table describes the successful public result contracts of all built-in business tools. Registration depends on tool configuration and available capabilities. Codemode dynamically generates `run_code`; its result contract is described in the Codemode section above.
 
@@ -170,7 +171,8 @@ The following table describes the successful public result contracts of all buil
 | `job_output` | `{ status, chunks, droppedBytes, waitTimedOut, exitCode }` |
 | `job_kill` | `{ status, exitCode }` |
 | `spawn_subagent` | `{ agentId, status }` |
-| `wait_subagent` | `{ status, output, error?, terminalReason?, waitTimedOut }` |
+| `wait_subagent` | `{ status, runNumber?, output, error?, terminalReason?, waitTimedOut }` |
+| `continue_subagent` | `{ agentId, runNumber, status: "running" }` |
 | `cancel_subagent` | `{ status, terminalReason? }` |
 | `todo_write` | `{ status: "updated" \| "cleared" }` |
 | `delegate_user_task` | `{ status: "accepted", taskId }` |
@@ -211,7 +213,7 @@ The generic manager is independent of Kana Agent construction. An owner binds Jo
 
 Kana projects active or unreported Job identity, bounded label, cwd, state, and exit code into runtime context—never output. Completion steering, queued-run delivery, acknowledgement, and session-change ordering belong to [Conversation runtime](conversation-runtime.md).
 
-Subagent spawning selects a predefined role card and returns a stable child ID; waiting and cancellation return the selected child's operation outcome. A child failure is a normal `wait_subagent` result; an unavailable child ID is a tool error. Their capability intersection, asynchronous lifecycle, persistence, and TUI behavior belong to [Subagents](subagents.md).
+Subagent spawning selects a predefined role card and returns a stable child ID; continuation starts another run, and waiting and cancellation return the selected child’s operation outcome. A child failure is a normal `wait_subagent` result; an unavailable child ID is a tool error. Their capability intersection, asynchronous lifecycle, persistence, and TUI behavior belong to [Subagents](subagents.md).
 
 ## Kana-owned state tools
 
@@ -221,7 +223,7 @@ Subagent spawning selects a predefined role card and returns a stable child ID; 
 
 `schedule_wake` validates a delay of 1–1440 minutes and a bounded non-empty message, then schedules through the host's in-process wake boundary. Optional `repeat: true` repeats at that interval until cancelled; omission creates a one-shot timer. `list_wakes` exposes only the current session's active timers, and `cancel_wake` stops a timer by its stable schedule ID without touching already delivered or queued messages. These tools and `update_goal` are available only when product composition supplies their required runtime capability. Delivery and Goal admission belong to [Conversation runtime](conversation-runtime.md).
 
-Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, `list_wakes`, `cancel_wake`, `update_goal`, `mcp_list_tools`, or `mcp_get_tool`. `delegate_user_task` always asks whether the user accepts the task, even in `never` mode; declining returns a normal result and leaves the work with the Agent. Other calls, including `mcp_call`, follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Shell commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `shell` and `job_start` share the same Shell allowlist, including exact command trust, read-only command recognition, and the persistent “Always allow this command” option. Approval is interactive authorization, not filesystem or process isolation.
+Kana never asks for approval for `spawn_subagent`, `wait_subagent`, `continue_subagent`, `cancel_subagent`, `todo_write`, `remember`, `schedule_wake`, `list_wakes`, `cancel_wake`, `update_goal`, `mcp_list_tools`, or `mcp_get_tool`. `delegate_user_task` always asks whether the user accepts the task, even in `never` mode; declining returns a normal result and leaves the work with the Agent. Other calls, including `mcp_call`, follow the configured `always`, `unless_trusted`, or `never` policy. Read-only built-ins and narrowly recognized read-only or exact allowlisted Shell commands may pass automatically in `unless_trusted`; third-party and MCP tools do not gain trust implicitly. `shell` and `job_start` share the same Shell allowlist, including exact command trust, read-only command recognition, and the persistent “Always allow this command” option. Approval is interactive authorization, not filesystem or process isolation.
 
 ## MCP and custom tools
 

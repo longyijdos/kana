@@ -123,6 +123,124 @@ describe("Kana subagent manager", () => {
     });
   });
 
+  test("continues retained children and enforces ownership and capacity", async () => {
+    const manager = new KanaSubagentManager();
+    const owner = { sessionId: "session-1", cwd: process.cwd(), persistent: false };
+    const client = manager.bind(manager.createOwner(owner), { maxLive: 1 });
+    const other = manager.bind(manager.createOwner(owner), { maxLive: 1 });
+    const followUp = deferred<KanaSubagentRunResult>();
+    const started = client.start({
+      profile: profile(),
+      task: "First question",
+      spawnToolCallId: "spawn",
+      run: async () => ({ ...result("first"), continuation: () => followUp.promise }),
+    });
+    expect(() => client.continue(started.id, "Too early")).toThrow("still running");
+    expect(() => other.continue(started.id, "Not my child")).toThrow("Unknown subagent");
+    await client.wait(started.id, { waitMs: 100 });
+
+    const blocker = deferred<KanaSubagentRunResult>();
+    const second = client.start({
+      profile: profile(),
+      task: "Occupy the slot",
+      spawnToolCallId: "blocker",
+      run: () => blocker.promise,
+    });
+    expect(() => client.continue(started.id, "Try later")).toThrow("Subagent limit reached");
+    blocker.resolve(result("finished"));
+    await client.wait(second.id, { waitMs: 100 });
+
+    expect(client.continue(started.id, "Second question")).toMatchObject({
+      id: started.id,
+      runNumber: 2,
+      status: "running",
+    });
+    expect(() => client.continue(started.id, "No queuing")).toThrow("still running");
+    await expect(client.wait(started.id)).resolves.toMatchObject({
+      runNumber: 2,
+      status: "running",
+      output: "",
+    });
+    followUp.resolve({
+      ...result("second run failed"),
+      status: "errored",
+      terminalReason: "error",
+    });
+    await expect(client.wait(started.id, { waitMs: 100 })).resolves.toMatchObject({
+      runNumber: 2,
+      status: "errored",
+      output: "second run failed",
+    });
+    expect(client.continue(started.id, "Explicitly try again")).toMatchObject({
+      id: started.id,
+      runNumber: 3,
+      status: "running",
+    });
+    await client.wait(started.id, { waitMs: 100 });
+    await client.close();
+    await manager.close();
+  });
+
+  test("continues a child cancelled before its first prompt without replaying that prompt", async () => {
+    const manager = new KanaSubagentManager();
+    const client = manager.bind(
+      manager.createOwner({ sessionId: "session-1", cwd: process.cwd(), persistent: false }),
+      { maxLive: 1 },
+    );
+    const inputs: string[] = [];
+    const { id } = client.start({
+      profile: profile(),
+      task: "Original prompt",
+      spawnToolCallId: "spawn",
+      run: async ({ message }) => {
+        inputs.push(message);
+        return result("done");
+      },
+    });
+    await expect(client.cancel(id, { source: "tool" })).resolves.toMatchObject({
+      status: "cancelled",
+    });
+    expect(inputs).toEqual([]);
+
+    client.continue(id, "New prompt");
+    await expect(client.wait(id, { waitMs: 100 })).resolves.toMatchObject({
+      runNumber: 2,
+      status: "completed",
+    });
+    expect(inputs).toEqual(["New prompt"]);
+    await manager.close();
+  });
+
+  test("does not start an admitted follow-up after its owner starts closing", async () => {
+    const manager = new KanaSubagentManager();
+    const client = manager.bind(
+      manager.createOwner({ sessionId: "session-1", cwd: process.cwd(), persistent: false }),
+      { maxLive: 1 },
+    );
+    let continued = false;
+    const started = client.start({
+      profile: profile(),
+      task: "First question",
+      spawnToolCallId: "spawn",
+      run: async () => ({
+        ...result("first"),
+        continuation: async () => {
+          continued = true;
+          return result("second");
+        },
+      }),
+    });
+    await client.wait(started.id, { waitMs: 100 });
+    client.continue(started.id, "Follow-up");
+    const closing = client.close();
+    const settled = client.wait(started.id, { waitMs: 100 });
+    await expect(settled).resolves.toMatchObject({ runNumber: 2, status: "cancelled" });
+    await closing;
+    expect(continued).toBe(false);
+    expect(() => client.continue(started.id, "Try again")).toThrow("Unknown subagent");
+    await manager.close();
+  });
+
   test("keeps waiters pending until explicit cancellation settles and isolates owners", async () => {
     const manager = new KanaSubagentManager();
     const firstOwner = manager.createOwner({

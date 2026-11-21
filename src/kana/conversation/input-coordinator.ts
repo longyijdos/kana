@@ -633,7 +633,7 @@ export class ConversationInputCoordinator {
     this.unsubscribeCompletions = this.completionSources.map((source) =>
       source.subscribe({
         settled: (completion) => this.queueCompletion(source.kind, completion),
-        observed: (id) => this.discardCompletion(source.kind, id),
+        observed: (id, runNumber) => this.discardCompletion(source.kind, id, runNumber),
       }),
     );
   }
@@ -646,7 +646,8 @@ export class ConversationInputCoordinator {
   private queueCompletion(kind: CompletionKind, completion: Completion): void {
     if (this.stopping || this.changingSession) return;
     const lane = this.options.canSteer() ? "next-step" : "next-turn";
-    const display = `${COMPLETION_LABELS[kind]} ${shortId(completion.id)} ${completion.outcome}`;
+    const run = completion.runNumber === undefined ? "" : ` run ${completion.runNumber}`;
+    const display = `${COMPLETION_LABELS[kind]} ${shortId(completion.id)}${run} ${completion.outcome}`;
     const { message, delivery } = createCompletionInput(kind, completion, display);
     this.agent.enqueueInput(message, lane, delivery);
     this.options.getLogger().info(`conversation.${COMPLETION_LOG_NAMES[kind]}_completion_queued`, {
@@ -658,10 +659,15 @@ export class ConversationInputCoordinator {
 
   // The owner already consumed this completion through a tool, so a queued
   // notification for it would be redundant.
-  private discardCompletion(kind: CompletionKind, id: string): void {
+  private discardCompletion(kind: CompletionKind, id: string, runNumber?: number): void {
     if (this.stopping || this.changingSession) return;
     for (const item of [...this.agent.inbox.nextStep, ...this.agent.inbox.nextTurn]) {
-      if (item.delivery.kind === kind && readCompletionId(item.delivery) === id) {
+      const provenance = item.message.provenance;
+      if (
+        item.delivery.kind === kind &&
+        readCompletionId(item.delivery) === id &&
+        (provenance.kind !== "subagent_completion" || provenance.runNumber === runNumber)
+      ) {
         this.agent.cancelInput(item.message.id);
       }
     }
@@ -687,13 +693,13 @@ export class ConversationInputCoordinator {
       provenance.kind === "job_completion"
         ? (["job", provenance.jobId] as const)
         : provenance.kind === "subagent_completion"
-          ? (["subagent", provenance.agentId] as const)
+          ? (["subagent", provenance.agentId, provenance.runNumber ?? 1] as const)
           : provenance.kind === "user_task_completion"
             ? (["user_task", provenance.taskId] as const)
             : undefined;
     if (completed === undefined) return;
-    const [kind, id] = completed;
-    this.completionSources.find((source) => source.kind === kind)?.observe(id);
+    const [kind, id, runNumber] = completed;
+    this.completionSources.find((source) => source.kind === kind)?.observe(id, runNumber);
   }
 
   private emitQueueChanged(): void {
@@ -732,14 +738,19 @@ function formatBackgroundJobCompletion(job: BackgroundJobSummary): string {
 function formatSubagentCompletion(subagent: KanaSubagentSummary): string {
   return [
     "[Subagent completion]",
-    `Subagent ${subagent.id} (${subagent.profile}) reached ${subagent.status}.`,
-    "Use wait_subagent to consume its final result before deciding the next action.",
+    `Subagent ${subagent.id} (${subagent.profile}) run ${subagent.runNumber} reached ${subagent.status}.`,
+    "Use wait_subagent to read its latest result before deciding the next action.",
   ].join("\n");
 }
 
 type CompletionKind = "job" | "subagent" | "user_task";
 
-type Completion = { readonly id: string; readonly outcome: string; readonly content: string };
+type Completion = {
+  readonly id: string;
+  readonly outcome: string;
+  readonly content: string;
+  readonly runNumber?: number;
+};
 
 // A producer of asynchronous results that are reported back to the Agent as
 // queued input. `observed` fires when the owner consumed a result directly.
@@ -747,9 +758,9 @@ type CompletionSource = {
   readonly kind: CompletionKind;
   subscribe(handlers: {
     settled(completion: Completion): void;
-    observed(id: string): void;
+    observed(id: string, runNumber?: number): void;
   }): () => void;
-  observe(id: string): void;
+  observe(id: string, runNumber?: number): void;
 };
 
 const COMPLETION_LABELS: Record<CompletionKind, string> = {
@@ -770,17 +781,19 @@ const COMPLETION_ID_FIELDS: Record<CompletionKind, string> = {
   user_task: "taskId",
 };
 
-function ownedTaskCompletions<TSummary extends { readonly id: string; readonly status: string }>(
+function ownedTaskCompletions<
+  TSummary extends { readonly id: string; readonly status: string; readonly runNumber?: number },
+>(
   kind: CompletionKind,
   client: {
     subscribe(listener: (event: OwnedTaskEvent<unknown, TSummary>) => void): () => void;
-    observe(id: string): void;
+    observe(id: string, runNumber?: number): void;
   },
   format: (summary: TSummary) => string,
 ): CompletionSource {
   return {
     kind,
-    observe: (id) => client.observe(id),
+    observe: (id, runNumber) => client.observe(id, runNumber),
     subscribe: (handlers) =>
       client.subscribe((event) => {
         if (event.type === "settled") {
@@ -788,9 +801,10 @@ function ownedTaskCompletions<TSummary extends { readonly id: string; readonly s
             id: event.task.id,
             outcome: event.task.status,
             content: format(event.task),
+            runNumber: event.task.runNumber,
           });
         } else if (event.type === "observed") {
-          handlers.observed(event.task.id);
+          handlers.observed(event.task.id, event.task.runNumber);
         }
       }),
   };
@@ -818,7 +832,7 @@ function userTaskCompletions(tasks: KanaUserTaskManager): CompletionSource {
 
 function createCompletionInput(
   kind: CompletionKind,
-  { id, content }: Completion,
+  { id, content, runNumber }: Completion,
   displayContent: string,
 ): { message: UserMessage; delivery: AgentInputDelivery } {
   switch (kind) {
@@ -831,7 +845,7 @@ function createCompletionInput(
       return {
         message: createUserMessage({
           content,
-          provenance: { kind: "subagent_completion", agentId: id },
+          provenance: { kind: "subagent_completion", agentId: id, runNumber },
         }),
         delivery: { kind, displayContent, agentId: id },
       };

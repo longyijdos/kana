@@ -159,7 +159,7 @@ timeout_ms = 60000
 max_retries = 1
 
 [agent]
-tools = ["list","glob","grep","read","view_image","write","edit","shell","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","cancel_subagent","todo_write","delegate_user_task","remember","schedule_wake","list_wakes","cancel_wake","mcp_list_tools","mcp_get_tool","mcp_call"]
+tools = ["list","glob","grep","read","view_image","write","edit","shell","job_start","job_list","job_output","job_kill","spawn_subagent","wait_subagent","continue_subagent","cancel_subagent","todo_write","delegate_user_task","remember","schedule_wake","list_wakes","cancel_wake","mcp_list_tools","mcp_get_tool","mcp_call"]
 codemode = "off"
 run_code_deadline_ms = 900000
 web_search = true

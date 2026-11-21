@@ -480,7 +480,7 @@ describe("ConversationRuntime", () => {
     await waitFor(() => model.contexts.length === 2);
     expect(model.contexts[1]?.messages.at(-1)).toMatchObject({
       role: "user",
-      provenance: { kind: "subagent_completion", agentId: subagent.id },
+      provenance: { kind: "subagent_completion", agentId: subagent.id, runNumber: 1 },
       content: expect.stringContaining("reached completed"),
     });
     model.finish(1, "Completion handled.");
@@ -590,7 +590,7 @@ describe("ConversationRuntime", () => {
     await waitFor(() => model.contexts.length === 3);
     expect(model.contexts[2]?.messages).toContainEqual(
       expect.objectContaining({
-        provenance: { kind: "subagent_completion", agentId: subagent.id },
+        provenance: { kind: "subagent_completion", agentId: subagent.id, runNumber: 1 },
       }),
     );
     expect(latestRuntimeContext(model.contexts[2], "subagents")).toContain('status="inactive"');

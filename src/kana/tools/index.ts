@@ -4,6 +4,7 @@ export { createRememberTool } from "./remember";
 export { createCancelWakeTool, createListWakesTool, createScheduleWakeTool } from "./schedule-wake";
 export {
   createCancelSubagentTool,
+  createContinueSubagentTool,
   createSpawnSubagentTool,
   createWaitSubagentTool,
 } from "./subagents";

@@ -1,6 +1,6 @@
 # Subagent
 
-Kana 支持有界、异步、一次性的 subagent，并且只能从预定义角色卡中选择。Conversation Agent 可以委派任务后继续工作，稍后再查看或等待 child 结果。任意 prompt 不能创建不受约束的角色：每次 spawn 都必须指定当前有效的、来自用户角色卡的 profile。
+Kana 支持有界、异步的 subagent，并且只能从预定义角色卡中选择。Conversation Agent 可以委派任务后继续工作，稍后再查看或等待 child 结果。任意 prompt 不能创建不受约束的角色：每次 spawn 都必须指定当前有效的、来自用户角色卡的 profile。
 
 ## Profile
 
@@ -16,6 +16,8 @@ tools:
   - shell
 model: openai-codex/gpt-5.6-terra
 reasoning_effort: high
+max_output_tokens: 8192
+context_limit: 65536
 ---
 Review the delegated migration. Report correctness risks with file references.
 Do not modify files.
@@ -25,30 +27,35 @@ Do not modify files.
 
 `description` 和非空指令正文是必填项，`tools` 也可以写成 inline array。`model` 可选，默认 `inherit`；显式值采用 `<provider>/<model>`。只有显式指定 model 时才能设置 `reasoning_effort`。未知 frontmatter 字段或无效值会让整张角色卡失效。
 
+`max_output_tokens` 和 `context_limit` 是可选的正整数，分别覆盖子代理的两项预算。未填的预算在省略 `model` 或设为 `inherit` 时跟随主 Agent；显式指定 `model` 时取所选模型的 metadata。实际预算不会超过该模型的输出上限和上下文窗口。
+
 无效的角色卡永远不会加载：Kana 会报告一条 diagnostic，该名称保持不可用，其它角色卡不受影响。产品 Host 在启动时只加载一次 profile 和 diagnostics；主 Agent 的动态工具面与 `/agents` 共用这份快照，因此直接编辑 profile 需要重启才会生效。Spawn 还会记录所选角色卡的完整内容与 digest，使 journal 保留 child 实际使用的准确角色。
 
 ## 能力与审批边界
 
-Host 从 conversation 的已校验 Agent 配置中派生 child 的模型和能力上限，但不传递 prompt 内容。角色卡显式指定 model 时只替换模型选择，否则继承当前模型。角色卡工具列表只能缩小有效能力：
+Host 从 conversation 的已校验 Agent 配置中派生 child 的模型和能力上限，但不传递 prompt 内容。角色卡可按上面的规则覆盖模型及其预算。角色卡工具列表只能缩小有效能力：
 
 - 工作区工具必须同时被 `agent.tools` 和角色卡允许；
 - MCP 入口必须同时被 `agent.tools` 与角色卡允许；`mcp_list_tools`、`mcp_get_tool` 与 `mcp_call` 覆盖全部当前已启用、经过过滤的 MCP 能力，不提供逐 server 或逐远端工具权限；
-- child Agent 永远不会获得 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、Background Job、todo、Goal、memory 或 scheduled-wake 工具；
+- child Agent 永远不会获得 `spawn_subagent`、`wait_subagent`、`continue_subagent`、`cancel_subagent`、Background Job、todo、Goal、memory 或 scheduled-wake 工具；
 - child 继承 `agent.tool_result_artifacts` 和结果大小预算；过大的非 `read` 文本保存为 child 自己的 artifact，而不是写入 parent 对话的 artifact 目录。存储与清理见[会话与记忆](sessions-and-memory.zh-CN.md)。
 
 角色卡正文是 child 的完整 system prompt，任务是它的 user message。它的 runtime-context section 列表为空：不会接收 Kana 默认 prompt、环境上下文、AGENTS.md、memory、Skills、Host 实时状态、parent 对话消息或继承 checkpoint。主 Agent 必须通过 `task` 参数提供任务所需的全部事实、约束、路径和预期结果。Child 使用普通审批 hook，因此角色卡不能弱化 `approval.mode` 或 Shell/MCP 审批规则。TUI 按 FIFO 串行处理同时到达的 main/child 审批请求，并用准确的 profile 与短 Agent 身份标记 child 提示。
 
 ## 生命周期与工具
 
-每个托管 session 实例持有一个 `KanaSubagentClient`。`agent.subagents.max_live` 限制其同时运行的 child 数量，终态记录不计入上限。主 Agent 获得三个 parallel-safe 控制工具：
+每个托管 session 实例持有一个 `KanaSubagentClient`。`agent.subagents.max_live` 限制其同时运行的 child 数量，已结束的运行不计入上限。主 Agent 获得四个 parallel-safe 控制工具：
 
 | 工具 | 行为 |
 | --- | --- |
 | `spawn_subagent(profile, task)` | 校验指定 profile，启动一个 child，并立即返回 `agentId`。 |
-| `wait_subagent(agentId, timeoutMs?)` | 返回当前或终态状态与输出；每次最多等待 30 秒，超时不会取消。 |
+| `wait_subagent(agentId, timeoutMs?)` | 返回最近一轮的轮次、状态与输出；每次最多等待 30 秒，超时不会取消。 |
+| `continue_subagent(agentId, message)` | 为仍被保留且上一轮已结算的 child 开启下一轮，沿用同一 ID、已提交的历史与 checkpoint，并立即返回新轮次。 |
 | `cancel_subagent(agentId, reason?)` | 中止一个所属的活动 child，并等待它结算。 |
 
-Parent runtime context 只投影活动和未观察终态 child 的身份、profile 与状态，不包含任务正文或输出。完成、报错和取消会像 Background Job completion 一样为 parent 排入一条有界通知；parent 使用 `wait_subagent` 消费结果。返回终态的 `wait_subagent` 会确认 completion，并移除仍在等待的通知。`cancel_subagent` 也会确认结果，而 TUI 发起的取消不会确认。Child 失败会产生 `errored` 结果，不会自动让 parent 失败。Spawn 成功后，child 与发起 spawn 的 tool invocation 和 parent turn 相互独立；它会继续运行，直到自然结束、被显式取消、session 被替换或删除，或者进程 shutdown。Session disposal 会等待其拥有的全部 child 结算。
+Parent runtime context 只投影活动和未观察终态 child 的身份、轮次、profile 与状态，不包含任务正文或输出。完成、报错和取消会像 Background Job completion 一样为 parent 排入一条有界通知；parent 使用 `wait_subagent` 消费结果。返回终态的 `wait_subagent` 会确认这一轮，并移除仍在等待的对应通知。开始下一轮会替换上一轮的结果，并清除上一轮仍在等待的通知。`cancel_subagent` 也会确认结果，而 TUI 发起的取消不会确认。Child 失败会产生 `errored` 结果，不会自动让 parent 失败。Spawn 成功后，child 与发起 spawn 的 tool invocation 和 parent turn 相互独立；它会继续运行，直到自然结束、被显式取消、session 被替换或删除，或者进程 shutdown。Session disposal 会等待其拥有的全部 child 结算。
+
+只有同一个托管 session 实例能续跑 child，新一轮计入 `max_live`。Manager 最多保留 32 个最近一轮已结束的 child。`continue_subagent` 接受 `completed`、`errored` 和 `cancelled`，不区分取消来源。仍在运行或不再保留的 child 不能续跑。不排队、不自动重试，也不重放之前的工具调用。
 
 ## 持久化、TUI 与 accounting
 
@@ -58,9 +65,9 @@ Parent runtime context 只投影活动和未观察终态 child 的身份、profi
 <KANA_HOME>/sessions/<encoded-workspace>/.subagents/<parent-session-id>/<timestamp>_<child-id>.jsonl
 ```
 
-它复用 session turn record 格式，但 header 额外包含 parent ID、spawn tool-call ID 与完整 profile 快照。这些文件是用于调试、审计、accounting 与未来历史浏览的持久化日志；它们不是 runtime manager state、普通可恢复 session，也不会出现在 `/resume`。新的 Kana 进程绝不会把这些文件恢复进 `KanaSubagentManager`。Fork parent 不复制 child journal 或其 artifact；删除 parent 会移除完整 child-journal 目录和 child-artifact 子树。Child 结束或 Kana 退出后，其 artifact 仍保留。
+同一 child 的各轮都追加到同一份 journal。它复用 session turn record 格式，但 header 额外包含 parent ID、spawn tool-call ID 与完整 profile 快照。这些文件是用于调试、审计、accounting 与未来历史浏览的持久化日志；它们不是 runtime manager state、普通可恢复 session，也不会出现在 `/resume`。新的 Kana 进程绝不会把这些文件恢复进 `KanaSubagentManager`。Fork parent 不复制 child journal 或其 artifact；删除 parent 会移除完整 child-journal 目录和 child-artifact 子树。Child 结束或 Kana 退出后，其 artifact 仍保留。
 
-主 Agent 运行期间也可使用 `/agents`。面板显示启动时 profile 快照，以及当前 hosted session instance 中活动和仍被保留的终态 record；方向键选择，`Enter` 打开当前进程内的最新进展快照，`K` 取消活动 child 但不确认其 completion，`R` 刷新选中 child 的预览。在详情中按 `Esc` 会返回列表并保留选中项；在列表中按 `Esc` 才关闭面板。启动时的无效 profile 诊断也会显示在面板中。退出 Kana 会丢弃这些 runtime state；以后恢复 parent session 时不会从 child journal 重新填充。
+主 Agent 运行期间也可使用 `/agents`。面板显示启动时 profile 快照，以及当前 hosted session instance 中活动和仍被保留的终态 record 及其最新轮次；方向键选择，`Enter` 打开当前进程内的最新进展快照，`K` 取消活动 child 但不确认其 completion，`R` 刷新选中 child 的预览。在详情中按 `Esc` 会返回列表并保留选中项；在列表中按 `Esc` 才关闭面板。启动时的无效 profile 诊断也会显示在面板中。退出 Kana 会丢弃这些 runtime state；以后恢复 parent session 时不会从 child journal 重新填充。
 
 打开面板、选择 child、刷新或进入详情时，都会按需读取一次快照。运行中的 child 直接从内存提供 Agent 已提交的消息和正在生成的 assistant 消息；已结算的 child 使用保留的最终 transcript。现有 child 生命周期事件仍会刷新打开的面板，但没有逐 token 更新或轮询。详情与预览复用现有 Markdown 和工具组件：隐藏 thinking，工具只显示状态和目标，省略参数与输出。运行错误显示在进展视图末尾，即使尚未产生 assistant 回复也能看到。快照中的工具行不显示实时计时或中止快捷键。预览显示这份进展视图的最后几行可见内容。查看 child 不会确认其 completion，也不会改变 `wait_subagent` 的输出。
 

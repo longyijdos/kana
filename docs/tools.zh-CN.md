@@ -138,7 +138,8 @@ Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回
 | `job_output` | `jobId`、可选 `waitMs` | 从 Agent cursor 消费全部当前未读保留输出，并报告丢弃字节数。 |
 | `job_kill` | `jobId`、可选 `reason` | 停止所属 Job 并等待其进程组静止。 |
 | `spawn_subagent` | `profile`、`task` | 启动一个预定义的 session-owned child，并立即返回 Agent ID。 |
-| `wait_subagent` | `agentId`、可选 `timeoutMs` | 读取或短暂等待所属 child 的状态与最终输出。 |
+| `wait_subagent` | `agentId`、可选 `timeoutMs` | 读取或短暂等待所属 child 的最新一轮。 |
+| `continue_subagent` | `agentId`、`message` | 为仍被保留且上一轮已结算的 child 启动下一轮。 |
 | `cancel_subagent` | `agentId`、可选 `reason` | 取消所属 child 并等待结算。 |
 | `todo_write` | 完整 todo item 数组 | 原子替换或显式清空 session todo 状态。 |
 | `delegate_user_task` | 具体的 `task` 文本 | 邀请用户并行处理任务；接受后创建进程内任务 ID。 |
@@ -151,7 +152,7 @@ Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回
 | `mcp_get_tool` | `server`、`tool` | 读取远端工具缓存的 input schema 与可选 output schema。 |
 | `mcp_call` | `server`、`tool`、`arguments` | 校验远端 input schema 并调用所选工具。 |
 
-`list`、`glob`、`grep`、`read`、`view_image`、`mcp_list_tools`、`mcp_get_tool` 与三个 subagent 控制工具声明为 `parallel`。写入、Shell、记忆、调度、Goal 更新以及未声明第三方/MCP 工具都是 `exclusive`。
+`list`、`glob`、`grep`、`read`、`view_image`、`mcp_list_tools`、`mcp_get_tool` 与 subagent 控制工具声明为 `parallel`。写入、Shell、记忆、调度、Goal 更新以及未声明第三方/MCP 工具都是 `exclusive`。
 
 下表列出全部内置业务工具成功调用的公开结果契约。实际注册取决于工具配置与可用能力。`run_code` 由 codemode 动态生成，其结果契约见上文 Codemode 章节。
 
@@ -170,7 +171,8 @@ Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回
 | `job_output` | `{ status, chunks, droppedBytes, waitTimedOut, exitCode }` |
 | `job_kill` | `{ status, exitCode }` |
 | `spawn_subagent` | `{ agentId, status }` |
-| `wait_subagent` | `{ status, output, error?, terminalReason?, waitTimedOut }` |
+| `wait_subagent` | `{ status, runNumber?, output, error?, terminalReason?, waitTimedOut }` |
+| `continue_subagent` | `{ agentId, runNumber, status: "running" }` |
 | `cancel_subagent` | `{ status, terminalReason? }` |
 | `todo_write` | `{ status: "updated" \| "cleared" }` |
 | `delegate_user_task` | `{ status: "accepted", taskId }` |
@@ -211,7 +213,7 @@ Factory 直接返回包提供的沙箱，不改变结果格式。成功时返回
 
 Kana 把活动或尚未报告 Job 的身份、有界 label、cwd、状态和 exit code 投影到 runtime context，永不包含输出。完成 steering、排队 run 投递、确认与 session 切换顺序归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Subagent 启动时选择预定义角色卡并返回稳定 child ID；等待和取消返回所选 child 的操作结果。子代理执行失败是 `wait_subagent` 的正常结果；查不到 child ID 才是工具错误。其能力交集、异步生命周期、持久化与 TUI 行为见 [Subagent](subagents.zh-CN.md)。
+Subagent 启动时选择预定义角色卡并返回稳定 child ID；续跑会启动新一轮，等待和取消返回所选 child 的操作结果。子代理执行失败是 `wait_subagent` 的正常结果；查不到 child ID 才是工具错误。其能力交集、异步生命周期、持久化与 TUI 行为见 [Subagent](subagents.zh-CN.md)。
 
 ## Kana 自有状态工具
 
@@ -221,7 +223,7 @@ Subagent 启动时选择预定义角色卡并返回稳定 child ID；等待和�
 
 `schedule_wake` 校验 1–1440 分钟延迟和有界非空消息，再通过 Host 进程内 wake 边界安排。可选 `repeat: true` 按该间隔重复直到取消，省略时创建一次性定时器。`list_wakes` 只列出当前 session 的活动定时器；`cancel_wake` 通过稳定计划 ID 停止定时器，不影响已送达或排队的消息。这些工具与 `update_goal` 只在产品装配提供所需 runtime capability 时可用。投递与 Goal admission 归[对话运行时](conversation-runtime.zh-CN.md)所有。
 
-Kana 永不为 `spawn_subagent`、`wait_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`list_wakes`、`cancel_wake`、`update_goal`、`mcp_list_tools` 或 `mcp_get_tool` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Shell 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`shell` 与 `job_start` 共用同一份 Shell allowlist，包括精确命令信任、只读命令识别和持久化的“Always allow this command”选项。审批是交互授权，不是文件系统或进程隔离。
+Kana 永不为 `spawn_subagent`、`wait_subagent`、`continue_subagent`、`cancel_subagent`、`todo_write`、`remember`、`schedule_wake`、`list_wakes`、`cancel_wake`、`update_goal`、`mcp_list_tools` 或 `mcp_get_tool` 请求审批。`delegate_user_task` 始终询问用户是否接受任务，包括 `never` 模式；拒绝会返回正常结果，任务仍由 Agent 完成。其它调用（包括 `mcp_call`）遵循配置的 `always`、`unless_trusted` 或 `never`。在 `unless_trusted` 中，只读内置工具以及经过严格识别的只读或精确 allowlist Shell 命令可以自动通过；第三方和 MCP 工具不会隐式获得信任。`shell` 与 `job_start` 共用同一份 Shell allowlist，包括精确命令信任、只读命令识别和持久化的“Always allow this command”选项。审批是交互授权，不是文件系统或进程隔离。
 
 ## MCP 与自定义工具
 

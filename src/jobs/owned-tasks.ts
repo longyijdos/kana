@@ -102,6 +102,21 @@ export class OwnedTaskRegistry<TOwner extends TaskOwner, TSummary extends TaskSu
     return task;
   }
 
+  restart(
+    previous: OwnedTask<TOwner, TSummary, TState>,
+    summary: TSummary,
+    state: TState,
+  ): OwnedTask<TOwner, TSummary, TState> {
+    const record = previous as TaskRecord<TOwner, TSummary, TState>;
+    const wasObserved = record.observed;
+    record.observed = true;
+    const next = this.add(record.owner, summary, state, record.logger);
+    if (!wasObserved) {
+      this.emit({ type: "observed", owner: record.owner, task: record.summary });
+    }
+    return next;
+  }
+
   find(owner: TOwner, id: string): OwnedTask<TOwner, TSummary, TState> | undefined {
     const task = this.tasks.get(id);
     return task?.owner === owner ? task : undefined;
@@ -254,7 +269,7 @@ export class OwnedTaskRegistry<TOwner extends TaskOwner, TSummary extends TaskSu
         task.observed = true;
         this.emit({ type: "observed", owner: task.owner, task: task.summary });
       }
-      this.tasks.delete(task.summary.id);
+      if (this.tasks.get(task.summary.id) === task) this.tasks.delete(task.summary.id);
     }
   }
 

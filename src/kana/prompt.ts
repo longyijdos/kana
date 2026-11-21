@@ -154,6 +154,7 @@ function formatSubagentContext(visible: readonly KanaSubagentSummary[]): PromptC
     content: JSON.stringify({
       subagents: visible.map((subagent) => ({
         id: subagent.id,
+        runNumber: subagent.runNumber,
         profile: subagent.profile,
         status: subagent.status,
         terminalReason: subagent.terminalReason,

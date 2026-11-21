@@ -174,7 +174,14 @@ describe("Kana Agent tools", () => {
       createKanaAgent(
         {
           ...config.agent,
-          tools: ["read", "spawn_subagent", "wait_subagent", "cancel_subagent", "mcp_call"],
+          tools: [
+            "read",
+            "spawn_subagent",
+            "wait_subagent",
+            "continue_subagent",
+            "cancel_subagent",
+            "mcp_call",
+          ],
         },
         { providers: config.provider },
         {
@@ -190,6 +197,7 @@ describe("Kana Agent tools", () => {
     expect(agent.state.tools.find((tool) => tool.name === "spawn_subagent")?.description).toContain(
       "- explorer: Explore the repository Available tools: read, mcp_call.",
     );
+    expect(agent.state.tools.map((tool) => tool.name)).toContain("continue_subagent");
   });
 
   test("omits subagent tools while no profile is configured", () => {
@@ -207,7 +215,13 @@ describe("Kana Agent tools", () => {
       createKanaAgent(
         {
           ...config.agent,
-          tools: ["read", "spawn_subagent", "wait_subagent", "cancel_subagent"],
+          tools: [
+            "read",
+            "spawn_subagent",
+            "wait_subagent",
+            "continue_subagent",
+            "cancel_subagent",
+          ],
         },
         { providers: config.provider },
         {

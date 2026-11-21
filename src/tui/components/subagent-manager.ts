@@ -109,7 +109,7 @@ export class SubagentManager implements Component {
       for (let index = window.start; index < window.end; index += 1) {
         const subagent = this.subagents[index] as KanaSubagentSummary;
         const selected = index === this.viewport.selectedIndex;
-        const line = `${selected ? "> " : "  "}${shortId(subagent.id)} · ${subagent.profile} · ${subagent.status} · ${singleLine(subagent.label)}`;
+        const line = `${selected ? "> " : "  "}${shortId(subagent.id)} · ${subagent.profile} · run ${subagent.runNumber} · ${subagent.status} · ${singleLine(subagent.label)}`;
         lines.push(truncateToWidth(color(line, selected ? tuiTheme.user : tuiTheme.muted), width));
       }
       if (window.hiddenAfter > 0) {

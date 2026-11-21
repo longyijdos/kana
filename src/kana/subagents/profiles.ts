@@ -24,6 +24,8 @@ export type KanaSubagentProfile = {
     readonly name: string;
     readonly reasoningEffort?: string;
   };
+  readonly maxOutputTokens?: number;
+  readonly contextLimit?: number;
   readonly sourcePath?: string;
   readonly digest: string;
 };
@@ -86,7 +88,14 @@ export function loadKanaSubagentProfiles(
   };
 }
 
-const PROFILE_FIELDS = new Set(["description", "tools", "model", "reasoning_effort"]);
+const PROFILE_FIELDS = new Set([
+  "description",
+  "tools",
+  "model",
+  "reasoning_effort",
+  "max_output_tokens",
+  "context_limit",
+]);
 
 function parseProfile(name: string, content: string, filePath: string): KanaSubagentProfile {
   if (!isKanaResourceName(name)) {
@@ -126,6 +135,8 @@ function parseProfile(name: string, content: string, filePath: string): KanaSuba
     instructions,
     tools: [...new Set(tools)],
     ...(model === undefined ? {} : { model }),
+    maxOutputTokens: readPositiveInteger(fields, "max_output_tokens"),
+    contextLimit: readPositiveInteger(fields, "context_limit"),
     sourcePath: filePath,
   });
 }
@@ -136,6 +147,16 @@ function readScalar(fields: FrontmatterFields, key: string): string | undefined 
     throw new Error(`${key} must be a single value`);
   }
   return value as string | undefined;
+}
+
+function readPositiveInteger(fields: FrontmatterFields, key: string): number | undefined {
+  const raw = readScalar(fields, key);
+  if (raw === undefined) return undefined;
+  const value = Number(raw);
+  if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < 1) {
+    throw new Error(`${key} must be a positive integer`);
+  }
+  return value;
 }
 
 function readTools(value: string | readonly string[] | undefined): readonly string[] {
@@ -183,6 +204,8 @@ function withDigest(profile: Omit<KanaSubagentProfile, "digest">): KanaSubagentP
         instructions: profile.instructions,
         tools: profile.tools,
         model: profile.model,
+        maxOutputTokens: profile.maxOutputTokens,
+        contextLimit: profile.contextLimit,
       }),
     )
     .digest("hex");

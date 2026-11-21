@@ -48,6 +48,7 @@ export function shouldRequestToolApproval(
     toolCall.name === "update_goal" ||
     toolCall.name === "spawn_subagent" ||
     toolCall.name === "wait_subagent" ||
+    toolCall.name === "continue_subagent" ||
     toolCall.name === "cancel_subagent"
   ) {
     return false;

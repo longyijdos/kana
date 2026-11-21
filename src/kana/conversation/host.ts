@@ -640,23 +640,20 @@ export class KanaConversationHost<TConfiguration = never> {
     parentConfig: KanaConfig,
     logger: Logger,
   ): Promise<KanaSubagentRunResult> {
-    const { model } = context.profile;
+    const { model, maxOutputTokens, contextLimit } = context.profile;
+    const baseModel: KanaConfig["agent"]["model"] = model ?? parentConfig.agent.model;
     const config: KanaConfig = {
       ...parentConfig,
       agent: {
         ...parentConfig.agent,
-        ...(model === undefined
-          ? {}
-          : {
-              model: {
-                provider: model.provider,
-                name: model.name,
-                reasoningEffort: model.reasoningEffort,
-              },
-            }),
+        model: {
+          ...baseModel,
+          maxOutputTokens: maxOutputTokens ?? baseModel.maxOutputTokens,
+          contextLimit: contextLimit ?? baseModel.contextLimit,
+        },
       },
     };
-    let terminalReason: KanaSubagentRunResult["terminalReason"];
+    let latestTurn: { terminalReason?: KanaSubagentRunResult["terminalReason"] } = {};
     const journal = createKanaSubagentJournal({
       agentId: context.agentId,
       owner: context.owner,
@@ -687,7 +684,7 @@ export class KanaConversationHost<TConfiguration = never> {
         profileName: context.profile.name,
       }),
       onRunCommitted: ({ messages, compactions, state, event }) => {
-        terminalReason = event.reason;
+        latestTurn.terminalReason = event.reason;
         if (!context.owner.persistent) return;
         recordAccounting(logger, "subagent_run", {
           sessionId: context.owner.sessionId,
@@ -700,52 +697,67 @@ export class KanaConversationHost<TConfiguration = never> {
         });
       },
     });
-    context.setLiveSnapshot(() => {
-      const state = agent.state;
-      return {
-        messages: [...state.messages, ...(state.streamingMessage ? [state.streamingMessage] : [])],
-        model: { provider: state.model.metadata.provider, model: state.model.metadata.model },
-      };
-    });
-    const abort = (): void => agent.abort();
-    context.signal.addEventListener("abort", abort, { once: true });
-    if (context.signal.aborted) agent.abort();
-    try {
-      await agent.prompt(context.task);
-      const messages = agent.state.messages;
-      return {
-        status:
-          context.signal.aborted || terminalReason === "aborted"
+    const run: NonNullable<KanaSubagentRunResult["continuation"]> = async ({
+      message,
+      signal,
+      setLiveSnapshot,
+    }) => {
+      latestTurn = {};
+      const { provider, model: modelName } = agent.state.model.metadata;
+      const model = { provider, model: modelName };
+      const startIndex = agent.state.messages.length;
+      setLiveSnapshot(() => {
+        const state = agent.state;
+        return {
+          messages: [
+            ...state.messages,
+            ...(state.streamingMessage ? [state.streamingMessage] : []),
+          ],
+          model,
+        };
+      });
+      const abort = (): void => agent.abort();
+      signal.addEventListener("abort", abort, { once: true });
+      try {
+        signal.throwIfAborted();
+        await agent.prompt(message);
+        await agent.waitForIdle();
+        const { terminalReason } = latestTurn;
+        const messages = agent.state.messages;
+        const status =
+          signal.aborted || terminalReason === "aborted"
             ? "cancelled"
             : terminalReason === "error"
               ? "errored"
-              : "completed",
-        output: finalOutput(messages),
-        messages,
-        model: {
-          provider: agent.state.model.metadata.provider,
-          model: agent.state.model.metadata.model,
-        },
-        terminalReason,
-      };
-    } catch (error) {
-      const messages = agent.state.messages;
-      return {
-        status: context.signal.aborted ? "cancelled" : "errored",
-        output: finalOutput(messages),
-        messages,
-        model: {
-          provider: agent.state.model.metadata.provider,
-          model: agent.state.model.metadata.model,
-        },
-        terminalReason,
-        error: formatError(error),
-      };
-    } finally {
-      context.signal.removeEventListener("abort", abort);
-      agent.abort();
-      await agent.waitForIdle();
-    }
+              : "completed";
+        return {
+          status,
+          output: finalOutput(messages.slice(startIndex)),
+          messages,
+          model,
+          terminalReason,
+          continuation: run,
+        };
+      } catch (error) {
+        const messages = agent.state.messages;
+        return {
+          status: signal.aborted ? "cancelled" : "errored",
+          output: finalOutput(messages.slice(startIndex)),
+          messages,
+          model,
+          terminalReason: latestTurn.terminalReason,
+          error: formatError(error),
+          continuation: run,
+        };
+      } finally {
+        signal.removeEventListener("abort", abort);
+      }
+    };
+    return run({
+      message: context.message,
+      signal: context.signal,
+      setLiveSnapshot: context.setLiveSnapshot,
+    });
   }
 
   private createMemoryConsolidation(config: KanaConfig): MemoryConsolidationScheduler | undefined {

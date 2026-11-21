@@ -116,6 +116,7 @@ describe("Kana tool approval", () => {
     for (const name of [
       "spawn_subagent",
       "wait_subagent",
+      "continue_subagent",
       "cancel_subagent",
       "list_wakes",
       "cancel_wake",

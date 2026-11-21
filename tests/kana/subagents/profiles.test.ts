@@ -27,6 +27,8 @@ describe("Kana subagent profiles", () => {
         "  - github_create_issue",
         "model: custom:custom/local-worker",
         "reasoning_effort: high",
+        "max_output_tokens: 4096",
+        "context_limit: 32768",
         "---",
         "Follow the delegated task and return evidence.",
         "",
@@ -44,9 +46,36 @@ describe("Kana subagent profiles", () => {
       instructions: "Follow the delegated task and return evidence.",
       tools: ["read", "github_create_issue"],
       model: { provider: "custom:custom", name: "local-worker", reasoningEffort: "high" },
+      maxOutputTokens: 4096,
+      contextLimit: 32768,
       sourcePath: path.join(directory, "worker.md"),
     });
     expect(worker?.digest).toHaveLength(64);
+  });
+
+  test.each([
+    ["max_output_tokens", "0"],
+    ["max_output_tokens", "-1"],
+    ["context_limit", "1.5"],
+    ["context_limit", "9007199254740993"],
+    ["context_limit", "unknown"],
+  ])("rejects invalid budget %s: %s", (field, value) => {
+    const env = createTempEnv();
+    const directory = getKanaConfigPaths(env).agentsDirectory;
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      path.join(directory, "worker.md"),
+      `---\ndescription: Worker\n${field}: ${value}\n---\nDo the work.\n`,
+    );
+
+    const loaded = loadKanaSubagentProfiles({ env });
+    expect(loaded.profiles).toEqual([]);
+    expect(loaded.diagnostics).toEqual([
+      expect.objectContaining({
+        code: "invalid_profile",
+        message: expect.stringContaining(`${field} must be a positive integer`),
+      }),
+    ]);
   });
 
   test("keeps an invalid card unavailable and reports a diagnostic", () => {
