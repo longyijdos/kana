@@ -125,9 +125,7 @@ describe("tui history transcript", () => {
 
     const lines = transcript.render(100).map(stripAnsi);
 
-    expect(lines).toContain(
-      "| > show package                                                                                   |",
-    );
+    expect(lines).toContain("> show package");
     expect(lines).toContain("I'll inspect it.");
     expect(lines.some((line) => line.includes("Working ("))).toBe(false);
     expect(lines).toContain("◆ Read · 13 ms");

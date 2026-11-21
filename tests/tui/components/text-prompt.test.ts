@@ -47,13 +47,14 @@ describe("text prompt", () => {
       onCancel: () => {},
     });
 
-    prompt.handleInput("\x1b[200~first\r\n");
+    prompt.handleInput("\x1b[200~first\t\r\n");
     prompt.handleInput("second\x1b[201~");
+    expect(stripAnsi(prompt.render(40).join("\n"))).toContain("> first␉");
     prompt.handleInput("\x1b[13;2u");
     prompt.handleInput("third");
     prompt.handleInput("\r");
 
-    expect(submitted).toEqual(["first\nsecond\nthird"]);
+    expect(submitted).toEqual(["first\t\nsecond\nthird"]);
   });
 
   test("shares configurable long-paste collapsing with the main editor", () => {

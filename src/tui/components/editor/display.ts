@@ -1,3 +1,4 @@
+import { showControlCharacters } from "../../render";
 import {
   type CollapsedPaste,
   type EditorDisplayPaste,
@@ -29,7 +30,7 @@ export function createEditorDisplayState(state: EditorTextState): EditorDisplayS
   value += state.value.slice(sourceOffset);
 
   const projection = {
-    value,
+    value: showControlCharacters(value),
     cursorOffset: 0,
     collapsedPastes: displayPastes,
   };

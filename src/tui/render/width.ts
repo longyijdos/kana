@@ -22,6 +22,16 @@ export function stripTerminalControlSequences(value: string): string {
   return stripAnsi(value).replace(UNSAFE_CONTROL_PATTERN, "");
 }
 
+export function showControlCharacters(value: string): string {
+  // Keep one UTF-16 code unit per control so editor offsets remain valid.
+  return value.replace(/\p{Cc}/gu, (control) => {
+    if (isLineBreak(control)) return control;
+    const code = control.charCodeAt(0);
+    if (code < 0x20) return String.fromCharCode(0x2400 + code);
+    return code === 0x7f ? "␡" : "␦";
+  });
+}
+
 export function padRightAnsi(value: string, width: number): string {
   return value + " ".repeat(Math.max(0, width - visibleWidth(value)));
 }

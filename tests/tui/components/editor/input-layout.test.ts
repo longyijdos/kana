@@ -172,6 +172,17 @@ describe("input layout", () => {
     ).toBe(3);
   });
 
+  test("uses the visible prefix when a projected control attaches to a combining mark", () => {
+    const value = "␉\u0301\nabc";
+    expect(createInputLayout({ value, cursorOffset: 1, columns: 10, maxLines: 2 }).cursor).toEqual({
+      line: 0,
+      column: 1,
+    });
+    expect(moveInputCursorVertically({ value, cursorOffset: 1, columns: 10, direction: 1 })).toBe(
+      4,
+    );
+  });
+
   test("does not move vertically beyond input boundaries", () => {
     expect(
       moveInputCursorVertically({

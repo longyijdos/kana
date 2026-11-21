@@ -39,6 +39,7 @@ export {
 } from "./text";
 export {
   padRightAnsi,
+  showControlCharacters,
   stripAnsi,
   stripTerminalControlSequences,
   truncateToWidth,

@@ -3,8 +3,9 @@ import { createUserMessage, type UserImage, type UserMessage } from "@/core";
 import {
   base64ByteLength,
   formatByteSize,
-  padRightAnsi,
   renderHighlightedLine,
+  showControlCharacters,
+  truncateToWidth,
   visibleWidth,
   wrapPlainText,
 } from "../../render";
@@ -30,11 +31,9 @@ export class UserMessageBlock implements Component {
       return this.cachedLines;
     }
 
-    const frameWidth = Math.max(width, 8);
-    const contentWidth = Math.max(1, frameWidth - 4);
     const prefixWidth = visibleWidth(PREFIX);
     const messageLines = this.message.content
-      ? wrapPlainText(this.message.content, Math.max(1, contentWidth - prefixWidth))
+      ? wrapPlainText(showControlCharacters(this.message.content), width - prefixWidth - 1)
       : [];
     const rows = [
       ...(this.message.images ?? []).map((image, index) => formatImage(image, index)),
@@ -43,36 +42,26 @@ export class UserMessageBlock implements Component {
     if (rows.length === 0) {
       rows.push("");
     }
+    const separator = "-".repeat(width);
     const lines = [
-      `+${"-".repeat(frameWidth - 2)}+`,
-      ...rows.map((line, index) =>
-        this.renderRow(
-          [
-            {
-              text: index === 0 ? PREFIX : " ".repeat(prefixWidth),
-              color: index === 0 ? tuiTheme.user : undefined,
-            },
-            { text: line, color: tuiTheme.userMessageText },
-          ],
-          contentWidth,
-        ),
-      ),
-      `+${"-".repeat(frameWidth - 2)}+`,
+      separator,
+      ...rows.map((line, index) => {
+        const rendered = renderHighlightedLine([
+          {
+            text: index === 0 ? PREFIX : " ".repeat(prefixWidth),
+            color: index === 0 ? tuiTheme.user : undefined,
+          },
+          { text: line, color: tuiTheme.userMessageText },
+        ]);
+        return truncateToWidth(rendered, width);
+      }),
+      separator,
     ];
 
     this.cachedWidth = width;
     this.cachedLines = lines;
 
     return lines;
-  }
-
-  private renderRow(
-    tokens: Parameters<typeof renderHighlightedLine>[0],
-    contentWidth: number,
-  ): string {
-    const content = renderHighlightedLine(tokens);
-
-    return `| ${padRightAnsi(content, contentWidth)} |`;
   }
 }
 

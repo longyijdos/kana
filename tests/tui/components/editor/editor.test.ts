@@ -13,6 +13,7 @@ import {
 } from "../../../../src/tui/components/editor/commands";
 import { stripAnsi, visibleWidth } from "../../../../src/tui/render";
 import { CURSOR_MARKER } from "../../../../src/tui/runtime";
+import { extractCursorPosition } from "../../../../src/tui/runtime/tui";
 import { tuiTheme } from "../../../../src/tui/theme";
 
 function cursorLine(lines: string[]): number {
@@ -59,7 +60,7 @@ describe("Editor", () => {
       editor.setText("abcd");
       editor.handleInput("\x1b[D");
 
-      const cursorMarkers = editor.render(9).join("").split(CURSOR_MARKER).length - 1;
+      const cursorMarkers = editor.render(6).join("").split(CURSOR_MARKER).length - 1;
 
       expect(cursorMarkers).toBe(1);
     });
@@ -70,7 +71,7 @@ describe("Editor", () => {
       const inputLine = firstRender.find((line) => line.includes(CURSOR_MARKER));
 
       expect(inputLine).toBeDefined();
-      expect(stripAnsi(inputLine ?? "")).toMatch(/^\| > Try .+ — .+\s+\|$/);
+      expect(stripAnsi(inputLine ?? "")).toMatch(/^> Try .+ — .+$/);
       expect(editor.render(80)).toEqual(firstRender);
 
       editor.handleInput("\r");
@@ -142,16 +143,15 @@ describe("Editor", () => {
       editor.setText(text);
       editor.setLoading(true);
 
-      const lines = editor.render(18, 5);
+      const lines = editor.render(15, 5);
       const input = lines
-        .map(stripAnsi)
-        .filter((line) => line.startsWith("| "))
-        .map((line) => line.slice(4, -2))
+        .slice(1, -2)
+        .map((line) => stripAnsi(line).slice(2))
         .join("")
         .trimEnd();
 
       expect(lines.length).toBeLessThanOrEqual(5);
-      expect(lines.every((line) => visibleWidth(line) <= 18)).toBe(true);
+      expect(lines.every((line) => visibleWidth(line) <= 15)).toBe(true);
       expect(input).toEndWith("(Loading...)");
       expect(lines.join("\n")).not.toContain(CURSOR_MARKER);
       expect(editor.getText()).toBe(text);
@@ -278,7 +278,7 @@ describe("Editor", () => {
       expect(palette.some((line) => line.includes("deepseek/deepseek-chat"))).toBe(false);
     });
 
-    test("renders input inside an ASCII frame without background color", () => {
+    test("renders input between separators without side borders, padding, or background", () => {
       const editor = new Editor();
 
       editor.setText("hello");
@@ -287,16 +287,16 @@ describe("Editor", () => {
       const text = `\x1b[38;2;${tuiTheme.userMessageText.join(";")}m`;
 
       expect(rendered.slice(0, -1).map(stripAnsi)).toEqual([
-        "+------------------+",
-        "| > hello          |",
-        "+------------------+",
+        "--------------------",
+        "> hello",
+        "--------------------",
       ]);
       expect(rendered.join("\n")).not.toContain("\x1b[48;");
       expect(rendered.join("\n")).not.toContain("\x1b[K");
       expect(rendered[1]).toContain(`${accent}> ${text}hello`);
     });
 
-    test("keeps multiline CJK editor rows inside the ASCII frame", () => {
+    test("keeps multiline CJK editor rows within the terminal width", () => {
       const editor = new Editor();
 
       editor.setText(
@@ -312,8 +312,9 @@ describe("Editor", () => {
       for (const line of rendered) {
         expect(visibleWidth(line)).toBeLessThanOrEqual(40);
       }
-      expect(rendered.map(stripAnsi).at(0)).toBe(`+${"-".repeat(38)}+`);
-      expect(rendered.map(stripAnsi).at(-2)).toBe(`+${"-".repeat(38)}+`);
+      const plain = rendered.map(stripAnsi);
+      expect(plain[0]).toBe("-".repeat(40));
+      expect(plain.at(-2)).toBe("-".repeat(40));
       expect(rendered.join("\n")).not.toContain("\x1b[48;");
       expect(rendered.join("\n")).not.toContain("\x1b[K");
     });
@@ -337,12 +338,33 @@ describe("Editor", () => {
 
       expect(rendered.join("\n")).not.toContain("\x1b[48;");
       expect(rendered.slice(0, -1).map(stripAnsi)).toEqual([
-        "+------------------+",
-        "| > a              |",
-        "|   b              |",
-        "|   c              |",
-        "+------------------+",
+        "--------------------",
+        "> a",
+        "  b",
+        "  c",
+        "--------------------",
       ]);
+    });
+
+    test("wraps pasted controls as printable text while preserving the original input", () => {
+      const editor = new Editor();
+      const source = "界\t\x1b[31m\nCafe\u0301👩‍💻\x08\x7f\u0085\u200b";
+      const submitted: unknown[] = [];
+      editor.onSubmit = (input) => submitted.push(input);
+      editor.handleInput(`\x1b[200~${source}\x1b[201~`);
+
+      const rendered = editor.render(9);
+      expect(extractCursorPosition(rendered)).toEqual({ row: 4, column: 5 });
+      expect(rendered.slice(1, 5).map(stripAnsi)).toEqual([
+        "> 界␉␛[3",
+        "  1m",
+        "  Cafe\u0301👩‍💻",
+        "  ␈␡␦\u200b",
+      ]);
+      expect(rendered.join("\n")).not.toContain("\x1b[31m");
+      expect(editor.getText()).toBe(source);
+      editor.handleInput("\r");
+      expect(submitted).toEqual([{ type: "message", content: source }]);
     });
   });
 
@@ -1061,7 +1083,7 @@ describe("Editor", () => {
       const editor = new Editor();
 
       editor.setText("abcdef");
-      editor.render(9);
+      editor.render(6);
       editor.handleInput("\x1b[H");
       editor.handleInput("\x1b[B");
       editor.handleInput("X");
@@ -1073,10 +1095,10 @@ describe("Editor", () => {
       const editor = new Editor();
 
       editor.setText("abcdef");
-      editor.render(9);
+      editor.render(6);
       editor.handleInput("\x1b[A");
 
-      const cursorLine = editor.render(9).findIndex((line) => line.includes(CURSOR_MARKER));
+      const cursorLine = editor.render(6).findIndex((line) => line.includes(CURSOR_MARKER));
 
       expect(cursorLine).toBe(2);
     });
@@ -1085,7 +1107,7 @@ describe("Editor", () => {
       const editor = new Editor();
 
       editor.setText("abcdef");
-      editor.render(9);
+      editor.render(6);
       editor.handleInput("\x1b[H");
       editor.handleInput("\x1b[B");
       editor.handleInput("\x1b[D");
@@ -1096,7 +1118,7 @@ describe("Editor", () => {
   });
 
   describe("placeholder rendering", () => {
-    test("keeps prompt placeholders inside input frames and marks truncated text", () => {
+    test("keeps prompt placeholders within input columns and marks truncated text", () => {
       const helpEntryCount = PROMPT_COMMANDS.length + PROMPT_SHORTCUTS.length + 2;
       const placeholders = Array.from({ length: helpEntryCount }, (_, index) =>
         createRandomPromptPlaceholder(() => index / helpEntryCount),
@@ -1112,7 +1134,7 @@ describe("Editor", () => {
           const inputLine = editor.render(width).find((line) => line.includes(CURSOR_MARKER));
           const rendered = stripAnsi(inputLine ?? "");
 
-          if (!inputLine || visibleWidth(rendered) !== width || !rendered.endsWith(" |")) {
+          if (!inputLine || !rendered.startsWith("> ") || visibleWidth(rendered) >= width) {
             invalidFrames.push({ placeholder, rendered, width });
           }
         }
@@ -1121,10 +1143,10 @@ describe("Editor", () => {
       expect(invalidFrames).toEqual([]);
 
       editorInternal.placeholder = "abcdefg";
-      const truncated = editor.render(12).find((line) => line.includes(CURSOR_MARKER));
-      const complete = editor.render(13).find((line) => line.includes(CURSOR_MARKER));
-      expect(stripAnsi(truncated ?? "")).toBe("| > abcde… |");
-      expect(stripAnsi(complete ?? "")).toBe("| > abcdefg |");
+      const truncated = editor.render(9).find((line) => line.includes(CURSOR_MARKER));
+      const complete = editor.render(10).find((line) => line.includes(CURSOR_MARKER));
+      expect(stripAnsi(truncated ?? "")).toBe("> abcde…");
+      expect(stripAnsi(complete ?? "")).toBe("> abcdefg");
     });
   });
 });

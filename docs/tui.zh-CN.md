@@ -19,7 +19,7 @@ Kana 的 TUI 把共享对话行为映射为命令、焦点、controller、状态
 
 ## App 与 Agent 事件
 
-`KanaTuiApp` 订阅 `ConversationRuntime`，持有累计模型用量和可见运行状态，并把 Agent 事件映射交给 `AgentEventRenderer`。输入排序与投递由[对话运行时](conversation-runtime.zh-CN.md)定义；本文只负责其可见投影。Transcript 会在任意两个输出块之间插入一行普通空行，每个 block 只管理内部间距；同一助手消息含多个有序可见部分时，`AssistantMessageBlock` 也使用相同间距。人工输入使用 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，续行与正文对齐。到期 wake 显示为 `Scheduled wake: …` 而不是人工输入，成功结果则显示为把延迟和提醒压到一行 target 的紧凑工具块：
+`KanaTuiApp` 订阅 `ConversationRuntime`，持有累计模型用量和可见运行状态，并把 Agent 事件映射交给 `AgentEventRenderer`。输入排序与投递由[对话运行时](conversation-runtime.zh-CN.md)定义；本文只负责其可见投影。Transcript 会在任意两个输出块之间插入一行普通空行，每个 block 只管理内部间距；同一助手消息含多个有序可见部分时，`AssistantMessageBlock` 也使用相同间距。聊天记录里的用户消息与草稿采用同样的样式：上下横线、浅灰正文和蓝色 `> ` 前缀，续行与正文对齐。正文行没有左右边框，也不补齐行尾空格，方便在终端选中并复制多行文本。到期 wake 显示为 `Scheduled wake: …` 而不是人工输入，成功结果则显示为把延迟和提醒压到一行 target 的紧凑工具块：
 
 | Agent 事件 | TUI 行为 |
 | --- | --- |
@@ -58,7 +58,7 @@ Responses provider 的 `web_search_call`（当前来自 OpenAI Codex 与 DeepSee
 
 可选列表共用一套导航约定：`Up` / `Down` 移动一项，`Left` / `Right` 与 `PageUp` / `PageDown` 把可见窗口移动一屏并让选中项保持在同一行，`Home` / `End` 跳到首项或末项；适用于 session 选择器、`/skills`、`/mcp`、`/tools`、`/schedule`、`/jobs` 与 `/agents`。窗口已经停在端点时无法继续移动，此时翻页会把选中项落到末项或首项。只读查看器翻动的是内容：`Up` / `Down` 滚动，`Left` / `Right` 移动一屏详情。
 
-编辑器使用与用户消息块相同的 ASCII 边框、浅灰正文和蓝色 `> ` 前缀，不设置输入区域背景色；框体直接跟在 Layout 分隔线后。输入为空时，它会从 `/help` 的 slash 命令、显式 Skill 调用、prompt template 调用和已记录的输入快捷键中随机选择一项作为 placeholder；启动和每次按普通 `Enter` 后都会选择一个不同于当前条目的提示，其他重绘不会改变它。`/help` 把 Skill、prompt template 与 slash 命令显示为独立小节，面板、placeholder 和 usage 错误则复用相应的语法与描述目录。快捷键区涵盖编辑器提交与排队、多行输入、Readline 风格编辑、图片粘贴、中止、工具输出切换和本地 Shell 输入。
+主编辑器跟在 Layout 分隔线后，和聊天记录里的用户消息采用同样的样式，不设置输入区域背景色。输入为空时，它会从 `/help` 的 slash 命令、显式 Skill 调用、prompt template 调用和已记录的输入快捷键中随机选择一项作为 placeholder；启动和每次按普通 `Enter` 后都会选择一个不同于当前条目的提示，其他重绘不会改变它。`/help` 把 Skill、prompt template 与 slash 命令显示为独立小节，面板、placeholder 和 usage 错误则复用相应的语法与描述目录。快捷键区涵盖编辑器提交与排队、多行输入、Readline 风格编辑、图片粘贴、中止、工具输出切换和本地 Shell 输入。
 
 编辑器的移动与编辑快捷键如下：
 
