@@ -47,6 +47,43 @@ describe("AgentEventRenderer", () => {
     },
   );
 
+  test("appends one provider error after partial assistant output", () => {
+    const transcript = new TranscriptComponent();
+    const phases: RunPhase[] = [];
+    const renderer = new AgentEventRenderer({
+      transcript,
+      tui: { requestRender() {} } as unknown as Tui,
+      smoothTextStreaming: false,
+      updateStatus: (phase) => phases.push(phase),
+    });
+    const message: AssistantMessage = {
+      ...messageIdentityForTest("assistant"),
+      role: "assistant",
+      content: [],
+    };
+    const partial: AssistantMessage = {
+      ...message,
+      content: [{ type: "text", text: "Partial response" }],
+      stopReason: "error",
+    };
+    const errorMessage = "Provider HTTP 429: quota reached";
+
+    renderer.handle({ type: "message_start", message });
+    renderer.handle({ type: "message_end", message: partial });
+    renderer.handle({
+      type: "agent_end",
+      reason: "error",
+      messages: [partial],
+      errorMessage: `\x1b[2J${errorMessage}`,
+    });
+
+    const rendered = transcript.render(80);
+    expect(rendered.map(stripAnsi)).toEqual(["Partial response", "", errorMessage]);
+    expect(rendered.at(-1)).toContain(`\x1b[38;2;${tuiTheme.error.join(";")}m`);
+    expect(rendered.at(-1)).not.toContain("\x1b[2J");
+    expect(phases.at(-1)).toBe("error");
+  });
+
   test("renders manual context compaction as a persistent transcript marker", () => {
     const transcript = new TranscriptComponent();
     const statuses: Array<{ phase: RunPhase; contextUsedPercent?: number }> = [];

@@ -10,6 +10,7 @@ import {
 } from "@/core";
 import type { Logger } from "@/logging";
 import type { Tool } from "@/tools";
+import { formatError } from "@/utils";
 import type {
   ContextCheckpoint,
   ContextCompactionReason,
@@ -76,6 +77,7 @@ export async function runAgentLoop(
   };
   const hasTurnLimit = settings.maxTurns !== -1;
   let endReason: AgentEndReason = hasTurnLimit ? "turn_limit" : "stop";
+  let errorMessage: string | undefined;
   // A failure caused by cancellation ends the run as aborted instead of failing it.
   const attempt = async <T>(work: () => Promise<T>): Promise<T | typeof ABORTED> => {
     try {
@@ -126,6 +128,9 @@ export async function runAgentLoop(
 
     if (assistantTurn.isError || signal?.aborted) {
       endReason = signal?.aborted ? "aborted" : endReasonForAssistantTurn(assistantTurn);
+      if (endReason === "error") {
+        errorMessage = formatError(assistantTurn.error);
+      }
       if (!assistantHistoryMessage || getToolCalls(assistantHistoryMessage).length === 0) {
         publishStableContext(working, config);
       }
@@ -202,7 +207,12 @@ export async function runAgentLoop(
     }
   }
 
-  await emit({ type: "agent_end", reason: endReason, messages: newMessages });
+  await emit({
+    type: "agent_end",
+    reason: endReason,
+    messages: newMessages,
+    ...(errorMessage === undefined ? {} : { errorMessage }),
+  });
   return newMessages;
 }
 

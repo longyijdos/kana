@@ -46,6 +46,8 @@ agent_start
   → agent_end
 ```
 
+Provider 失败导致 run 结束时，进程内 `agent_end` 事件携带 `errorMessage`，前端可展示失败原因，无需把错误详情写入助手内容或会话历史。
+
 两种 stream 都支持 `for await` 与独立的 `result()` promise。事件、消息与状态都是按引用共享的只读值：Agent 发布后不再修改它们，使用方也不得修改收到的值。Listener 异常记录为 `agent.listener_failed`，不会终止 run。
 
 ## Prompt assembly 与 runtime context

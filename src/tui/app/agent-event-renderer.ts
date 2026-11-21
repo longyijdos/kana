@@ -8,6 +8,7 @@ import {
   type Transcript,
   UserMessageBlock,
 } from "../components";
+import { stripTerminalControlSequences } from "../render";
 import type { Tui } from "../runtime";
 import { tuiTheme } from "../theme";
 import { formatContextCompaction, formatUserMessage } from "./history";
@@ -97,6 +98,13 @@ export class AgentEventRenderer {
         this.discardPendingAssistant();
         this.stopActiveTimers();
         this.activeTools.clear();
+        if (event.errorMessage !== undefined) {
+          this.options.transcript.addChild(
+            new TextBlock(stripTerminalControlSequences(event.errorMessage), {
+              color: tuiTheme.error,
+            }),
+          );
+        }
         this.options.updateStatus(phaseForAgentEndReason(event.reason), {
           activeTool: undefined,
         });

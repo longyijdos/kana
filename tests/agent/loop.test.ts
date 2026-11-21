@@ -1223,7 +1223,7 @@ describe("runAgentLoop error recovery", () => {
     });
   });
 
-  test("does not persist empty provider error messages", async () => {
+  test("reports provider errors without persisting empty assistant messages", async () => {
     const events: AgentEvent[] = [];
     const messages = await runTestLoop(
       {
@@ -1248,6 +1248,7 @@ describe("runAgentLoop error recovery", () => {
       type: "agent_end",
       reason: "error",
       messages: [],
+      errorMessage: "provider rejected the request",
     });
   });
 

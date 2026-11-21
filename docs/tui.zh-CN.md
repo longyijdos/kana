@@ -30,7 +30,7 @@ Kana 的 TUI 把共享对话行为映射为命令、焦点、controller、状态
 | `tool_execution_end` | 写入结构化结果并标记成功、失败或取消。用户中止的调用显示为已取消，而不是工具失败。 |
 | `todo_state_changed` | 把完整接受快照关联到对应的实时 `todo_write` 工具块，并更新 `/todo` 使用的 session 状态。 |
 | `turn_input` | 在当前 run 的回合边界提交并渲染 Enter 排队的用户消息。 |
-| `agent_end` | 按终态更新状态阶段并清除活动工具；run 被中止时移除尚未解析为单工具块的聚合准备活动，`turn_limit` 显示为独立的 `Turn limit` 错误阶段。 |
+| `agent_end` | 按终态更新状态阶段并清除活动工具。Provider 失败导致 run 结束时，将错误详情追加到实时 transcript；run 被中止时移除尚未解析为单工具块的聚合准备活动，`turn_limit` 显示为独立的 `Turn limit` 错误阶段。 |
 
 内置工具使用语义化 renderer，而不是通用结构化 JSON。具体来说，`view_image` 会显示 `Viewing`/`Viewed`、解析后的路径，以及 `PNG · 1440×832 · 19 KB` 这类紧凑的格式、尺寸和编码后大小元数据；它不会打印持久化的 base64 图片，也不会回退到通用 renderer。`todo_write` 运行时显示 `Updating todos (Ns)`，完成后显示 `Updated todos` 与一行计数/active 项 target；空替换显示 `Cleared todos`，失败和取消使用不同标题。`Ctrl+O` 显示该次调用的完整接受快照，`/todo` 则显示 session 最新列表与状态计数；界面没有常驻 todo 面板。实时事件和恢复后的 session 历史都使用持久快照，不解析紧凑工具确认。当恢复历史只有 artifact 元数据而没有结构化结果时，transcript 只显示 `Output stored · <size>`；工具详情查看器会显示有界 locator 和取回提示，而不会重放模型可见预览。
 

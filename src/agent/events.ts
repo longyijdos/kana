@@ -20,6 +20,7 @@ export type AgentEvent =
       readonly type: "agent_end";
       readonly reason: AgentEndReason;
       readonly messages: readonly Message[];
+      readonly errorMessage?: string;
     }
   | {
       readonly type: "turn_start";

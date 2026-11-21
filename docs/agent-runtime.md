@@ -46,6 +46,8 @@ agent_start
   → agent_end
 ```
 
+A terminal provider failure carries `errorMessage` on the in-process `agent_end` event so frontends can explain the failure without adding the diagnostic to assistant content or session history.
+
 Both stream types support `for await` and an independent `result()` promise. Events, messages, and state are readonly values shared by reference: the Agent never mutates a value after publishing it, and consumers must not mutate what they receive. Listener exceptions are logged as `agent.listener_failed` and do not terminate the run.
 
 ## Prompt assembly and runtime context
