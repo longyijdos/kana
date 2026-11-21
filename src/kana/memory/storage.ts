@@ -8,12 +8,21 @@ import {
   unlinkSync,
 } from "node:fs";
 import path from "node:path";
+import { Type } from "typebox";
 
-import { writeFileAtomic } from "@/utils";
+import { parseWithSchema, writeFileAtomic } from "@/utils";
 import { loadKanaConfig } from "../config";
 import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
 
-const KANA_MEMORY_SCOPES = ["global", "project"] as const;
+export const KANA_MEMORY_SCOPES = ["global", "project"] as const;
+const CHECKPOINT_HEADER = "<!-- kana-memory-checkpoint: ";
+const CHECKPOINT_SUFFIX = " -->\n";
+const CHECKPOINT_SCHEMA = Type.Tuple([
+  Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
+  Type.String({ minLength: 1 }),
+]);
+const MAX_BATCH_ENTRIES = 32;
+const MAX_BATCH_CHARS = 16_000;
 
 export type KanaMemoryScope = (typeof KANA_MEMORY_SCOPES)[number];
 
@@ -30,6 +39,13 @@ export type KanaMemoryEntry = {
   title?: string;
   reason?: string;
   content: string;
+};
+
+export type KanaMemoryCheckpoint = readonly [date: string, lastId: string];
+
+export type PendingKanaMemoryBatch = {
+  readonly entries: readonly KanaMemoryEntry[];
+  readonly checkpoint: KanaMemoryCheckpoint;
 };
 
 export type KanaDailyMemoryDay = {
@@ -124,8 +140,29 @@ export function loadKanaMemory(
   scope: KanaMemoryScope,
   options: Omit<KanaMemoryPathOptions, "now"> = {},
 ): string {
+  return loadKanaMemoryState(scope, options).content;
+}
+
+function loadKanaMemoryState(
+  scope: KanaMemoryScope,
+  options: KanaMemoryPathOptions,
+): { content: string; checkpoint?: KanaMemoryCheckpoint } {
   const { memoryPath } = getKanaMemoryPaths(scope, options);
-  return existsSync(memoryPath) ? readFileSync(memoryPath, "utf8") : "";
+  const raw = existsSync(memoryPath) ? readFileSync(memoryPath, "utf8") : "";
+  if (!raw.startsWith(CHECKPOINT_HEADER)) {
+    return { content: raw };
+  }
+
+  const end = raw.indexOf("\n") + 1;
+  if (!raw.slice(0, end).endsWith(CHECKPOINT_SUFFIX)) {
+    throw new Error("Invalid memory checkpoint header.");
+  }
+  const checkpoint = parseWithSchema(
+    CHECKPOINT_SCHEMA,
+    JSON.parse(raw.slice(CHECKPOINT_HEADER.length, end - CHECKPOINT_SUFFIX.length)),
+    "memory checkpoint",
+  );
+  return { content: raw.slice(end).replace(/^\n/, ""), checkpoint };
 }
 
 export function saveKanaMemory(
@@ -133,10 +170,46 @@ export function saveKanaMemory(
   content: string,
   options: KanaMemoryWriteOptions = {},
 ): void {
-  const { memoryPath } = getKanaMemoryPaths(scope, options);
   const normalized = assertKanaMemoryContentSize(content, options);
+  const { checkpoint } = loadKanaMemoryState(scope, options);
+  writeKanaMemoryState(scope, normalized ? `${normalized}\n` : "", checkpoint, options);
+}
 
-  writeFileAtomic(memoryPath, normalized ? `${normalized}\n` : "");
+export function writeKanaMemoryState(
+  scope: KanaMemoryScope,
+  content: string,
+  checkpoint: KanaMemoryCheckpoint | undefined,
+  options: KanaMemoryPathOptions,
+): void {
+  const { memoryPath } = getKanaMemoryPaths(scope, options);
+  const header = checkpoint
+    ? `${CHECKPOINT_HEADER}${JSON.stringify(checkpoint)}${CHECKPOINT_SUFFIX}\n`
+    : "";
+  writeFileAtomic(memoryPath, `${header}${content}`);
+}
+
+export function readPendingKanaMemoryBatch(
+  scope: KanaMemoryScope,
+  options: KanaMemoryPathOptions = {},
+): PendingKanaMemoryBatch | undefined {
+  const { checkpoint: committed } = loadKanaMemoryState(scope, options);
+  const [committedDate, committedId] = committed ?? [];
+  const entries: KanaMemoryEntry[] = [];
+  let checkpoint: KanaMemoryCheckpoint | undefined;
+  let chars = 0;
+  for (const date of listDailyMemoryDates(scope, { ...options, startDate: committedDate })) {
+    const day = readKanaDailyMemory(scope, date, options);
+    const start = date === committedDate ? day.findIndex(({ id }) => id === committedId) + 1 : 0;
+    for (const entry of day.slice(start)) {
+      const size = JSON.stringify(entry).length;
+      if (checkpoint && chars + size > MAX_BATCH_CHARS) return { entries, checkpoint };
+      entries.push(entry);
+      checkpoint = [date, entry.id];
+      chars += size;
+      if (entries.length === MAX_BATCH_ENTRIES) return { entries, checkpoint };
+    }
+  }
+  return checkpoint ? { entries, checkpoint } : undefined;
 }
 
 export function assertKanaMemoryContentSize(
@@ -228,13 +301,21 @@ export function pruneKanaDailyMemory(
   earliestRetained.setDate(earliestRetained.getDate() - options.retentionDays + 1);
   const cutoffDate = formatMemoryDate(earliestRetained);
   const { dailyDirectory } = getKanaMemoryPaths(scope, options);
-  const expiredDates = listDailyMemoryDates(scope, options).filter((date) => date < cutoffDate);
-
-  for (const date of expiredDates) {
+  const { checkpoint } = loadKanaMemoryState(scope, options);
+  if (!checkpoint) return [];
+  const [committedDate, committedId] = checkpoint;
+  const pruned: string[] = [];
+  for (const date of listDailyMemoryDates(scope, { ...options, endDate: committedDate })) {
+    if (date >= cutoffDate) break;
+    if (
+      date === committedDate &&
+      readKanaDailyMemory(scope, date, options).at(-1)?.id !== committedId
+    )
+      continue;
     unlinkSync(path.join(dailyDirectory, `${date}.md`));
+    pruned.push(date);
   }
-
-  return expiredDates;
+  return pruned;
 }
 
 function formatKanaMemoryEntry(entry: KanaMemoryEntry): string {
@@ -285,8 +366,13 @@ function parseKanaDailyMemory(
   scope: KanaMemoryScope,
 ): KanaMemoryEntry[] {
   const entries: KanaMemoryEntry[] = [];
-  const expression = /^---\n([\s\S]*?)\n---\n\n([\s\S]*?)(?=\n\n---\nid:|$)/gm;
-  for (const [, header = "", body = ""] of content.matchAll(expression)) {
+  const expression = /---\n([\s\S]*?)\n---\n\n([\s\S]*?)\n\n(?=---\nid:|(?![\s\S]))/y;
+  let offset = 0;
+  while (offset < content.length) {
+    const match = expression.exec(content);
+    if (!match) throw new Error(`Daily memory ${date} is malformed.`);
+    offset = expression.lastIndex;
+    const [, header = "", body = ""] = match;
     const fields = Object.fromEntries(
       header.split("\n").map((line) => {
         const separator = line.indexOf(": ");
@@ -310,10 +396,6 @@ function parseKanaDailyMemory(
       reason: typeof fields.reason === "string" ? fields.reason : undefined,
       content: normalizeRequiredText(body, `Daily memory ${date} entry content`),
     });
-  }
-
-  if (entries.length === 0 && content.trim()) {
-    throw new Error(`Daily memory ${date} is malformed.`);
   }
 
   return entries;

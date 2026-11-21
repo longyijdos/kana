@@ -47,7 +47,7 @@ import {
 import {
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
-  type KanaMemoryEntry,
+  type KanaMemoryScope,
   loadKanaMemory,
   type MemoryConsolidationActivity,
   type MemoryConsolidationEvent,
@@ -220,6 +220,11 @@ export class KanaConversationHost<TConfiguration = never> {
       onOAuthDiagnostic: options.onMcpOAuthDiagnostic,
       onProgress: options.onMcpProgress,
     });
+
+    const startupLogger = this.getLogger();
+    void this.memoryConsolidation?.recover({ logger: startupLogger }).catch((error) => {
+      startupLogger.error("memory_consolidation.recovery_failed", { error });
+    });
   }
 
   get config(): KanaConfig {
@@ -308,13 +313,13 @@ export class KanaConversationHost<TConfiguration = never> {
       onTodoStateCommitted,
     );
     const createAgent = (config: KanaConfig): Agent => {
-      const rememberedEntries: KanaMemoryEntry[] = [];
+      const rememberedScopes = new Set<KanaMemoryScope>();
       const agent = this.createAgentProduct(
         config,
-        this.createKanaAgentOptions(agentOptions, sessionBinding, config, rememberedEntries),
+        this.createKanaAgentOptions(agentOptions, sessionBinding, config, rememberedScopes),
       );
       agent.subscribe((event) => {
-        if (event.type === "agent_start") rememberedEntries.length = 0;
+        if (event.type === "agent_start") rememberedScopes.clear();
       });
       return agent;
     };
@@ -526,7 +531,7 @@ export class KanaConversationHost<TConfiguration = never> {
     >,
     sessionBinding: HostedSessionAgentBinding,
     config: KanaConfig,
-    rememberedEntries: KanaMemoryEntry[],
+    rememberedScopes: Set<KanaMemoryScope>,
   ): KanaAgentOptions {
     const session = sessionBinding.session;
     const logger = sessionBinding.logger;
@@ -539,7 +544,7 @@ export class KanaConversationHost<TConfiguration = never> {
       memoryEnabled: this.customizations !== undefined && config.memory.enabled,
       resolveTodoState: sessionBinding.resolveTodoState,
       env: this.env,
-      onMemoryRecorded: (entry) => rememberedEntries.push(entry),
+      onMemoryRecorded: (entry) => rememberedScopes.add(entry.scope),
       logger,
       artifactStore: sessionBinding.artifactStore,
       backgroundJobs: sessionBinding.backgroundJobs,
@@ -576,7 +581,7 @@ export class KanaConversationHost<TConfiguration = never> {
           cwd: session.cwd,
         };
         void this.memoryConsolidation
-          ?.schedule(rememberedEntries.splice(0), {
+          ?.schedule(rememberedScopes, {
             logger,
             onCompleted: (scope, result) =>
               recordAccounting(logger, "automatic_memory_consolidation", {

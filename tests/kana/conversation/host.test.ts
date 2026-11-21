@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Agent } from "../../../src/agent";
 import {
+  appendKanaMemory,
   ConversationRuntime,
   createKanaConversationHost,
   createKanaSession,
@@ -323,6 +324,28 @@ describe("Kana conversation host", () => {
     expect(host.config.agent.maxTurns).toBe(50);
     await runtime.close();
     await host.close();
+  });
+
+  test("checks pending memory on startup without a new remember call", async () => {
+    const env = createTempEnv();
+    appendKanaMemory({ env, scope: "project", content: "From the previous process." });
+    const host = createKanaConversationHost({
+      env,
+      configOverrides: [
+        'memory.agent.model.provider="custom:missing"',
+        'memory.agent.model.name="missing-model"',
+      ],
+    });
+    const events: MemoryConsolidationEvent[] = [];
+    host.subscribeMemoryActivity((event) => events.push(event));
+    try {
+      await waitFor(() => events.some((event) => event.type === "failed"));
+      expect(events.filter((event) => event.type === "failed")).toEqual([
+        { type: "failed", scope: "project", error: expect.stringContaining("custom:missing") },
+      ]);
+    } finally {
+      await host.close();
+    }
   });
 
   test.each([

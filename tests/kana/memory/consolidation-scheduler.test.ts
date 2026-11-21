@@ -1,289 +1,229 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { DEFAULT_KANA_CONFIG } from "@/kana";
-import type { Logger } from "@/logging";
 import { createLogger } from "@/logging";
 import { Agent } from "../../../src/agent";
 import {
+  appendKanaMemory,
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
-  type KanaMemoryEntry,
+  createMemoryConsolidationTransaction,
+  type KanaMemoryScope,
   type MemoryConsolidationEvent,
+  type PendingKanaMemoryBatch,
+  readPendingKanaMemoryBatch,
 } from "../../../src/kana/memory";
 import type { MemoryConsolidationResult } from "../../../src/kana/memory/consolidation-agent";
 import { MockModel } from "../../../src/providers/mock";
 import { deferred, waitFor } from "../../helpers/async-control";
+import {
+  cleanupTempKanaHomes,
+  createTempKanaHomeEnv as createTempEnv,
+} from "../../helpers/temp-kana-home";
+
+afterEach(cleanupTempKanaHomes);
 
 describe("memory consolidation scheduler", () => {
-  test("does not log or schedule when there are no entries", async () => {
+  test("does not start an Agent or show activity on an empty startup", async () => {
     const events: string[] = [];
-    const logger = createEventLogger(events);
-    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, { logger });
-
+    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
+      env: createTempEnv(),
+      logger: createLogger((_level, event) => events.push(event)),
+      runIncremental: async () => {
+        throw new Error("Nothing to organize");
+      },
+    });
+    scheduler.subscribe((event) => events.push(event.type));
     await scheduler.schedule([]);
-
+    await scheduler.recover();
     expect(events).toEqual([]);
   });
 
-  test("groups successful remember entries by scope", async () => {
-    const calls: Array<{ scope: string; entries: string[] }> = [];
+  test("replays a failed batch before newer entries across day rollover", async () => {
+    const env = createTempEnv();
+    const calls: string[][] = [];
     const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
-      runIncremental: async (scope, entries) => {
-        calls.push({ scope, entries: entries.map((entry) => entry.id) });
+      env,
+      runIncremental: async (scope, batch) => {
+        calls.push(ids(batch));
+        if (calls.length === 1) throw new Error("Provider 429");
+        return commit(scope, batch, env);
       },
     });
+    append(env, "A", 20);
+    await expect(scheduler.schedule(["project"])).rejects.toThrow("Provider 429");
+    expect(calls).toEqual([["A"]]);
+    expect(ids(readPendingKanaMemoryBatch("project", { env })!)).toEqual(["A"]);
 
-    await scheduler.schedule([
-      memoryEntry("project", "mem_project_1"),
-      memoryEntry("project", "mem_project_2"),
-      memoryEntry("global", "mem_global"),
-    ]);
-
-    expect(calls).toEqual([
-      { scope: "project", entries: ["mem_project_1", "mem_project_2"] },
-      { scope: "global", entries: ["mem_global"] },
-    ]);
+    append(env, "B", 21);
+    await scheduler.schedule(["project"]);
+    append(env, "C", 21);
+    await scheduler.schedule(["project"]);
+    expect(calls).toEqual([["A"], ["A", "B"], ["C"]]);
+    expect(readPendingKanaMemoryBatch("project", { env })).toBeUndefined();
   });
 
-  test("serializes runs for the same scope", async () => {
-    const started: string[] = [];
-    const secondRun = deferred();
-    let releaseFirst!: () => void;
-    const firstRun = new Promise<void>((resolve) => {
-      releaseFirst = resolve;
-    });
+  test("coalesces queued triggers and drains entries appended during a run", async () => {
+    const env = createTempEnv();
+    const calls: string[][] = [];
+    const firstRun = deferred();
     const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
-      runIncremental: async (_scope, entries) => {
-        started.push(entries[0]!.id);
-        if (entries[0]!.id === "mem_first") {
-          await firstRun;
-        } else {
-          await secondRun.promise;
-        }
+      env,
+      runIncremental: async (scope, batch) => {
+        calls.push(ids(batch));
+        if (calls.length === 1) await firstRun.promise;
+        return commit(scope, batch, env);
       },
     });
+    append(env, "A");
+    const first = scheduler.schedule(["project"]);
+    append(env, "B");
+    const second = scheduler.schedule(["project"]);
+    expect(scheduler.getActivity()).toEqual([{ scope: "project", status: "queued" }]);
+    await waitFor(() => calls.length === 1);
+    expect(calls).toEqual([["A", "B"]]);
 
-    const first = scheduler.schedule([memoryEntry("project", "mem_first")]);
-    const second = scheduler.schedule([memoryEntry("project", "mem_second")]);
-
-    expect(scheduler.getActivity()).toEqual([
-      { scope: "project", status: "queued" },
-      { scope: "project", status: "queued" },
-    ]);
-
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(started).toEqual(["mem_first"]);
-    expect(scheduler.getActivity()).toEqual([
-      { scope: "project", status: "organizing" },
-      { scope: "project", status: "queued" },
-    ]);
-
-    releaseFirst();
-    await waitFor(() => started.length === 2);
+    append(env, "C");
+    const third = scheduler.schedule(["project", "project"]);
     expect(scheduler.getActivity()).toEqual([{ scope: "project", status: "organizing" }]);
-    secondRun.resolve();
-    await Promise.all([first, second]);
-    expect(started).toEqual(["mem_first", "mem_second"]);
+    firstRun.resolve();
+    await Promise.all([first, second, third]);
+    expect(calls).toEqual([["A", "B"], ["C"]]);
     expect(scheduler.getActivity()).toEqual([]);
   });
 
-  test("reports a failed scope and awaits remaining work when subsequently closed", async () => {
-    const globalRun = deferred();
-    let globalSignal: AbortSignal | undefined;
-    const events: MemoryConsolidationEvent[] = [];
+  test("keeps a new trigger received during a batch that subsequently fails", async () => {
+    const env = createTempEnv();
+    const firstRun = deferred();
+    const calls: string[][] = [];
     const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
-      runIncremental: async (scope, _entries, _logger, signal) => {
-        if (scope === "project") throw new Error("Provider unavailable");
-        globalSignal = signal;
-        await globalRun.promise;
-      },
-    });
-    const unsubscribe = scheduler.subscribe((event) => events.push(event));
-
-    await expect(
-      scheduler.schedule([
-        memoryEntry("project", "mem_project"),
-        memoryEntry("global", "mem_global"),
-      ]),
-    ).rejects.toThrow("Provider unavailable");
-
-    expect(events.filter((event) => event.type === "failed")).toEqual([
-      { type: "failed", scope: "project", error: "Provider unavailable" },
-    ]);
-    expect(scheduler.getActivity()).toEqual([{ scope: "global", status: "organizing" }]);
-
-    unsubscribe();
-    const eventCount = events.length;
-    let closed = false;
-    const shutdown = scheduler.close().then(() => {
-      closed = true;
-    });
-    expect(globalSignal?.aborted).toBe(true);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(closed).toBe(false);
-    globalRun.resolve();
-    await shutdown;
-    expect(scheduler.getActivity()).toEqual([]);
-    expect(events).toHaveLength(eventCount);
-  });
-
-  test("awaits all scopes when one rejects after shutdown has started", async () => {
-    const started = deferred();
-    const projectRun = deferred();
-    const globalCleanup = deferred();
-    const globalAborted = deferred();
-    const failure = new Error("Provider unavailable");
-    let startedCount = 0;
-    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
-      runIncremental: async (scope, _entries, _logger, signal) => {
-        if (++startedCount === 2) started.resolve();
-        if (scope === "project") {
-          await projectRun.promise;
-          throw failure;
+      env,
+      runIncremental: async (scope, batch) => {
+        calls.push(ids(batch));
+        if (calls.length === 1) {
+          await firstRun.promise;
+          throw new Error("Provider 502");
         }
-        signal.addEventListener("abort", () => globalAborted.resolve(), { once: true });
-        await globalCleanup.promise;
-        return consolidationResult("aborted");
+        return commit(scope, batch, env);
       },
     });
-    const rejection = scheduler
-      .schedule([memoryEntry("project", "mem_project"), memoryEntry("global", "mem_global")])
-      .catch((error) => error);
-    await started.promise;
-
-    let closed = false;
-    const shutdown = scheduler.close().then(() => {
-      closed = true;
-    });
-    await globalAborted.promise;
-    projectRun.resolve();
-    expect(await rejection).toBe(failure);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(closed).toBe(false);
-    expect(scheduler.getActivity()).toEqual([{ scope: "global", status: "organizing" }]);
-    globalCleanup.resolve();
-    await shutdown;
-    expect(scheduler.getActivity()).toEqual([]);
+    append(env, "A");
+    const first = scheduler.schedule(["project"]);
+    await waitFor(() => calls.length === 1);
+    append(env, "B");
+    const second = scheduler.schedule(["project"]);
+    firstRun.resolve();
+    await Promise.all([first, second]);
+    expect(calls).toEqual([["A"], ["A", "B"]]);
   });
 
-  test("reports unfinished outcomes without treating normal completion as failure", async () => {
-    const failures: MemoryConsolidationEvent[] = [];
-    for (const outcome of ["updated", "unchanged", "length", "turn_limit", "aborted"] as const) {
-      const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
-        runIncremental: async () => consolidationResult(outcome),
+  test.each(["length", "turn_limit", "aborted"] as const)(
+    "recovers only the uncommitted suffix on restart after %s",
+    async (outcome) => {
+      const env = createTempEnv();
+      const remembered = Array.from({ length: 36 }, (_, i) => `entry-${i}`);
+      for (const id of remembered) append(env, id);
+      const failedRuns: string[][] = [];
+      const beforeRestart = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
+        env,
+        runIncremental: async (scope, batch) => {
+          failedRuns.push(ids(batch));
+          return failedRuns.length === 1 ? commit(scope, batch, env) : consolidationResult(outcome);
+        },
       });
-      scheduler.subscribe((event) => {
-        if (event.type === "failed") failures.push(event);
-      });
-      await scheduler.schedule([memoryEntry("project", `mem_${outcome}`)]);
-      expect(scheduler.getActivity()).toEqual([]);
-    }
-
-    expect(failures).toEqual(
-      ["length", "turn_limit", "aborted"].map((outcome) => ({
+      const events: MemoryConsolidationEvent[] = [];
+      beforeRestart.subscribe((event) => events.push(event));
+      await beforeRestart.schedule(["project"]);
+      await beforeRestart.close();
+      expect(failedRuns).toEqual([remembered.slice(0, 32), remembered.slice(32)]);
+      expect(events).toContainEqual({
         type: "failed",
         scope: "project",
         error: `Consolidation ended with ${outcome}.`,
-      })),
-    );
-  });
+      });
 
-  test("retains the logger supplied when work is scheduled", async () => {
-    const scheduledEvents: string[] = [];
-    const runEvents: string[] = [];
-    const scheduledLogger = createEventLogger(scheduledEvents);
-    const laterLogger = createEventLogger([]);
-    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
-      logger: laterLogger,
-      runIncremental: async (_scope, _entries, logger) => {
-        logger.info("memory_consolidation.run");
-        runEvents.push(logger === scheduledLogger ? "scheduled" : "other");
-      },
-    });
+      const recovered: string[][] = [];
+      const afterRestart = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
+        env,
+        runIncremental: async (scope, batch) => {
+          recovered.push(ids(batch));
+          return commit(scope, batch, env);
+        },
+      });
+      await afterRestart.recover();
+      await afterRestart.recover();
+      expect(recovered).toEqual([remembered.slice(32)]);
+      expect(readPendingKanaMemoryBatch("project", { env })).toBeUndefined();
+    },
+  );
 
-    await scheduler.schedule([memoryEntry("project", "mem_project")], {
-      logger: scheduledLogger,
-    });
-
-    expect(scheduledEvents).toEqual(["memory_consolidation.scheduled", "memory_consolidation.run"]);
-    expect(runEvents).toEqual(["scheduled"]);
-  });
-
-  test("shares a queue between incremental and full consolidation work", async () => {
+  test("shares a queue with Full Compact, and reads pending work only when admitted", async () => {
+    const env = createTempEnv();
     const queue = createMemoryConsolidationQueue();
+    const fullRun = deferred();
     const started: string[] = [];
-    let releaseIncremental!: () => void;
-    const incrementalBlocked = new Promise<void>((resolve) => {
-      releaseIncremental = resolve;
-    });
-    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
-      queue,
-      runIncremental: async () => {
-        started.push("incremental");
-        await incrementalBlocked;
-      },
-    });
-
-    const incremental = scheduler.schedule([memoryEntry("project", "mem_project")]);
     const full = queue.enqueue("project", async () => {
       started.push("full");
+      await fullRun.promise;
     });
-
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(started).toEqual(["incremental"]);
-
-    releaseIncremental();
+    const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
+      env,
+      queue,
+      runIncremental: async (scope, batch) => {
+        started.push(`${scope}: ${ids(batch).join(", ")}`);
+        return commit(scope, batch, env);
+      },
+    });
+    append(env, "A");
+    append(env, "global", 20, "global");
+    const incremental = scheduler.schedule(["project", "global"]);
+    await waitFor(() => started.length === 2);
+    expect(started).toEqual(["full", "global: global"]);
+    append(env, "B");
+    fullRun.resolve();
     await Promise.all([incremental, full]);
-    expect(started).toEqual(["incremental", "full"]);
+    expect(started).toEqual(["full", "global: global", "project: A, B"]);
   });
 
-  test("aborts and awaits active schedules during shutdown", async () => {
-    const events: string[] = [];
-    const activityEvents: MemoryConsolidationEvent[] = [];
-    const logger = createEventLogger(events);
-    let markStarted!: () => void;
-    const started = new Promise<void>((resolve) => {
-      markStarted = resolve;
-    });
-    let runSignal: AbortSignal | undefined;
-    let runSettled = false;
+  test("keeps the scheduling logger and waits for every active scope on shutdown", async () => {
+    const env = createTempEnv();
+    const active = deferred();
+    const finishGlobal = deferred();
+    const logs: string[] = [];
+    const logger = createLogger((_level, event) => logs.push(event));
     const scheduler = createMemoryConsolidationScheduler(DEFAULT_KANA_CONFIG, {
-      logger,
-      runIncremental: async (_scope, _entries, _logger, signal) => {
-        runSignal = signal;
-        markStarted();
-        await new Promise<void>((resolve) => {
-          if (signal.aborted) {
-            resolve();
-            return;
-          }
-          signal.addEventListener("abort", () => resolve(), { once: true });
-        });
-        runSettled = true;
+      env,
+      runIncremental: async (scope, _batch, runLogger, signal) => {
+        expect(runLogger).toBe(logger);
+        if (scope === "project") throw new Error("Provider unavailable");
+        active.resolve();
+        await finishGlobal.promise;
+        expect(signal.aborted).toBe(true);
         return consolidationResult("aborted");
       },
     });
-    scheduler.subscribe((event) => activityEvents.push(event));
-
-    const scheduled = scheduler.schedule([memoryEntry("project", "mem_project")]);
-    await started;
-
+    append(env, "project");
+    append(env, "global", 20, "global");
+    const started = scheduler.schedule(["global", "project"], { logger });
+    await expect(started).rejects.toThrow("Provider unavailable");
+    await active.promise;
+    let closed = false;
     const shutdown = scheduler.close();
+    void shutdown.then(() => {
+      closed = true;
+    });
     expect(scheduler.close()).toBe(shutdown);
-    await Promise.all([scheduled, shutdown]);
-
-    expect(runSignal?.aborted).toBe(true);
-    expect(runSettled).toBe(true);
+    await Promise.resolve();
+    expect(closed).toBe(false);
+    finishGlobal.resolve();
+    await shutdown;
     expect(scheduler.getActivity()).toEqual([]);
-    expect(activityEvents.some((event) => event.type === "failed")).toBe(false);
-    expect(events).toEqual([
+    expect(ids(readPendingKanaMemoryBatch("global", { env })!)).toEqual(["global"]);
+    expect(logs).toEqual([
+      "memory_consolidation.scheduled",
       "memory_consolidation.scheduled",
       "memory_consolidation.shutdown_started",
       "memory_consolidation.shutdown_ended",
     ]);
-
-    await scheduler.schedule([memoryEntry("project", "mem_after_shutdown")]);
-    expect(events.at(-1)).toBe("memory_consolidation.schedule_skipped");
   });
 });
 
@@ -296,15 +236,21 @@ function consolidationResult(
   };
 }
 
-function createEventLogger(events: string[]): Logger {
-  return createLogger((_level, event) => events.push(event));
-}
-
-function memoryEntry(scope: "global" | "project", id: string): KanaMemoryEntry {
-  return {
+function append(env: NodeJS.ProcessEnv, id: string, day = 20, scope: KanaMemoryScope = "project") {
+  return appendKanaMemory({
+    env,
     id,
-    createdAt: "2026-06-20T00:00:00.000Z",
     scope,
     content: `Content for ${id}`,
-  };
+    now: new Date(2026, 5, day),
+  });
+}
+
+function ids(batch: PendingKanaMemoryBatch): string[] {
+  return batch.entries.map((entry) => entry.id);
+}
+
+function commit(scope: KanaMemoryScope, batch: PendingKanaMemoryBatch, env: NodeJS.ProcessEnv) {
+  createMemoryConsolidationTransaction({ scope, env }).commit(batch.checkpoint);
+  return consolidationResult("unchanged");
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import {
@@ -13,6 +13,10 @@ import {
   saveKanaMemory,
   searchKanaDailyMemory,
 } from "@/kana";
+import {
+  createMemoryConsolidationTransaction,
+  readPendingKanaMemoryBatch,
+} from "../../../src/kana/memory";
 import {
   cleanupTempKanaHomes,
   createTempKanaHomeEnv as createTempEnv,
@@ -144,23 +148,93 @@ describe("Kana memory storage", () => {
     ]);
   });
 
-  test("prunes daily memory outside the retention window", () => {
+  test("prunes only dates fully processed and outside the retention window", () => {
     const env = createTempEnv();
-    appendKanaMemory({ scope: "global", content: "Expired", env, now: new Date(2026, 5, 17) });
-    appendKanaMemory({ scope: "global", content: "Retained", env, now: new Date(2026, 5, 18) });
+    const expired = new Date(2026, 5, 17);
+    appendKanaMemory({ scope: "global", content: "Prunable", env, now: new Date(2026, 5, 16) });
+    appendKanaMemory({ scope: "global", content: "Expired", env, now: expired });
+    const batch = readPendingKanaMemoryBatch("global", { env })!;
+    const full = createMemoryConsolidationTransaction({ scope: "global", env });
+    full.commit(batch.checkpoint);
+    appendKanaMemory({ scope: "global", content: "Still pending", env, now: expired });
+    appendKanaMemory({
+      scope: "global",
+      content: "Expired and pending",
+      env,
+      now: new Date(2026, 5, 18),
+    });
     appendKanaMemory({ scope: "global", content: "Today", env, now: new Date(2026, 5, 20) });
+    full.replace("Full Compact only updates the body.");
+    full.commit();
 
     expect(
       pruneKanaDailyMemory("global", {
         env,
-        retentionDays: 3,
+        retentionDays: 2,
         now: new Date(2026, 5, 20),
       }),
-    ).toEqual(["2026-06-17"]);
+    ).toEqual(["2026-06-16"]);
     expect(listKanaDailyMemory("global", { env })).toEqual([
+      { date: "2026-06-17", entryCount: 2 },
       { date: "2026-06-18", entryCount: 1 },
       { date: "2026-06-20", entryCount: 1 },
     ]);
+    expect(
+      readPendingKanaMemoryBatch("global", { env })?.entries.map(({ content }) => content),
+    ).toEqual(["Still pending", "Expired and pending", "Today"]);
+  });
+
+  test("keeps only the latest cursor while replaying multi-line entries across dates", () => {
+    const env = createTempEnv();
+    const oldDay = new Date(2026, 5, 20);
+    const newDay = new Date(2026, 5, 21);
+    const content = "Use Bun.\n\n---\n\n- Keep the lockfile.\n- Run checks.";
+    const old = appendKanaMemory({ scope: "global", content, env, now: oldDay });
+    const batch = readPendingKanaMemoryBatch("global", { env })!;
+    expect(batch.entries).toEqual([old]);
+    const memory = createMemoryConsolidationTransaction({ scope: "global", env });
+    memory.commit(batch.checkpoint);
+    const sameDay = appendKanaMemory({ scope: "global", content, env, now: oldDay });
+    const nextDay = appendKanaMemory({
+      scope: "global",
+      content,
+      env,
+      now: newDay,
+      id: "mem_next",
+    });
+    expect(readKanaDailyMemory("global", "2026-06-20", { env })).toEqual([old, sameDay]);
+    const pending = readPendingKanaMemoryBatch("global", { env })!;
+    expect(pending.entries).toEqual([sameDay, nextDay]);
+    memory.commit(pending.checkpoint);
+    const { memoryPath } = getKanaMemoryPaths("global", { env });
+    expect(readFileSync(memoryPath, "utf8")).toBe(
+      '<!-- kana-memory-checkpoint: ["2026-06-21","mem_next"] -->\n\n',
+    );
+
+    expect(
+      pruneKanaDailyMemory("global", { env, retentionDays: 1, now: new Date(2026, 5, 22) }),
+    ).toEqual(["2026-06-20", "2026-06-21"]);
+    const later = appendKanaMemory({ scope: "global", content, env, now: new Date(2026, 5, 22) });
+    expect(readPendingKanaMemoryBatch("global", { env })?.entries).toEqual([later]);
+  });
+
+  test("commits the checkpoint and body together; a failed replacement leaves the batch pending", () => {
+    const env = createTempEnv();
+    const entry = appendKanaMemory({ scope: "global", content: "New fact", env });
+    const batch = readPendingKanaMemoryBatch("global", { env })!;
+    const transaction = createMemoryConsolidationTransaction({ scope: "global", env });
+    transaction.replace(entry.content);
+    const { memoryPath } = getKanaMemoryPaths("global", { env });
+    mkdirSync(memoryPath);
+    expect(() => transaction.commit(batch.checkpoint)).toThrow();
+    rmdirSync(memoryPath);
+    expect(loadKanaMemory("global", { env })).toBe("");
+    expect(readPendingKanaMemoryBatch("global", { env })?.entries).toEqual([entry]);
+
+    transaction.commit(batch.checkpoint);
+    expect(readFileSync(memoryPath, "utf8")).toContain(entry.id);
+    expect(loadKanaMemory("global", { env })).toBe("New fact\n");
+    expect(readPendingKanaMemoryBatch("global", { env })).toBeUndefined();
   });
 
   test("rejects empty memory content", () => {

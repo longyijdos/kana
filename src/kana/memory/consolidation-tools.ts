@@ -3,12 +3,15 @@ import type { Tool } from "@/tools";
 import { strictObject } from "@/tools";
 import {
   assertKanaMemoryContentSize,
+  type KanaMemoryCheckpoint,
+  type KanaMemoryEntry,
   type KanaMemoryScope,
   listKanaDailyMemory,
   loadKanaMemory,
   readKanaDailyMemory,
   saveKanaMemory,
   searchKanaDailyMemory,
+  writeKanaMemoryState,
 } from "./storage";
 
 export type MemoryConsolidationMode = "incremental" | "full";
@@ -25,8 +28,53 @@ export type MemoryConsolidationTransaction = {
   readonly hasChanges: boolean;
   edit(oldText: string, newText: string, replaceAll: boolean): number;
   replace(content: string): void;
-  commit(): void;
+  commit(checkpoint?: KanaMemoryCheckpoint): void;
 };
+
+type MemoryBatchReview = {
+  readonly confirmed: boolean;
+  readonly tool: Tool;
+};
+
+const CONFIRM_PARAMETERS = strictObject({
+  reviews: Type.Array(
+    strictObject({
+      id: Type.String({ minLength: 1 }),
+      disposition: Type.Union([
+        Type.Literal("retained"),
+        Type.Literal("already_covered"),
+        Type.Literal("omitted"),
+      ]),
+    }),
+    { minItems: 1 },
+  ),
+});
+
+export function createMemoryBatchReview(entries: readonly KanaMemoryEntry[]): MemoryBatchReview {
+  const expected = new Set(entries.map((entry) => entry.id));
+  let confirmed = false;
+  return {
+    get confirmed() {
+      return confirmed;
+    },
+    tool: {
+      name: "confirm_memory_batch",
+      description:
+        "After finalizing memory, confirm exactly one disposition per supplied entry ID. Use omitted only when an entry should not be kept.",
+      parameters: CONFIRM_PARAMETERS,
+      execute(rawArgs) {
+        const { reviews } = rawArgs as Static<typeof CONFIRM_PARAMETERS>;
+        const reviewed = new Set(reviews.map(({ id }) => id));
+        confirmed =
+          reviews.length === expected.size &&
+          reviewed.size === expected.size &&
+          [...reviewed].every((id) => expected.has(id));
+        if (!confirmed) throw new Error("Confirm every supplied entry ID exactly once.");
+        return result({ confirmed: true });
+      },
+    },
+  };
+}
 
 const EDIT_PARAMETERS = strictObject({
   oldText: Type.String({ minLength: 1, description: "Exact existing memory text to replace." }),
@@ -90,9 +138,13 @@ export function createMemoryConsolidationTransaction(
       changed ||= nextContent !== content;
       content = nextContent;
     },
-    commit() {
-      if (changed) {
-        saveKanaMemory(options.scope, content, options);
+    commit(checkpoint) {
+      if (checkpoint === undefined) {
+        if (changed) saveKanaMemory(options.scope, content, options);
+      } else {
+        const normalized = changed ? content.trim() : undefined;
+        const body = normalized === undefined ? content : normalized ? `${normalized}\n` : "";
+        writeKanaMemoryState(options.scope, body, checkpoint, options);
       }
     },
   };
@@ -102,6 +154,7 @@ export function createMemoryConsolidationTools(
   options: MemoryConsolidationToolOptions,
   mode: MemoryConsolidationMode,
   memory: MemoryConsolidationTransaction,
+  review?: MemoryBatchReview,
 ): Tool[] {
   const readMemoryTool: Tool = {
     name: "read_memory",
@@ -116,6 +169,7 @@ export function createMemoryConsolidationTools(
         "Apply a small exact-text edit to the current memory working copy. Changes are pending until this run completes successfully.",
       parameters: EDIT_PARAMETERS,
       execute: (rawArgs) => {
+        if (review?.confirmed) throw new Error("Memory edits must precede batch confirmation.");
         const args = rawArgs as Static<typeof EDIT_PARAMETERS>;
         const replacements = memory.edit(args.oldText, args.newText, args.replaceAll ?? false);
         return { content: `Updated ${options.scope} memory.`, result: { replacements } };
@@ -127,6 +181,7 @@ export function createMemoryConsolidationTools(
         "Replace the current memory working copy. Changes are pending until this run completes successfully.",
       parameters: REPLACE_PARAMETERS,
       execute: (rawArgs) => {
+        if (review?.confirmed) throw new Error("Memory edits must precede batch confirmation.");
         const args = rawArgs as Static<typeof REPLACE_PARAMETERS>;
         memory.replace(args.content);
         return { content: `Replaced ${options.scope} memory.`, result: { updated: true } };
@@ -135,7 +190,7 @@ export function createMemoryConsolidationTools(
   ];
 
   if (mode === "incremental") {
-    return [readMemoryTool, ...writeTools];
+    return [readMemoryTool, ...writeTools, ...(review ? [review.tool] : [])];
   }
 
   return [

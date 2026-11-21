@@ -1,15 +1,27 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
-import { appendKanaMemory, DEFAULT_KANA_CONFIG, loadKanaMemory, saveKanaMemory } from "@/kana";
+import {
+  appendKanaMemory,
+  DEFAULT_KANA_CONFIG,
+  getKanaConfigPaths,
+  type KanaConfig,
+  loadKanaMemory,
+  saveKanaMemory,
+} from "@/kana";
 import {
   createMemoryConsolidationAgent,
   createMemoryConsolidationTransaction,
   formatFullMemoryConsolidationInput,
   formatIncrementalMemoryConsolidationInput,
+  readPendingKanaMemoryBatch,
 } from "../../../src/kana/memory";
-import { createMemoryConsolidationTools } from "../../../src/kana/memory/consolidation-tools";
+import { runIncrementalMemoryConsolidation } from "../../../src/kana/memory/consolidation-agent";
+import {
+  createMemoryBatchReview,
+  createMemoryConsolidationTools,
+} from "../../../src/kana/memory/consolidation-tools";
 import {
   cleanupTempKanaHomes,
   createTempKanaHomeEnv as createTempEnv,
@@ -27,8 +39,9 @@ describe("memory consolidation agent", () => {
         { scope: "project", cwd, env },
         "incremental",
         createMemoryConsolidationTransaction({ scope: "project", cwd, env }),
+        createMemoryBatchReview([]),
       ).map((tool) => tool.name),
-    ).toEqual(["read_memory", "edit_memory", "replace_memory"]);
+    ).toEqual(["read_memory", "edit_memory", "replace_memory", "confirm_memory_batch"]);
     expect(
       createMemoryConsolidationTools(
         { scope: "global", env },
@@ -153,7 +166,7 @@ describe("memory consolidation agent", () => {
         { scope: "global", mode: "full", env },
       );
 
-      expect(agent.state.system).toContain("retains daily records for 14 calendar days");
+      expect(agent.state.system).toContain("retains daily records for at least 14 calendar days");
       expect(agent.state.system).toContain(
         "prunes older records after this run completes successfully",
       );
@@ -166,7 +179,7 @@ describe("memory consolidation agent", () => {
     }
   });
 
-  test("formats incremental input from only current memory and new entries", () => {
+  test("formats incremental input from only current memory and pending entries", () => {
     const env = createTempEnv();
     saveKanaMemory("global", "Current memory", { env });
     const entry = appendKanaMemory({ scope: "global", content: "New fact", env, id: "mem_new" });
@@ -174,8 +187,117 @@ describe("memory consolidation agent", () => {
     const input = formatIncrementalMemoryConsolidationInput("global", [entry], { env });
 
     expect(input).toContain("Current memory");
-    expect(input).toContain('"id":"mem_new"');
+    expect(input).toContain('<pending_daily_entries>\n[{"id":"mem_new"');
     expect(input).not.toContain(".kana");
+  });
+
+  test("requires exactly one disposition for every supplied entry", async () => {
+    const env = createTempEnv();
+    const first = appendKanaMemory({ env, content: "First" });
+    const second = appendKanaMemory({ env, content: "Second" });
+    const review = createMemoryBatchReview([first, second]);
+    const context = { toolCallId: "review", update() {} };
+    const confirm = async (...ids: string[]) =>
+      review.tool.execute({ reviews: ids.map((id) => ({ id, disposition: "omitted" })) }, context);
+
+    await expect(confirm(first.id)).rejects.toThrow("every supplied entry ID exactly once");
+    await expect(confirm(first.id, first.id)).rejects.toThrow(
+      "every supplied entry ID exactly once",
+    );
+    await expect(confirm(first.id, "unknown")).rejects.toThrow(
+      "every supplied entry ID exactly once",
+    );
+    expect(review.confirmed).toBe(false);
+    await confirm(second.id, first.id);
+    expect(review.confirmed).toBe(true);
+  });
+
+  test("commits only a confirmed batch that ends with stop, even if the body is unchanged", async () => {
+    const env = createTempEnv();
+    saveKanaMemory("global", "Known fact", { env });
+    const entry = appendKanaMemory({
+      scope: "global",
+      id: "mem_existing",
+      content: "Known fact",
+      env,
+    });
+    const requests: string[] = [];
+    const responses = [
+      toolCall("replace_memory", { content: "Unconfirmed edit" }),
+      finish("stop"),
+      toolCall("confirm_memory_batch", {
+        reviews: [{ id: entry.id, disposition: "already_covered" }],
+      }),
+      finish("length"),
+      toolCall("confirm_memory_batch", {
+        reviews: [{ id: entry.id, disposition: "already_covered" }],
+      }),
+      finish("stop"),
+    ];
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch(request) {
+        requests.push(await request.text());
+        const response = responses.shift();
+        if (!response) return new Response("Unexpected request", { status: 500 });
+        return new Response(
+          [
+            ...response.map(
+              (data) => `data: ${JSON.stringify({ choices: [{ index: 0, ...data }] })}`,
+            ),
+            "data: [DONE]",
+            "",
+          ].join("\n\n"),
+          {
+            headers: { "content-type": "text/event-stream" },
+          },
+        );
+      },
+    });
+    try {
+      const { providersDirectory } = getKanaConfigPaths(env);
+      mkdirSync(providersDirectory, { recursive: true });
+      writeFileSync(
+        path.join(providersDirectory, "memory-test.toml"),
+        [
+          `base_url = "http://127.0.0.1:${server.port}/v1"`,
+          "max_retries = 0",
+          "[[models]]",
+          'name = "test"',
+          "context_window = 32768",
+          "max_output_tokens = 4096",
+        ].join("\n"),
+      );
+      const config: KanaConfig = {
+        ...DEFAULT_KANA_CONFIG,
+        memory: {
+          ...DEFAULT_KANA_CONFIG.memory,
+          agent: {
+            ...DEFAULT_KANA_CONFIG.memory.agent,
+            model: { provider: "custom:memory-test", name: "test" },
+          },
+        },
+      };
+      const run = () =>
+        runIncrementalMemoryConsolidation(config, {
+          scope: "global",
+          env,
+          batch: readPendingKanaMemoryBatch("global", { env })!,
+        });
+      await expect(run()).rejects.toThrow("without confirming the batch");
+      expect(loadKanaMemory("global", { env })).toBe("Known fact\n");
+      expect(readPendingKanaMemoryBatch("global", { env })?.entries).toEqual([entry]);
+      expect((await run()).outcome).toBe("length");
+      expect(readPendingKanaMemoryBatch("global", { env })?.entries).toEqual([entry]);
+      expect((await run()).outcome).toBe("unchanged");
+      expect(loadKanaMemory("global", { env })).toBe("Known fact\n");
+      expect(readPendingKanaMemoryBatch("global", { env })).toBeUndefined();
+      expect(requests[0]).toContain("Entries may come from unrelated dates and conversations");
+      expect(requests[0]).toContain("<pending_daily_entries>");
+    } finally {
+      server.stop(true);
+    }
   });
 
   test("formats an optional user request for full consolidation", () => {
@@ -186,3 +308,25 @@ describe("memory consolidation agent", () => {
     expect(input).toContain("Prioritize current architecture decisions.");
   });
 });
+
+function finish(reason: "stop" | "length" | "tool_calls") {
+  return [{ delta: {}, finish_reason: reason }];
+}
+
+function toolCall(name: string, args: object) {
+  return [
+    {
+      delta: {
+        tool_calls: [
+          {
+            index: 0,
+            id: `call_${name}`,
+            type: "function",
+            function: { name, arguments: JSON.stringify(args) },
+          },
+        ],
+      },
+    },
+    ...finish("tool_calls"),
+  ];
+}

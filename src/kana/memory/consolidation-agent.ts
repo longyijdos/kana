@@ -5,6 +5,7 @@ import type { KanaCustomProviderSnapshot } from "../custom-provider";
 import { createKanaAgentModelRuntime } from "../model";
 import { buildMemoryConsolidationPrompt } from "./consolidation-prompt";
 import {
+  createMemoryBatchReview,
   createMemoryConsolidationTools,
   createMemoryConsolidationTransaction,
   type MemoryConsolidationMode,
@@ -14,6 +15,7 @@ import {
   type KanaMemoryEntry,
   type KanaMemoryScope,
   loadKanaMemory,
+  type PendingKanaMemoryBatch,
   pruneKanaDailyMemory,
 } from "./storage";
 
@@ -41,6 +43,7 @@ export function createMemoryConsolidationAgent(
     ...options,
     maxChars: config.memory.maxChars,
   }),
+  review?: ReturnType<typeof createMemoryBatchReview>,
 ): Agent {
   if (!config.memory.enabled) {
     throw new Error("Memory is disabled.");
@@ -59,7 +62,7 @@ export function createMemoryConsolidationAgent(
       options.mode,
       config.memory.dailyRetentionDays,
     ),
-    tools: createMemoryConsolidationTools(options, options.mode, memory),
+    tools: createMemoryConsolidationTools(options, options.mode, memory, review),
     maxTurns: memoryAgent.maxTurns,
     toolDeadlineMs: memoryAgent.toolDeadlineMs,
     webSearch: runtime.webSearch,
@@ -83,16 +86,16 @@ export function createMemoryConsolidationAgent(
 
 export function formatIncrementalMemoryConsolidationInput(
   scope: KanaMemoryScope,
-  entries: KanaMemoryEntry[],
+  entries: readonly KanaMemoryEntry[],
   options: Pick<CreateMemoryConsolidationAgentOptions, "cwd" | "env"> = {},
 ): string {
   return [
     "<current_memory>",
     loadKanaMemory(scope, options).trim(),
     "</current_memory>",
-    "<new_daily_entries>",
+    "<pending_daily_entries>",
     JSON.stringify(entries),
-    "</new_daily_entries>",
+    "</pending_daily_entries>",
   ].join("\n");
 }
 
@@ -109,20 +112,19 @@ export function formatFullMemoryConsolidationInput(userRequest?: string): string
     .join("\n");
 }
 
-export type RunMemoryConsolidationOptions = CreateMemoryConsolidationAgentOptions & {
-  input: string;
+type ConsolidationRunOptions = Omit<CreateMemoryConsolidationAgentOptions, "mode"> & {
   signal?: AbortSignal;
 };
 
-export type RunFullMemoryConsolidationOptions = Omit<
-  CreateMemoryConsolidationAgentOptions,
-  "mode"
-> & {
-  userRequest?: string;
-  signal?: AbortSignal;
+type RunFullMemoryConsolidationOptions = ConsolidationRunOptions & { userRequest?: string };
+type RunIncrementalMemoryConsolidationOptions = ConsolidationRunOptions & {
+  batch: PendingKanaMemoryBatch;
 };
+type RunMemoryConsolidationOptions =
+  | (RunFullMemoryConsolidationOptions & { mode: "full" })
+  | (RunIncrementalMemoryConsolidationOptions & { mode: "incremental" });
 
-export async function runMemoryConsolidation(
+async function runMemoryConsolidation(
   config: KanaConfig,
   options: RunMemoryConsolidationOptions,
 ): Promise<MemoryConsolidationResult> {
@@ -132,7 +134,13 @@ export async function runMemoryConsolidation(
     ...options,
     maxChars: config.memory.maxChars,
   });
-  const agent = createMemoryConsolidationAgent(config, options, memory);
+  const review =
+    options.mode === "incremental" ? createMemoryBatchReview(options.batch.entries) : undefined;
+  const agent = createMemoryConsolidationAgent(config, options, memory, review);
+  const input =
+    options.mode === "incremental"
+      ? formatIncrementalMemoryConsolidationInput(options.scope, options.batch.entries, options)
+      : formatFullMemoryConsolidationInput(options.userRequest);
   const abort = () => agent.abort();
 
   if (options.signal?.aborted) {
@@ -154,7 +162,7 @@ export async function runMemoryConsolidation(
   });
 
   try {
-    await agent.prompt(options.input);
+    await agent.prompt(input);
   } finally {
     unsubscribe();
     options.signal?.removeEventListener("abort", abort);
@@ -164,19 +172,24 @@ export async function runMemoryConsolidation(
     throw new Error("Memory consolidation finished without an agent_end event.");
   }
 
-  if (endReason === "stop" && memory.hasChanges) {
-    memory.commit();
-  }
+  if (options.signal?.aborted) endReason = "aborted";
 
-  if (endReason === "stop" && options.mode === "full") {
-    const retentionDays = config.memory.dailyRetentionDays;
-    if (retentionDays !== undefined) {
-      pruneKanaDailyMemory(options.scope, {
-        cwd: options.cwd,
-        env: options.env,
-        now: options.now,
-        retentionDays,
-      });
+  if (endReason === "stop") {
+    if (options.mode === "incremental") {
+      if (!review?.confirmed)
+        throw new Error("Memory consolidation ended without confirming the batch.");
+      memory.commit(options.batch.checkpoint);
+    } else {
+      memory.commit();
+      const retentionDays = config.memory.dailyRetentionDays;
+      if (retentionDays !== undefined) {
+        pruneKanaDailyMemory(options.scope, {
+          cwd: options.cwd,
+          env: options.env,
+          now: options.now,
+          retentionDays,
+        });
+      }
     }
   }
 
@@ -202,9 +215,12 @@ export function runFullMemoryConsolidation(
   config: KanaConfig,
   options: RunFullMemoryConsolidationOptions,
 ): Promise<MemoryConsolidationResult> {
-  return runMemoryConsolidation(config, {
-    ...options,
-    mode: "full",
-    input: formatFullMemoryConsolidationInput(options.userRequest),
-  });
+  return runMemoryConsolidation(config, { ...options, mode: "full" });
+}
+
+export function runIncrementalMemoryConsolidation(
+  config: KanaConfig,
+  options: RunIncrementalMemoryConsolidationOptions,
+): Promise<MemoryConsolidationResult> {
+  return runMemoryConsolidation(config, { ...options, mode: "incremental" });
 }
