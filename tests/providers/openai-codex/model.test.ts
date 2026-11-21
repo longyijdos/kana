@@ -128,7 +128,8 @@ describe("OpenAI Codex model", () => {
     await new OpenAICodexModel(config).generate(nextInput);
 
     expect(requests).toHaveLength(3);
-    expect((requests[1]?.input as unknown[]).slice(0, 1)).toEqual(requests[0]?.input as unknown[]);
+    const firstInput = requests[0]?.input as unknown[];
+    expect((requests[1]?.input as unknown[]).slice(0, firstInput.length)).toEqual(firstInput);
     expect(requests[2]).toEqual(requests[1]);
   });
 

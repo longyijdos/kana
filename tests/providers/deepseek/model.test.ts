@@ -112,7 +112,7 @@ describe("DeepSeek model protocol routing", () => {
         stream: true,
         max_output_tokens: 2_048,
         reasoning: { effort: "max" },
-        tools: [{ type: "web_search" }],
+        tools: [{ type: "deepseek_web_search" }],
         tool_choice: "auto",
       });
       expect(message).toMatchObject({

@@ -8,6 +8,7 @@ export function responsesRequestContract(
   label: string,
   buildRequest: BuildResponsesRequest,
   functionNamespace?: string,
+  inputPrefix: readonly unknown[] = [],
 ): void {
   describe(label, () => {
     test("encodes enabled and disabled user image attachments", () => {
@@ -33,6 +34,7 @@ export function responsesRequestContract(
       const disabled = buildRequest({ ...context, imageInput: false });
 
       expect(enabled.input).toEqual([
+        ...inputPrefix,
         {
           type: "message",
           role: "user",
@@ -46,6 +48,7 @@ export function responsesRequestContract(
         },
       ]);
       expect(disabled.input).toEqual([
+        ...inputPrefix,
         {
           type: "message",
           role: "user",
@@ -99,6 +102,7 @@ export function responsesRequestContract(
       const disabled = buildRequest({ ...context, imageInput: false });
 
       expect(enabled.input).toEqual([
+        ...inputPrefix,
         {
           type: "function_call",
           call_id: "call-view",
@@ -116,6 +120,7 @@ export function responsesRequestContract(
         },
       ]);
       expect(disabled.input).toEqual([
+        ...inputPrefix,
         {
           type: "function_call",
           call_id: "call-view",

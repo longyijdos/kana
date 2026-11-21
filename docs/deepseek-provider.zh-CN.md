@@ -38,7 +38,7 @@ Kana 内置的 DeepSeek 适配器位于 `src/providers/deepseek`。所有 V4 模
 
 系统提示词映射为 `instructions`。用户与助手消息、推理、函数调用及函数结果映射为 Responses input item。已完成的 DeepSeek output item 会作为不透明 `providerState` 保存并原样 replay；Responses API 是无状态的，这样服务端才能还原此前的托管搜索结果。没有 provider state 的旧 Chat Completions 历史则根据可见 reasoning、文本、函数调用和工具结果重建。来自其他供应商的托管调用不会 replay。
 
-逐轮输出上限映射为 `max_output_tokens`，`reasoningEffort` 映射为 `reasoning.effort`。客户端函数使用扁平的 Responses 工具定义，`tool_choice` 为 `"auto"`。当 Agent 解析后的设置启用网页搜索时，同一个 `tools` 数组会追加 `{ "type": "web_search" }`。
+逐轮输出上限映射为 `max_output_tokens`，`reasoningEffort` 映射为 `reasoning.effort`。客户端函数使用扁平的 Responses 工具定义，`tool_choice` 为 `"auto"`。当 Agent 解析后的设置启用网页搜索时，Kana 会在同一个 `tools` 数组中为 `deepseek-flash` 追加 `{ "type": "deepseek_web_search" }`，为 `deepseek-v4-pro` 追加 `{ "type": "web_search" }`。Flash 同时使用搜索和客户端函数时必须开启推理；若 `reasoning_effort = "none"`，Kana 会在发送请求前报错。
 
 图片输入在 Agent 设置中根据模型 metadata 与配置一次性解析：只有 `deepseek-flash` 声明支持图片，且配置不能为 `false`。纯文本模型因此绝不会发送会话中保存的 base64 图片字节，也不会声明 `view_image`，而是保留明确的省略提示或元数据；压缩仍会继续，因此切换 provider 后，带图片的历史不会阻止后续 checkpoint。
 

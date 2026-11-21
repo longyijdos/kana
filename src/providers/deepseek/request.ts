@@ -8,7 +8,14 @@ export function buildDeepSeekRequest(
 ): Record<string, unknown> {
   const tools = toResponsesTools(context.tools ?? [], {});
   if (context.webSearch) {
-    tools.push({ type: "web_search" });
+    const isFlash = config.model === "deepseek-flash";
+    if (isFlash && config.reasoningEffort === "none" && tools.length > 0) {
+      throw new Error(
+        'DeepSeek Flash cannot combine web search and function tools with reasoning_effort = "none". ' +
+          'Set reasoning_effort to "low" or higher, or set web_search = false.',
+      );
+    }
+    tools.push({ type: isFlash ? "deepseek_web_search" : "web_search" });
   }
   return {
     model: config.model,

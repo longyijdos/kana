@@ -67,7 +67,7 @@ Kana 静态维护模型目录。上下文上限和推理控制遵循 SIWC/Codex 
 请求完整使用一套 classic Responses 约定：
 
 - Kana 本地执行的函数工具组织在顶层 `tools` 数组的 `kana` namespace 中。`web_search = true` 时，供应商托管的 `{ "type": "web_search" }` 工具追加到同一个数组，并由模型按 `tool_choice: "auto"` 决定是否使用；设为 `false` 时只移除托管工具，客户端函数工具仍然可用。
-- 系统提示词使用顶层 `instructions`；用户消息、工具结果和助手 output item 继续按原顺序保留在 `input`。
+- 所有内置 Codex 模型都把可复用的系统提示词放在 `input` 的首条 `developer` 消息里，使其能命中缓存。顶层 `instructions` 留给只在本轮生效的指令，当前适配器不发送该字段。用户消息、工具结果和助手 output item 的相对顺序不变。
 - 用户图片附件会转换为带自包含 data URL 的 classic Responses `input_image` item。同一个实际能力开关会注册 `view_image`，其视觉结果成为与原调用关联的原生多模态 `function_call_output` 内容。上下文压缩会发送用户和工具图片，让摘要把视觉细节保存为文本。`image_input = false` 时会移除该工具、不发送图片字节，并改为追加明确的文本省略提示。
 - `store = false`、`stream = true`，并请求 `reasoning.encrypted_content`。
 - 绑定 Kana 会话时，使用完整 session ID 设置请求体的 `prompt_cache_key` 和 `session_id` / `x-client-request-id` 请求头。工具循环、重试、Agent 重建与会话 resume 均保持这些值不变。

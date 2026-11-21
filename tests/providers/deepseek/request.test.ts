@@ -106,7 +106,7 @@ describe("buildDeepSeekRequest", () => {
             required: ["path"],
           },
         },
-        { type: "web_search" },
+        { type: "deepseek_web_search" },
       ],
     });
     expect(request).not.toHaveProperty("store");
@@ -148,6 +148,39 @@ describe("buildDeepSeekRequest", () => {
         output: "source",
       },
     ]);
+  });
+
+  test("allows Flash web search by itself with reasoning disabled", () => {
+    const request = buildDeepSeekRequest(
+      { messages: [], webSearch: true },
+      {
+        provider: "deepseek",
+        model: "deepseek-flash",
+        apiKey: "test-key",
+        reasoningEffort: "none",
+      },
+    );
+
+    expect(request.reasoning).toEqual({ effort: "none" });
+    expect(request.tools).toEqual([{ type: "deepseek_web_search" }]);
+  });
+
+  test("rejects Flash web search with function tools when reasoning is disabled", () => {
+    expect(() =>
+      buildDeepSeekRequest(
+        {
+          messages: [],
+          webSearch: true,
+          tools: [{ name: "read", description: "Read a file", parameters: { type: "object" } }],
+        },
+        {
+          provider: "deepseek",
+          model: "deepseek-flash",
+          apiKey: "test-key",
+          reasoningEffort: "none",
+        },
+      ),
+    ).toThrow('Set reasoning_effort to "low" or higher, or set web_search = false.');
   });
 
   test("uses none reasoning and disables hosted search without removing client function tools", () => {

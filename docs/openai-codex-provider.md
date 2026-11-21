@@ -67,7 +67,7 @@ All listed models support image input, parallel function calls, and hosted web s
 The request follows one complete classic Responses contract:
 
 - Function tools executed by Kana are grouped in the `kana` namespace within the top-level `tools` array. With `web_search = true`, the provider-hosted `{ "type": "web_search" }` tool is appended to that same array and `tool_choice: "auto"` lets the model decide whether to use it. Setting the option to `false` removes only the hosted tool; client function tools remain available.
-- The system prompt uses top-level `instructions`; user messages, tool results, and assistant output items remain in input order.
+- All built-in Codex models send the reusable system prompt as the first `developer` message in `input` so it can be cached. Top-level `instructions` is reserved for turn-specific guidance and is not sent by this adapter. User messages, tool results, and assistant output items retain their relative order.
 - User image attachments become classic Responses `input_image` items with self-contained data URLs. `view_image` is registered by the same effective capability gate, and its visual result becomes native multimodal `function_call_output` content tied to the originating call. Context compaction sends both user and tool images so its summary can preserve visual details as text. When `image_input = false`, Kana omits the tool, sends no image bytes, and appends an explicit text omission marker instead.
 - `store = false` and `stream = true`, with `reasoning.encrypted_content` requested.
 - A bound Kana session's full ID sets the request body's `prompt_cache_key` and the `session_id` / `x-client-request-id` headers. These values remain the same across tool turns, retries, Agent rebuilds, and session resume.

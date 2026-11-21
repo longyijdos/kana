@@ -1,9 +1,48 @@
 import { describe, expect, test } from "bun:test";
+import { OPENAI_CODEX_MODELS } from "../../../src/providers/openai-codex/metadata";
 import { buildOpenAICodexRequest } from "../../../src/providers/openai-codex/request";
 import { messageIdentityForTest } from "../../helpers/messages";
 import { responsesRequestContract } from "../responses-request-contract";
 
+const DEFAULT_DEVELOPER_MESSAGE = {
+  type: "message",
+  role: "developer",
+  content: [{ type: "input_text", text: "You are a helpful assistant." }],
+};
+
 describe("buildOpenAICodexRequest", () => {
+  test.each(Object.keys(OPENAI_CODEX_MODELS))(
+    "sends reusable instructions first for %s",
+    (model) => {
+      const request = buildOpenAICodexRequest(
+        {
+          system: "system",
+          messages: [
+            { ...messageIdentityForTest("user"), role: "user", content: "question" },
+            {
+              ...messageIdentityForTest("assistant"),
+              role: "assistant",
+              content: [{ type: "text", text: "answer" }],
+            },
+          ],
+        },
+        { provider: "openai-codex", model, credentialProvider: credentials() },
+      );
+
+      expect(request).not.toHaveProperty("instructions");
+      expect(request.input).toEqual([
+        { type: "message", role: "developer", content: [{ type: "input_text", text: "system" }] },
+        { type: "message", role: "user", content: [{ type: "input_text", text: "question" }] },
+        {
+          type: "message",
+          role: "assistant",
+          status: "completed",
+          content: [{ type: "output_text", text: "answer", annotations: [] }],
+        },
+      ]);
+    },
+  );
+
   test("replays pre-migration function calls through the kana namespace", () => {
     const request = buildOpenAICodexRequest(
       {
@@ -35,6 +74,7 @@ describe("buildOpenAICodexRequest", () => {
       { provider: "openai-codex", model: "gpt-5.6-luna", credentialProvider: credentials() },
     );
     expect(request.input).toEqual([
+      DEFAULT_DEVELOPER_MESSAGE,
       {
         type: "function_call",
         call_id: "call-read",
@@ -131,7 +171,6 @@ describe("buildOpenAICodexRequest", () => {
       store: false,
       stream: true,
       prompt_cache_key: "a45c7acb-90ce-4d49-9a9f-65b706e9f0f7",
-      instructions: "system",
       include: ["reasoning.encrypted_content"],
       reasoning: {
         effort: "medium",
@@ -163,6 +202,7 @@ describe("buildOpenAICodexRequest", () => {
     expect(request).not.toHaveProperty("max_output_tokens");
     expect(request.reasoning).not.toHaveProperty("context");
     expect(request.input).toEqual([
+      { type: "message", role: "developer", content: [{ type: "input_text", text: "system" }] },
       {
         type: "message",
         role: "user",
@@ -216,8 +256,7 @@ describe("buildOpenAICodexRequest", () => {
     );
 
     expect(request).toMatchObject({
-      instructions: "You are a helpful assistant.",
-      input: [],
+      input: [DEFAULT_DEVELOPER_MESSAGE],
       tools: [
         {
           type: "namespace",
@@ -255,6 +294,7 @@ responsesRequestContract(
       credentialProvider: credentials(),
     }),
   "kana",
+  [DEFAULT_DEVELOPER_MESSAGE],
 );
 
 function credentials() {
