@@ -111,36 +111,28 @@ Clean 模式不向 session repository 注册 journal，因此当前对话只保�
 
 | Scope | 长期记忆 | 每日暂存 |
 | --- | --- | --- |
-| `global` | `<KANA_HOME>/memory/global/memory.md` | `<KANA_HOME>/memory/global/daily/YYYY-MM-DD.md` |
-| `project` | `<KANA_HOME>/memory/projects/<encoded-workspace>/memory.md` | 同目录下的 `daily/YYYY-MM-DD.md` |
+| `global` | `<KANA_HOME>/memory/global/memory.md` | `<KANA_HOME>/memory/global/daily/YYYY-MM-DD.jsonl` |
+| `project` | `<KANA_HOME>/memory/projects/<encoded-workspace>/memory.md` | 同目录下的 `daily/YYYY-MM-DD.jsonl` |
 
 长期 `memory.md` 包含会被注入系统提示词的压缩 Markdown；不存在时视为空。文件头的 HTML 注释记录该 scope 的 checkpoint：单个 `[日期, 末条 ID]` 游标指向已确认前缀的最后一条。`/memory` 和 Agent 只读取正文，`memory.max_chars` 也只按正文的 Unicode code point 计数。Kana 通过同目录临时文件原子替换整个文件，一次提交正文和 checkpoint。
 
 以 `--clean` 启动时，宿主不会读取全局或项目记忆，不提供 `remember`，也不会启动自动合并或允许通过 `/memory` 手动查看和合并。已有记忆文件不会被修改；Clean 模式也不允许恢复 session，当前临时会话的消息不会写入 session journal。
 
-`remember` 不直接改写长期记忆。它默认 project scope，将非空内容（可选标题和原因）追加到当天的 Markdown 暂存文件：
+`remember` 不直接改写长期记忆。它默认 project scope，每次往当天的暂存文件追加一行 JSON 记录：
 
-```markdown
----
-id: "mem_<uuid>"
-created_at: "2026-06-22T12:00:00.000Z"
-scope: "project"
-title: "可选标题"
-reason: "可选原因"
----
-
-持久信息正文
+```jsonl
+{"id":"mem_<uuid>","createdAt":"2026-06-22T12:00:00.000Z","scope":"project","title":"可选标题","reason":"可选原因","content":"持久信息正文\n第二行"}
 ```
 
-元数据由宿主生成，字段值使用 JSON 字符串形式引用。日期使用进程本地日期而非 UTC 日期。每日文件的读取器会验证日期、scope、必需元数据和整个文件格式。
+文件名使用本地日期而非 UTC 日期。宿主生成元数据，并在读取时校验每条记录。运行时不读取旧 Markdown daily；需要恢复的旧条目须先转换，并保留日期、顺序和 ID。
 
 ## 记忆合并
 
-`remember` 追加 daily 条目后返回 `{ id, scope }`。Host 通过记录 callback 收集直接和嵌套调用涉及的 scope，不依赖脚本返回值，并在本轮提交后触发调度。正常启动时也会检查 global 和当前 project 是否有积压，不需要再次调用 `remember`。
+`remember` 追加 daily 条目后返回 `{ id, scope }`。Host 通过记录 callback 收集直接和嵌套调用涉及的 scope，不依赖脚本返回值，并在本轮提交后触发调度。同一个 Host 首次激活持久会话时，也会检查 global 和当前 project 是否有积压，不需要再次调用 `remember`。即使随后切换了会话，补跑用量也记到触发它的会话。
 
 调度器按 scope 合并触发。任务进入 scope 队列后，按日期和日内追加顺序从磁盘分批读取游标之后的待处理条目。这要求按非递减的本地日期追加，不支持补写到游标之前的日期。批次失败后停止处理，除非期间收到新触发；没有定时重试。增量合并和手动全量合并在同一个 Host 内共享 scope 队列；这不协调同时写入同一份记忆的多个进程。
 
-`MemoryConsolidationScheduler` 暴露只读活动快照和变更/失败事件。任务排队时为 `queued`，处理时为 `organizing`。启动检查发现无积压时不显示活动。`KanaConversationHost` 汇总 scheduler 活动，独立于当前选择的 session。
+`MemoryConsolidationScheduler` 暴露只读活动快照和变更/失败事件。任务排队时为 `queued`，处理时为 `organizing`。首次会话检查发现无积压时不显示活动。`KanaConversationHost` 汇总 scheduler 活动，独立于当前选择的 session。
 
 合并 Agent 使用自己的 `[memory.agent]` 策略，并且没有 shell、文件工具或 `remember`。除 `[memory.agent.model]` 覆盖的字段外，它继承 `[agent.model]`，网页搜索和图片输入保持关闭。增量模式只接收当前长期记忆和一批待处理条目；条目可能来自互不相关的日期和会话。它提供 `read_memory`、`edit_memory`、`replace_memory` 和 `confirm_memory_batch`。
 
@@ -170,5 +162,5 @@ reason: "可选原因"
 
 - 记忆内容被视为数据而非指令；合并提示明确禁止执行其中的命令。
 - 不应记录 secrets 或敏感个人数据。`remember` 的系统提示词只建议记录持久偏好、已确认决定和有长期价值的未完成工作。
-- 不要手工破坏 daily 文件的 frontmatter 格式；一个损坏文件会在读取该日期时失败。
+- Daily 文件每行必须是一条合法 JSON 记录；记录损坏会导致该日期读取失败。
 - 修改 session JSONL 或记忆格式时应同时更新解析器、存储测试和本文；这些文件是用户持久数据。

@@ -111,36 +111,28 @@ Memory has two scopes:
 
 | Scope | Durable memory | Daily staging |
 | --- | --- | --- |
-| `global` | `<KANA_HOME>/memory/global/memory.md` | `<KANA_HOME>/memory/global/daily/YYYY-MM-DD.md` |
-| `project` | `<KANA_HOME>/memory/projects/<encoded-workspace>/memory.md` | `daily/YYYY-MM-DD.md` in the same directory |
+| `global` | `<KANA_HOME>/memory/global/memory.md` | `<KANA_HOME>/memory/global/daily/YYYY-MM-DD.jsonl` |
+| `project` | `<KANA_HOME>/memory/projects/<encoded-workspace>/memory.md` | `daily/YYYY-MM-DD.jsonl` in the same directory |
 
 Durable `memory.md` contains compressed Markdown injected into the system prompt; a missing file is empty. A host-owned HTML comment at the top holds the checkpoint for this scope: a single `[date, lastId]` cursor identifies the last entry in the confirmed prefix. Only the Markdown body is shown by `/memory`, sent to Agents, or counted against `memory.max_chars` (in Unicode code points). Kana uses a sibling temporary file to atomically replace both the body and the checkpoint.
 
 When started with `--clean`, the host does not read global or project memory, expose `remember`, start automatic consolidation, or allow manual viewing and consolidation through `/memory`. Existing memory files remain unchanged. Clean mode also cannot resume a session, and the current temporary conversation is not written to a session journal.
 
-`remember` does not modify durable memory directly. It defaults to project scope and appends non-empty content, plus optional title and reason, to the current day's Markdown staging file:
+`remember` does not modify durable memory directly. It defaults to project scope and appends one JSON record per line to the current day's staging file:
 
-```markdown
----
-id: "mem_<uuid>"
-created_at: "2026-06-22T12:00:00.000Z"
-scope: "project"
-title: "optional title"
-reason: "optional reason"
----
-
-Durable information body
+```jsonl
+{"id":"mem_<uuid>","createdAt":"2026-06-22T12:00:00.000Z","scope":"project","title":"optional title","reason":"optional reason","content":"Durable information body\nwith a second line"}
 ```
 
-The host generates metadata and quotes field values as JSON strings. The date is the process-local date, not the UTC date. The daily-file reader validates date, scope, required metadata, and whole-file structure.
+The filename uses the local date, not the UTC date. The host generates metadata and validates each record at read time. Former Markdown daily files are not read; any retained entries needed for recovery must be converted with their dates, order, and IDs preserved.
 
 ## Memory consolidation
 
-After appending a daily entry, `remember` returns `{ id, scope }`. The Host collects scopes from the recording callbacks of direct and nested calls, independently of the script result, and triggers the scheduler when the run commits. A normal startup also checks global memory and the current project for pending entries, without a new `remember`.
+After appending a daily entry, `remember` returns `{ id, scope }`. The Host collects scopes from the recording callbacks of direct and nested calls, independently of the script result, and triggers the scheduler when the run commits. The first activation of a persistent session in each Host also checks global memory and the current project for pending entries, without a new `remember`. Recovery usage is attributed to that triggering session even if the active session changes.
 
 The scheduler coalesces triggers by scope. When admitted to the scope queue, it reads pending entries after the cursor in date order and in append order within each date, processing them in bounded batches. This assumes daily files are appended in nondecreasing local-date order; appending to dates older than the cursor is not supported. A failed batch stops the drain unless another trigger has arrived; there is no timer-based retry. Incremental and manual full-compaction work share the same per-scope queue within one Host. This does not coordinate concurrent processes writing the same memory.
 
-`MemoryConsolidationScheduler` exposes read-only activity snapshots and change/failure events. Scheduled work is `queued` until admitted, then `organizing` while draining. A startup check with nothing pending does not show activity. `KanaConversationHost` aggregates scheduler activity independently of the selected session.
+`MemoryConsolidationScheduler` exposes read-only activity snapshots and change/failure events. Scheduled work is `queued` until admitted, then `organizing` while draining. A first-session check with nothing pending does not show activity. `KanaConversationHost` aggregates scheduler activity independently of the selected session.
 
 The consolidation Agent uses its own `[memory.agent]` policy and no shell, file, or `remember` tools. It inherits `[agent.model]` unless `[memory.agent.model]` overrides individual fields, and web search and image input stay disabled. Incremental mode receives only current durable memory and a batch of pending entries, which can come from unrelated dates and conversations. It exposes `read_memory`, `edit_memory`, `replace_memory`, and `confirm_memory_batch`.
 
@@ -170,5 +162,5 @@ The full Agent can modify the memory body but cannot advance the checkpoint. Whe
 
 - Memory content is data, not instructions; the consolidation prompt explicitly forbids executing commands in it.
 - Do not retain secrets or sensitive personal data. `remember` guidance covers durable preferences, confirmed decisions, and valuable unfinished work.
-- Do not manually corrupt the frontmatter format in daily files; reading that date will fail.
+- Daily files require one valid JSON record per line; malformed records prevent reading that date.
 - When changing session JSONL or memory formats, update parsers, storage tests, and this document together. These are persistent user data formats.

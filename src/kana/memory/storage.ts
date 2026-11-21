@@ -8,7 +8,7 @@ import {
   unlinkSync,
 } from "node:fs";
 import path from "node:path";
-import { Type } from "typebox";
+import { type Static, Type } from "typebox";
 
 import { parseWithSchema, writeFileAtomic } from "@/utils";
 import { loadKanaConfig } from "../config";
@@ -16,7 +16,16 @@ import { encodeKanaWorkspacePath, getKanaConfigPaths } from "../path";
 
 export const KANA_MEMORY_SCOPES = ["global", "project"] as const;
 const CHECKPOINT_HEADER = "<!-- kana-memory-checkpoint: ";
-const CHECKPOINT_SUFFIX = " -->\n";
+const CHECKPOINT_SUFFIX = " -->";
+const DAILY_EXTENSION = ".jsonl";
+const DAILY_ENTRY_SCHEMA = Type.Object({
+  id: Type.String({ minLength: 1 }),
+  createdAt: Type.String({ minLength: 1 }),
+  scope: Type.Union([Type.Literal("global"), Type.Literal("project")]),
+  title: Type.Optional(Type.String()),
+  reason: Type.Optional(Type.String()),
+  content: Type.String({ minLength: 1 }),
+});
 const CHECKPOINT_SCHEMA = Type.Tuple([
   Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
   Type.String({ minLength: 1 }),
@@ -32,14 +41,7 @@ export type KanaMemoryPaths = {
   dailyDirectory: string;
 };
 
-export type KanaMemoryEntry = {
-  id: string;
-  createdAt: string;
-  scope: KanaMemoryScope;
-  title?: string;
-  reason?: string;
-  content: string;
-};
+export type KanaMemoryEntry = Readonly<Static<typeof DAILY_ENTRY_SCHEMA>>;
 
 export type KanaMemoryCheckpoint = readonly [date: string, lastId: string];
 
@@ -98,7 +100,11 @@ export function getKanaMemoryPaths(
     const memoryDirectory = path.join(configPaths.memoryDirectory, "global");
     return {
       memoryPath: path.join(memoryDirectory, "memory.md"),
-      dailyPath: path.join(memoryDirectory, "daily", `${formatMemoryDate(options.now)}.md`),
+      dailyPath: path.join(
+        memoryDirectory,
+        "daily",
+        `${formatMemoryDate(options.now)}${DAILY_EXTENSION}`,
+      ),
       dailyDirectory: path.join(memoryDirectory, "daily"),
     };
   }
@@ -112,7 +118,7 @@ export function getKanaMemoryPaths(
 
   return {
     memoryPath: path.join(projectPath, "memory.md"),
-    dailyPath: path.join(dailyDirectory, `${formatMemoryDate(options.now)}.md`),
+    dailyPath: path.join(dailyDirectory, `${formatMemoryDate(options.now)}${DAILY_EXTENSION}`),
     dailyDirectory,
   };
 }
@@ -131,7 +137,7 @@ export function appendKanaMemory(options: AppendKanaMemoryOptions): KanaMemoryEn
   const { dailyPath, dailyDirectory } = getKanaMemoryPaths(scope, options);
 
   mkdirSync(dailyDirectory, { recursive: true });
-  appendFileSync(dailyPath, formatKanaMemoryEntry(entry), { encoding: "utf8", mode: 0o600 });
+  appendFileSync(dailyPath, `${JSON.stringify(entry)}\n`, { encoding: "utf8", mode: 0o600 });
 
   return entry;
 }
@@ -153,16 +159,17 @@ function loadKanaMemoryState(
     return { content: raw };
   }
 
-  const end = raw.indexOf("\n") + 1;
-  if (!raw.slice(0, end).endsWith(CHECKPOINT_SUFFIX)) {
+  const end = raw.indexOf("\n");
+  const line = raw.slice(0, end).replace(/\r$/, "");
+  if (end < 0 || !line.endsWith(CHECKPOINT_SUFFIX)) {
     throw new Error("Invalid memory checkpoint header.");
   }
   const checkpoint = parseWithSchema(
     CHECKPOINT_SCHEMA,
-    JSON.parse(raw.slice(CHECKPOINT_HEADER.length, end - CHECKPOINT_SUFFIX.length)),
+    JSON.parse(line.slice(CHECKPOINT_HEADER.length, -CHECKPOINT_SUFFIX.length)),
     "memory checkpoint",
   );
-  return { content: raw.slice(end).replace(/^\n/, ""), checkpoint };
+  return { content: raw.slice(end + 1).replace(/^\r?\n/, ""), checkpoint };
 }
 
 export function saveKanaMemory(
@@ -183,7 +190,7 @@ export function writeKanaMemoryState(
 ): void {
   const { memoryPath } = getKanaMemoryPaths(scope, options);
   const header = checkpoint
-    ? `${CHECKPOINT_HEADER}${JSON.stringify(checkpoint)}${CHECKPOINT_SUFFIX}\n`
+    ? `${CHECKPOINT_HEADER}${JSON.stringify(checkpoint)}${CHECKPOINT_SUFFIX}\n\n`
     : "";
   writeFileAtomic(memoryPath, `${header}${content}`);
 }
@@ -248,7 +255,7 @@ export function readKanaDailyMemory(
 ): KanaMemoryEntry[] {
   assertMemoryDate(date, "date");
   const { dailyDirectory } = getKanaMemoryPaths(scope, options);
-  const dailyPath = path.join(dailyDirectory, `${date}.md`);
+  const dailyPath = path.join(dailyDirectory, `${date}${DAILY_EXTENSION}`);
 
   if (!existsSync(dailyPath)) {
     throw new Error(`Daily memory not found for ${date}.`);
@@ -312,22 +319,10 @@ export function pruneKanaDailyMemory(
       readKanaDailyMemory(scope, date, options).at(-1)?.id !== committedId
     )
       continue;
-    unlinkSync(path.join(dailyDirectory, `${date}.md`));
+    unlinkSync(path.join(dailyDirectory, `${date}${DAILY_EXTENSION}`));
     pruned.push(date);
   }
   return pruned;
-}
-
-function formatKanaMemoryEntry(entry: KanaMemoryEntry): string {
-  const fields = [
-    `id: ${quoteYaml(entry.id)}`,
-    `created_at: ${quoteYaml(entry.createdAt)}`,
-    `scope: ${quoteYaml(entry.scope)}`,
-    entry.title ? `title: ${quoteYaml(entry.title)}` : undefined,
-    entry.reason ? `reason: ${quoteYaml(entry.reason)}` : undefined,
-  ].filter((field): field is string => field !== undefined);
-
-  return `---\n${fields.join("\n")}\n---\n\n${entry.content}\n\n`;
 }
 
 function listDailyMemoryDates(
@@ -350,8 +345,8 @@ function listDailyMemoryDates(
   }
 
   return readdirSync(dailyDirectory, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && /^\d{4}-\d{2}-\d{2}\.md$/.test(entry.name))
-    .map((entry) => entry.name.slice(0, -".md".length))
+    .filter((entry) => entry.isFile() && /^\d{4}-\d{2}-\d{2}\.jsonl$/.test(entry.name))
+    .map((entry) => entry.name.slice(0, -DAILY_EXTENSION.length))
     .filter(
       (date) =>
         (!options.startDate || date >= options.startDate) &&
@@ -365,40 +360,20 @@ function parseKanaDailyMemory(
   date: string,
   scope: KanaMemoryScope,
 ): KanaMemoryEntry[] {
-  const entries: KanaMemoryEntry[] = [];
-  const expression = /---\n([\s\S]*?)\n---\n\n([\s\S]*?)\n\n(?=---\nid:|(?![\s\S]))/y;
-  let offset = 0;
-  while (offset < content.length) {
-    const match = expression.exec(content);
-    if (!match) throw new Error(`Daily memory ${date} is malformed.`);
-    offset = expression.lastIndex;
-    const [, header = "", body = ""] = match;
-    const fields = Object.fromEntries(
-      header.split("\n").map((line) => {
-        const separator = line.indexOf(": ");
-        return [line.slice(0, separator), JSON.parse(line.slice(separator + 2)) as unknown];
-      }),
-    );
-    const entryScope = fields.scope;
-
-    if (entryScope !== scope) {
-      throw new Error(`Daily memory ${date} contains an entry with the wrong scope.`);
+  const lines = content.split("\n");
+  if (lines.at(-1) === "") lines.pop();
+  return lines.map((line, index) => {
+    const label = `daily memory ${date}, line ${index + 1}`;
+    let value: unknown;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      throw new Error(`Invalid ${label}: expected a JSON record.`);
     }
-    if (typeof fields.id !== "string" || typeof fields.created_at !== "string") {
-      throw new Error(`Daily memory ${date} has invalid entry metadata.`);
-    }
-
-    entries.push({
-      id: fields.id,
-      createdAt: fields.created_at,
-      scope,
-      title: typeof fields.title === "string" ? fields.title : undefined,
-      reason: typeof fields.reason === "string" ? fields.reason : undefined,
-      content: normalizeRequiredText(body, `Daily memory ${date} entry content`),
-    });
-  }
-
-  return entries;
+    const entry = parseWithSchema(DAILY_ENTRY_SCHEMA, value, label);
+    if (entry.scope !== scope) throw new Error(`Invalid ${label}: wrong scope.`);
+    return entry;
+  });
 }
 
 function formatMemorySearchSnippet(entry: KanaMemoryEntry): string {
@@ -447,10 +422,6 @@ function normalizeRequiredText(value: string, label: string): string {
 function normalizeOptionalText(value: string | undefined): string | undefined {
   const normalized = value?.trim();
   return normalized || undefined;
-}
-
-function quoteYaml(value: string): string {
-  return JSON.stringify(value);
 }
 
 function countCharacters(value: string): number {

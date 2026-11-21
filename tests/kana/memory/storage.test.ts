@@ -48,21 +48,8 @@ describe("Kana memory storage", () => {
       reason: "The user explicitly requested it.",
       content: "Use Chinese by default.",
     });
-    expect(readFileSync(paths.dailyPath, "utf8")).toBe(
-      [
-        "---",
-        'id: "mem_test"',
-        `created_at: "${now.toISOString()}"`,
-        'scope: "global"',
-        'title: "Response language"',
-        'reason: "The user explicitly requested it."',
-        "---",
-        "",
-        "Use Chinese by default.",
-        "",
-        "",
-      ].join("\n"),
-    );
+    expect(path.basename(paths.dailyPath)).toBe("2026-06-20.jsonl");
+    expect(readFileSync(paths.dailyPath, "utf8")).toBe(`${JSON.stringify(entry)}\n`);
   });
 
   test("defaults to project scope and isolates workspaces", () => {
@@ -102,6 +89,21 @@ describe("Kana memory storage", () => {
     saveKanaMemory("project", "  # Working context\n\nKeep this.  ", { cwd, env });
 
     expect(loadKanaMemory("project", { cwd, env })).toBe("# Working context\n\nKeep this.\n");
+  });
+
+  test("loads a CRLF checkpoint without changing the memory body", () => {
+    const env = createTempEnv();
+    const now = new Date(2026, 5, 20);
+    const entry = appendKanaMemory({ env, now, content: "Already processed" });
+    const next = appendKanaMemory({ env, now, content: "Still pending" });
+    const { memoryPath } = getKanaMemoryPaths("project", { env });
+    const body = "# Memory\r\n\r\n- Keep these line endings.\r\n";
+    writeFileSync(
+      memoryPath,
+      `<!-- kana-memory-checkpoint: ["2026-06-20","${entry.id}"] -->\r\n\r\n${body}`,
+    );
+    expect(loadKanaMemory("project", { env })).toBe(body);
+    expect(readPendingKanaMemoryBatch("project", { env })?.entries).toEqual([next]);
   });
 
   test("rejects consolidated memory over the configured character limit", () => {
@@ -188,7 +190,17 @@ describe("Kana memory storage", () => {
     const env = createTempEnv();
     const oldDay = new Date(2026, 5, 20);
     const newDay = new Date(2026, 5, 21);
-    const content = "Use Bun.\n\n---\n\n- Keep the lockfile.\n- Run checks.";
+    const content = [
+      "Use Bun.",
+      "",
+      "---",
+      'id: "mem_example"',
+      'created_at: "2026-06-20T10:00:00.000Z"',
+      'scope: "global"',
+      "---",
+      "",
+      "- Keep the lockfile.",
+    ].join("\n");
     const old = appendKanaMemory({ scope: "global", content, env, now: oldDay });
     const batch = readPendingKanaMemoryBatch("global", { env })!;
     expect(batch.entries).toEqual([old]);
