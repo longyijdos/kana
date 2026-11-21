@@ -47,7 +47,7 @@ import {
 import {
   createMemoryConsolidationQueue,
   createMemoryConsolidationScheduler,
-  type KanaMemoryEntry,
+  type KanaMemoryScope,
   loadKanaMemory,
   type MemoryConsolidationActivity,
   type MemoryConsolidationEvent,
@@ -55,6 +55,7 @@ import {
   type MemoryConsolidationScheduler,
   runFullMemoryConsolidation,
 } from "../memory";
+import type { MemoryConsolidationResult } from "../memory/consolidation-agent";
 import { getKanaModelManagement, type KanaModelManagement } from "../model-management";
 import { loadKanaInstructionSections } from "../prompt";
 import type { LoadKanaSessionResult } from "../session";
@@ -153,6 +154,7 @@ export class KanaConversationHost<TConfiguration = never> {
   private readonly mcpRuntime: KanaMcpRuntime;
   private configData: KanaConfig;
   private memoryConsolidation?: MemoryConsolidationScheduler;
+  private memoryRecoveryStarted = false;
   // Persistence and user customizations exist only in normal launches; clean
   // mode leaves them out instead of checking the mode at each use.
   private readonly persistent: boolean;
@@ -308,13 +310,13 @@ export class KanaConversationHost<TConfiguration = never> {
       onTodoStateCommitted,
     );
     const createAgent = (config: KanaConfig): Agent => {
-      const rememberedEntries: KanaMemoryEntry[] = [];
+      const rememberedScopes = new Set<KanaMemoryScope>();
       const agent = this.createAgentProduct(
         config,
-        this.createKanaAgentOptions(agentOptions, sessionBinding, config, rememberedEntries),
+        this.createKanaAgentOptions(agentOptions, sessionBinding, config, rememberedScopes),
       );
       agent.subscribe((event) => {
-        if (event.type === "agent_start") rememberedEntries.length = 0;
+        if (event.type === "agent_start") rememberedScopes.clear();
       });
       return agent;
     };
@@ -353,6 +355,14 @@ export class KanaConversationHost<TConfiguration = never> {
     // Session callbacks register candidates before ConversationRuntime builds
     // their Agent. Adopt the candidate only after every constructor succeeds.
     this.sessionRegistry.activate(options.sessionId);
+    if (
+      !this.memoryRecoveryStarted &&
+      this.memoryConsolidation &&
+      sessionBinding.session?.persistent
+    ) {
+      this.memoryRecoveryStarted = true;
+      this.scheduleMemoryConsolidation(sessionBinding.session, sessionBinding.logger);
+    }
     return agent;
   }
 
@@ -526,7 +536,7 @@ export class KanaConversationHost<TConfiguration = never> {
     >,
     sessionBinding: HostedSessionAgentBinding,
     config: KanaConfig,
-    rememberedEntries: KanaMemoryEntry[],
+    rememberedScopes: Set<KanaMemoryScope>,
   ): KanaAgentOptions {
     const session = sessionBinding.session;
     const logger = sessionBinding.logger;
@@ -539,7 +549,7 @@ export class KanaConversationHost<TConfiguration = never> {
       memoryEnabled: this.customizations !== undefined && config.memory.enabled,
       resolveTodoState: sessionBinding.resolveTodoState,
       env: this.env,
-      onMemoryRecorded: (entry) => rememberedEntries.push(entry),
+      onMemoryRecorded: (entry) => rememberedScopes.add(entry.scope),
       logger,
       artifactStore: sessionBinding.artifactStore,
       backgroundJobs: sessionBinding.backgroundJobs,
@@ -571,27 +581,7 @@ export class KanaConversationHost<TConfiguration = never> {
           additionalUsage: addCompactionUsage(compactions),
         });
 
-        const accountingSession = {
-          id: session.id,
-          cwd: session.cwd,
-        };
-        void this.memoryConsolidation
-          ?.schedule(rememberedEntries.splice(0), {
-            logger,
-            onCompleted: (scope, result) =>
-              recordAccounting(logger, "automatic_memory_consolidation", {
-                sessionId: accountingSession.id,
-                cwd: accountingSession.cwd,
-                agentKind: "memory_consolidation",
-                outcome: result.outcome,
-                messages: result.state.messages,
-                model: result.state.model.metadata,
-                memory: { scope, mode: "incremental", origin: "automatic" },
-              }),
-          })
-          .catch((error) => {
-            logger.error("memory_consolidation.failed", { error });
-          });
+        this.scheduleMemoryConsolidation(session, logger, rememberedScopes);
       },
       onCompactionCommitted: ({ compaction, state }) => {
         if (!session?.persistent) {
@@ -609,6 +599,37 @@ export class KanaConversationHost<TConfiguration = never> {
         });
       },
     };
+  }
+
+  private scheduleMemoryConsolidation(
+    session: { id: string; cwd: string },
+    logger: Logger,
+    scopes?: ReadonlySet<KanaMemoryScope>,
+  ): void {
+    const scheduler = this.memoryConsolidation;
+    if (!scheduler) return;
+    const options = {
+      logger,
+      onCompleted: (scope: KanaMemoryScope, result: MemoryConsolidationResult) =>
+        recordAccounting(logger, "automatic_memory_consolidation", {
+          sessionId: session.id,
+          cwd: session.cwd,
+          agentKind: "memory_consolidation",
+          outcome: result.outcome,
+          messages: result.state.messages,
+          model: result.state.model.metadata,
+          memory: { scope, mode: "incremental", origin: "automatic" },
+        }),
+    };
+    const pending = scopes ? scheduler.schedule(scopes, options) : scheduler.recover(options);
+    void pending.catch((error) => {
+      logger.error(
+        scopes ? "memory_consolidation.failed" : "memory_consolidation.recovery_failed",
+        {
+          error,
+        },
+      );
+    });
   }
 
   private async runSubagent(

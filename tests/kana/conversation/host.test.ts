@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Agent } from "../../../src/agent";
 import {
+  appendKanaMemory,
   ConversationRuntime,
   createKanaConversationHost,
   createKanaSession,
@@ -23,13 +24,14 @@ import {
   type MemoryConsolidationActivity,
   type MemoryConsolidationEvent,
 } from "../../../src/kana";
+import { loadKanaUsageSummary } from "../../../src/kana/accounting";
 import type { KanaAgentOptions } from "../../../src/kana/agent";
 import { createKanaToolResultArtifactPolicy } from "../../../src/kana/artifacts";
 import { getKanaSubagentArtifactParentDirectory } from "../../../src/kana/artifacts/store";
 import { getKanaSubagentDirectory } from "../../../src/kana/subagents";
 import { createRememberTool, createTodoWriteTool } from "../../../src/kana/tools";
 import { MockModel } from "../../../src/providers/mock";
-import { waitFor } from "../../helpers/async-control";
+import { deferred, waitFor } from "../../helpers/async-control";
 import { ControlledModel } from "../../helpers/controlled-model";
 import { messageIdentityForTest } from "../../helpers/messages";
 import { readOwnedSession } from "../../helpers/session";
@@ -323,6 +325,77 @@ describe("Kana conversation host", () => {
     expect(host.config.agent.maxTurns).toBe(50);
     await runtime.close();
     await host.close();
+  });
+
+  test("starts memory recovery only on first session activation and accounts to it after a switch", async () => {
+    const env = createTempEnv();
+    process.env.KANA_HOME = env.KANA_HOME;
+    appendKanaMemory({ env, scope: "project", content: "From the previous process." });
+    const finish = deferred();
+    let requests = 0;
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      async fetch() {
+        requests++;
+        await finish.promise;
+        return new Response(
+          [
+            'data: {"choices":[{"index":0,"delta":{"content":"Partial"}}]}',
+            'data: {"choices":[{"index":0,"delta":{},"finish_reason":"length"}]}',
+            'data: {"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":2,"total_tokens":7}}',
+            "data: [DONE]",
+            "",
+          ].join("\n\n"),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      },
+    });
+    const { providersDirectory } = getKanaConfigPaths(env);
+    mkdirSync(providersDirectory, { recursive: true });
+    writeFileSync(
+      path.join(providersDirectory, "memory-test.toml"),
+      [
+        `base_url = "http://127.0.0.1:${server.port}/v1"`,
+        "max_retries = 0",
+        "[[models]]",
+        'name = "test"',
+        "context_window = 32768",
+        "max_output_tokens = 4096",
+      ].join("\n"),
+    );
+    const host = createKanaConversationHost({
+      env,
+      session: { type: "none" },
+      configOverrides: [
+        'memory.agent.model.provider="custom:memory-test"',
+        'memory.agent.model.name="test"',
+      ],
+      createAgent: () => new Agent({ model: new MockModel({ provider: "mock", model: "mock" }) }),
+    });
+    try {
+      const first = host.runtimeOptions.createNewSession();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(host.getMemoryActivity()).toEqual([]);
+      expect(requests).toBe(0);
+
+      host.createAgent({ sessionId: first.id });
+      await waitFor(() => requests === 1);
+      const second = host.runtimeOptions.createNewSession();
+      host.createAgent({ sessionId: second.id });
+      expect(host.getMemoryActivity()).toEqual([{ scope: "project", status: "organizing" }]);
+      finish.resolve();
+      await waitFor(() => host.getMemoryActivity().length === 0);
+      expect(requests).toBe(1);
+      expect(
+        loadKanaUsageSummary({ scope: "session", sessionId: first.id, env }).agents.memoryAutomatic,
+      ).toMatchObject({ runCount: 1, usage: { totalTokens: 7 } });
+      expect(host.loadUsage("session").memoryRunCount).toBe(0);
+    } finally {
+      finish.resolve();
+      await host.close();
+      server.stop(true);
+    }
   });
 
   test.each([

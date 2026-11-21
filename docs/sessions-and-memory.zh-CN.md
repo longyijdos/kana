@@ -111,49 +111,32 @@ Clean 模式不向 session repository 注册 journal，因此当前对话只保�
 
 | Scope | 长期记忆 | 每日暂存 |
 | --- | --- | --- |
-| `global` | `<KANA_HOME>/memory/global/memory.md` | `<KANA_HOME>/memory/global/daily/YYYY-MM-DD.md` |
-| `project` | `<KANA_HOME>/memory/projects/<encoded-workspace>/memory.md` | 同目录下的 `daily/YYYY-MM-DD.md` |
+| `global` | `<KANA_HOME>/memory/global/memory.md` | `<KANA_HOME>/memory/global/daily/YYYY-MM-DD.jsonl` |
+| `project` | `<KANA_HOME>/memory/projects/<encoded-workspace>/memory.md` | 同目录下的 `daily/YYYY-MM-DD.jsonl` |
 
-长期 `memory.md` 是会被注入系统提示词的压缩 Markdown；不存在时视为空。`saveKanaMemory` 会去除首尾空白、按 Unicode code point 检查 `memory.max_chars`，写入 UUID 临时文件后原子 `rename`，最终保证文件以一个换行结尾。
+长期 `memory.md` 包含会被注入系统提示词的压缩 Markdown；不存在时视为空。文件头的 HTML 注释记录该 scope 的 checkpoint：单个 `[日期, 末条 ID]` 游标指向已确认前缀的最后一条。`/memory` 和 Agent 只读取正文，`memory.max_chars` 也只按正文的 Unicode code point 计数。Kana 通过同目录临时文件原子替换整个文件，一次提交正文和 checkpoint。
 
 以 `--clean` 启动时，宿主不会读取全局或项目记忆，不提供 `remember`，也不会启动自动合并或允许通过 `/memory` 手动查看和合并。已有记忆文件不会被修改；Clean 模式也不允许恢复 session，当前临时会话的消息不会写入 session journal。
 
-`remember` 不直接改写长期记忆。它默认 project scope，将非空内容（可选标题和原因）追加到当天的 Markdown 暂存文件：
+`remember` 不直接改写长期记忆。它默认 project scope，每次往当天的暂存文件追加一行 JSON 记录：
 
-```markdown
----
-id: "mem_<uuid>"
-created_at: "2026-06-22T12:00:00.000Z"
-scope: "project"
-title: "可选标题"
-reason: "可选原因"
----
-
-持久信息正文
+```jsonl
+{"id":"mem_<uuid>","createdAt":"2026-06-22T12:00:00.000Z","scope":"project","title":"可选标题","reason":"可选原因","content":"持久信息正文\n第二行"}
 ```
 
-元数据由宿主生成，字段值使用 JSON 字符串形式引用。日期使用进程本地日期而非 UTC 日期。每日文件的读取器会验证日期、scope、必需元数据和整个文件格式。
+文件名使用本地日期而非 UTC 日期。宿主生成元数据，并在读取时校验每条记录。运行时不读取旧 Markdown daily；需要恢复的旧条目须先转换，并保留日期、顺序和 ID。
 
 ## 记忆合并
 
-`remember` 追加 daily 条目后，通过记录 callback 把完整条目交给 Host，公开结果只返回 `{ id, scope }`。Host 收集直接调用和内部调用写入的条目，并在本轮提交后交给调度器。这一收集过程不依赖工具结果事件、对话历史或脚本选取的输出，因此脚本后续报错也不会丢弃已经成功写入的记忆条目。调度器再按 scope 分组。每个 scope 的任务独立，但增量合并和手动全量合并会共享同一 scope 的 promise 队列串行运行，避免并发的读—改—写覆盖。
+`remember` 追加 daily 条目后返回 `{ id, scope }`。Host 通过记录 callback 收集直接和嵌套调用涉及的 scope，不依赖脚本返回值，并在本轮提交后触发调度。同一个 Host 首次激活持久会话时，也会检查 global 和当前 project 是否有积压，不需要再次调用 `remember`。即使随后切换了会话，补跑用量也记到触发它的会话。
 
-`MemoryConsolidationScheduler` 为自动批次暴露只读活动快照以及变更/失败事件。批次在共享 scope 队列启动它之前保持 `queued`，启动后保持 `organizing` 直到结束。`KanaConversationHost` 汇总全部 scheduler 的活动，独立于当前选择的 session。这些观察接口不改变调度或 headless 输出。
+调度器按 scope 合并触发。任务进入 scope 队列后，按日期和日内追加顺序从磁盘分批读取游标之后的待处理条目。这要求按非递减的本地日期追加，不支持补写到游标之前的日期。批次失败后停止处理，除非期间收到新触发；没有定时重试。增量合并和手动全量合并在同一个 Host 内共享 scope 队列；这不协调同时写入同一份记忆的多个进程。
 
-```text
-remember 成功
-  → 当天 daily 文件追加
-  → Agent 本轮提交
-  → scheduler 按 scope 收集条目
-  → 增量合并 Agent
-      读取当前 memory.md 和本批 daily 条目
-      在内存 transaction 中 edit/replace
-      正常 stop 且有改动时，原子保存 memory.md
-```
+`MemoryConsolidationScheduler` 暴露只读活动快照和变更/失败事件。任务排队时为 `queued`，处理时为 `organizing`。首次会话检查发现无积压时不显示活动。`KanaConversationHost` 汇总 scheduler 活动，独立于当前选择的 session。
 
-合并 Agent 使用自己的 `[memory.agent]` 策略，并且没有 shell、文件工具或 `remember`。除 `[memory.agent.model]` 覆盖的字段外，它继承 `[agent.model]`，网页搜索和图片输入保持关闭。增量模式仅提供 `read_memory`、`edit_memory`、`replace_memory`，且输入只包含当前长期记忆和本批新条目。它不扫描历史 daily 文件，避免把未提供的上下文推断进记忆。
+合并 Agent 使用自己的 `[memory.agent]` 策略，并且没有 shell、文件工具或 `remember`。除 `[memory.agent.model]` 覆盖的字段外，它继承 `[agent.model]`，网页搜索和图片输入保持关闭。增量模式只接收当前长期记忆和一批待处理条目；条目可能来自互不相关的日期和会话。它提供 `read_memory`、`edit_memory`、`replace_memory` 和 `confirm_memory_batch`。
 
-所有 edit/replace 先作用于内存 transaction；每次写入前检查大小限制。仅当 Agent 以 `stop` 正常结束且 transaction 有改动时才 `commit()`。中止、错误、长度截断、`turn_limit` 和未改动都不会覆盖长期记忆。
+编辑先在内存 transaction 中检查大小。只有 Agent 为本批每个 ID 都确认处理结论、并以 `stop` 结束时，Host 才提交正文和 checkpoint。已确认的批次可以在正文不变时推进 checkpoint。中止、出错、长度截断、`turn_limit` 或未确认都会保留原正文和进度。
 
 自动记忆合并属于进程持有的后台工作。TUI 或 headless 关闭时，host 会停止新的自动调度，取消并等待其创建过的全部 scheduler 中正在运行或排队的合并 Agent（包括模型重配后被替换的 scheduler），然后才关闭外部资源。`remember` 已写入 daily 暂存的条目会完整保留；被中止的内存 transaction 不会修改长期 `memory.md`。
 
@@ -165,7 +148,7 @@ remember 成功
 - `read_daily_memory`：读取指定日期的所有条目。
 - `search_daily_memory`：不区分大小写检索标题、原因和正文，最多返回每一天三个摘要。
 
-全量 Agent 仍只能通过 memory transaction 修改长期记忆。若该 scope 的合并以 `stop` 结束，且配置了 `memory.daily_retention_days`，Kana 才删除早于保留窗口的每日文件。保留窗口按本地日历日计算，例如 retention 为 3 且今天是 20 日时保留 18、19、20 日。删除只在成功的全量运行之后发生，确保即将过期的数据有机会被压缩进长期记忆。
+全量 Agent 可以修改长期记忆正文，但不会推进 checkpoint。若该 scope 的合并以 `stop` 结束，且配置了 `memory.daily_retention_days`，Kana 只删除早于保留窗口、且每条都已经过增量确认的文件。窗口按本地日历日计算，例如 retention 为 3 且今天是 20 日时一定保留 18、19、20 日。还有待处理条目的文件即使过期也会保留。
 
 ## 用户可见命令
 
@@ -179,5 +162,5 @@ remember 成功
 
 - 记忆内容被视为数据而非指令；合并提示明确禁止执行其中的命令。
 - 不应记录 secrets 或敏感个人数据。`remember` 的系统提示词只建议记录持久偏好、已确认决定和有长期价值的未完成工作。
-- 不要手工破坏 daily 文件的 frontmatter 格式；一个损坏文件会在读取该日期时失败。
+- Daily 文件每行必须是一条合法 JSON 记录；记录损坏会导致该日期读取失败。
 - 修改 session JSONL 或记忆格式时应同时更新解析器、存储测试和本文；这些文件是用户持久数据。
